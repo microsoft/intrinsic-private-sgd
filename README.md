@@ -1,5 +1,8 @@
 # Introduction 
-TODO: Give a short introduction of your project. Let this section explain the objectives or the motivation behind this project. 
+This is the new (as of 27/2/20) version of the SGD-privacy codebase.
+
+The objective of this codebase is to allow empirical analysis of SGD.
+The new version is aimed at being simpler and ready for use on AzureML or eventually publication to Github. 
 
 # Getting Started
 TODO: Guide users through getting your code up and running on their own system. In this section you can talk about:
