@@ -15,23 +15,8 @@ from scipy.stats import kstest, norm, laplace, shapiro, anderson
 import vis_utils
 import data_utils
 import model_utils
+import results_utils
 
-
-def trace_path_stub(dataset, model, replace_index=None, seed=None, diffinit=False, data_privacy='all'):
-    path_stub = './traces/' + dataset + '/' + data_privacy + '/' + model + '/' + model
-    if diffinit:
-        path_stub = path_stub + '_DIFFINIT'
-    if not replace_index is None:
-        path_stub = path_stub + '.replace_' + str(replace_index)
-    if not seed is None:
-        path_stub = path_stub + '.seed_' + str(seed)
-    return path_stub
-
-def get_list_of_params(dataset, identifier):
-    model, replace_index, seed = identifier
-    weights = load_weights(dataset, model, replace_index, seed, iter_range=(None, 5))
-    params = weights.columns[1:]
-    return params
 
 def get_experiment_details(dataset, model, verbose=False, data_privacy='all'):
     if dataset == 'housing_binary':
@@ -162,7 +147,7 @@ def debug_just_test(dataset, model, replace_index, seed, t, diffinit=False, use_
     task, batch_size, lr, n_weights, N = get_experiment_details(dataset, model)
     _, _, x_vali, y_vali, x_test, y_test = data_utils.load_data(data_type=dataset, replace_index=replace_index)
     
-    weights_path = trace_path_stub(dataset, model, replace_index, seed, diffinit=diffinit) + '.weights.csv'
+    weights_path = results_utils.trace_path_stub(dataset, model, replace_index, seed, diffinit=diffinit) + '.weights.csv'
     
     metrics = None
     metric_names = None
@@ -171,14 +156,6 @@ def debug_just_test(dataset, model, replace_index, seed, t, diffinit=False, use_
     model_object = model_utils.build_model(model_type=model, data_type=dataset, init_path=weights_path, t=t)
     model_utils.prep_for_training(model_object, seed=0, lr=0, task_type=task)                                      # literally so i can evaluate it later
 
-    # just sanity check
-    #weights_from_file = load_weights(dataset, model, replace_index, seed, diffinit=diffinit, iter_range=(t, t+1)).iloc[0, 1:].values
-    #weights_from_model = model_object.get_weights(flat=True)
-    #try:
-    #    assert np.linalg.norm(weights_from_file - weights_from_model) < 1e-5
-    #except AssertionError:
-    #    print('weights dont match file')
-    
     if use_vali:
         #     print('Evaluating on validation set')
         metrics = model_object.compute_metrics(x_vali, y_vali)
@@ -230,7 +207,7 @@ def test_model_with_noise(dataset, model, replace_index, seed, t, epsilon=None, 
 
     target_noise, noise_to_add, noise_to_add_diffinit = get_target_noise_for_model(dataset, model, t, epsilon, delta, sensitivity, verbose)    
     
-    weights_path = trace_path_stub(dataset, model, replace_index, seed, diffinit=diffinit) + '.weights.csv'
+    weights_path = results_utils.trace_path_stub(dataset, model, replace_index, seed, diffinit=diffinit) + '.weights.csv'
     print('Evaluating model from', weights_path)
     
     model_object = model_utils.build_model(model_type=model, data_type=dataset, init_path=weights_path, t=t)
@@ -312,7 +289,7 @@ def estimate_empirical_lipschitz(dataset, model, diffinit, iter_range, n_samples
     min_norm = 50
     cumulative = 0
     cum_count = 0
-    df = get_available_results(dataset, model, replace_index=None, diffinit=diffinit, data_privacy='all')
+    df = results_utils.get_available_results(dataset, model, replace_index=None, diffinit=diffinit, data_privacy='all')
     n_exp = df.shape[0]
     if n_samples is None:
         print('Selecting', n_exp, 'experiments')
@@ -326,7 +303,7 @@ def estimate_empirical_lipschitz(dataset, model, diffinit, iter_range, n_samples
     for row, exp in experiments.iterrows():
         replace = exp['replace']
         seed = exp['seed']
-        gradients = load_gradients(dataset, model, replace_index=replace, seed=seed, iter_range=iter_range, diffinit=diffinit)
+        gradients = results_utils.load_gradients(dataset, model, replace_index=replace, seed=seed, iter_range=iter_range, diffinit=diffinit)
         grad_norm = np.linalg.norm(gradients.iloc[:, 2:], axis=1)
         cumulative += np.sum(grad_norm)
         cum_count += grad_norm.shape[0]
@@ -368,34 +345,6 @@ def estimate_sensitivity_empirically(dataset, model, t, num_deltas, diffinit=Fal
     sensitivity = np.nanmax(vary_data_deltas)
     return sensitivity
 
-def get_available_results(dataset, model, replace_index=None, seed=None, diffinit=False, data_privacy='all'):
-    available_results = ['.'.join(x.split('/')[-1].split('.')[:-2]) for x in glob.glob(trace_path_stub(dataset, model, diffinit=diffinit, data_privacy=data_privacy) + '.*.weights.csv')]
-    # remove replace_NA!
-    available_results = [x for x in available_results if not 'replace_NA' in x]
-    # collect all the results 
-    drop_and_replace_and_seeds = [(x.split('.')[1].split('_')[1], x.split('.')[2].split('_')[1], x.split('.')[3].split('_')[1]) for x in available_results]
-    drop, replace, seeds = zip(*drop_and_replace_and_seeds)
-    df = pd.DataFrame({'drop': drop, 'replace': replace, 'seed': seeds})
-    if not replace_index is None:
-        df = df.loc[df['replace'] == replace_index, :]
-    if not seed is None:
-        df = df.loc[df['seed'] == seed, :]
-    return df
-
-def check_if_experiment_exists(dataset, model, replace_index, seed, diffinit, data_privacy='all'):
-    path = trace_path_stub(dataset, model, replace_index, seed, diffinit, data_privacy) + '.weights.csv'
-    exists = os.path.exists(path)
-    if not exists:
-        logpath = 'missing_experiments.' + dataset + '.' + data_privacy + '.' + model + '.csv'
-        if not os.path.exists(logpath):
-            logfile = open(logpath, 'w')
-            logfile.write('replace,seed,diffinit\n')
-        else:
-            logfile = open(logpath, 'a')
-        logfile.write(str(replace_index) + ',' + str(seed) + ',' + str(diffinit) + '\n')
-        logfile.close()
-    return exists
-
 def get_deltas(dataset, iter_range, model, 
         vary_seed=True, vary_data=True, params=None, num_deltas=100,
         include_identifiers=False, diffinit=False, data_privacy='all'):
@@ -411,7 +360,7 @@ def get_deltas(dataset, iter_range, model,
 
     we want to get num_deltas values of delta in the end
     """
-    df = get_available_results(dataset, model, diffinit=diffinit, data_privacy=data_privacy)
+    df = results_utils.get_available_results(dataset, model, diffinit=diffinit, data_privacy=data_privacy)
 
     if num_deltas == 'max':
         num_deltas = int(df.shape[0]/2)
@@ -475,15 +424,15 @@ def get_deltas(dataset, iter_range, model,
     for i in range(num_deltas):
         replace_index = w.iloc[i]['replace']
         seed = w.iloc[i]['seed']
-        if check_if_experiment_exists(dataset, model, replace_index, seed, diffinit, data_privacy=data_privacy):
-            w_weights = load_weights(dataset, model, replace_index=replace_index, seed=seed, iter_range=iter_range, params=params, verbose=False, diffinit=diffinit, data_privacy=data_privacy).values[:, 1:] # the first column is the time-step
+        if results_utils.check_if_experiment_exists(dataset, model, replace_index, seed, diffinit, data_privacy=data_privacy):
+            w_weights = results_utils.load_weights(dataset, model, replace_index=replace_index, seed=seed, iter_range=iter_range, params=params, verbose=False, diffinit=diffinit, data_privacy=data_privacy).values[:, 1:] # the first column is the time-step
         else:
             print('WARNING: Missing data for (seed, replace) = (', seed, replace_index, ')')
             w_weights = np.array([np.nan])
         replace_index_p = wp.iloc[i]['replace']
         seed_p = wp.iloc[i]['seed']
-        if check_if_experiment_exists(dataset, model, replace_index_p, seed_p, diffinit, data_privacy=data_privacy):
-            wp_weights = load_weights(dataset, model, replace_index=replace_index_p, seed=seed_p, iter_range=iter_range, params=params, verbose=False, diffinit=diffinit, data_privacy=data_privacy).values[:, 1:] # the first column is the time-step
+        if results_utils.check_if_experiment_exists(dataset, model, replace_index_p, seed_p, diffinit, data_privacy=data_privacy):
+            wp_weights = results_utils.load_weights(dataset, model, replace_index=replace_index_p, seed=seed_p, iter_range=iter_range, params=params, verbose=False, diffinit=diffinit, data_privacy=data_privacy).values[:, 1:] # the first column is the time-step
         else:
             print('WARNING: Missing data for (seed, replace) = (', seed_p, replace_index_p, ')')
             wp_weights = np.array([np.nan])
@@ -494,108 +443,6 @@ def get_deltas(dataset, iter_range, model,
     identifiers = np.array(list(zip(w_identifiers, wp_identifiers)))
     return deltas, identifiers
 
-def get_posterior_samples(dataset, iter_range, model='linear', replace_index=None, params=None, seeds='all', n_seeds=None, verbose=True, diffinit=False, data_privacy='all'):
-    """
-    grab the values of the weights of [params] at [at_time] for all the available seeds from identifier_stub
-    might want to re-integrate this with sacred at some point
-    """
-    if seeds == 'all':
-        df = get_available_results(dataset, model, replace_index=replace_index, diffinit=diffinit, data_privacy=data_privacy)
-        available_seeds = df['seed'].unique().tolist()
-    else:
-        assert type(seeds) == list
-        available_seeds = seeds
-    if not n_seeds is None:
-        available_seeds = np.random.choice(available_seeds, n_seeds, replace=False)
-    S = len(available_seeds) 
-    if verbose:
-        print('Loading samples from seeds:', available_seeds, 'in range', iter_range)
-    samples = []
-    for i, s in enumerate(available_seeds):
-        weights_from_s = load_weights(dataset, model, replace_index=replace_index, seed=s, iter_range=iter_range, params=params, verbose=False, diffinit=diffinit, data_privacy=data_privacy)
-        try:
-            if weights_from_s.shape[0] == 0:
-                print('WARNING: No data from seed', s, 'in range', iter_range, ' - skipping')
-            else:
-                # insert the seed (the format should be similar to when we load gradient noise)
-                weights_from_s.insert(loc=1, column='seed', value=s)
-                samples.append(weights_from_s)
-        except AttributeError:
-            print('WARNING: No data from seed', s, 'in range', iter_range, 'or something, not sure why this error happened? - skipping')
-            ipdb.set_trace()
-    if len(samples) > 1:
-        samples = pd.concat(samples)
-    else:
-        print('[get_posterior_samples] WARNING: No actual samples acquired for replace', replace_index, '!')
-        samples = False
-    return samples
-
-def load_gradients(dataset, model, replace_index, seed, noise=False, iter_range=(None, None), params=None, verbose=False, diffinit=False):
-    path_stub = trace_path_stub(dataset, model, replace_index, seed, diffinit=diffinit)
-    path = path_stub + '.all_gradients.csv' 
-    if not params is None:
-        assert type(params) == list
-        usecols = ['t', 'minibatch_id'] + params
-        if verbose:
-            print('Loading gradients with columns:', usecols)
-    else:
-        if verbose:
-            print('WARNING: Loading all columns can be slow!')
-        usecols = None
-    df = pd.read_csv(path, skiprows=1, usecols=usecols, dtype={'t': np.int64, 'minibatch_id': str})
-    
-    # remove validation data by default
-    df = df.loc[~(df['minibatch_id'] == 'VALI'), :]
-    
-    if iter_range[0] is not None:
-        df = df.loc[df['t'] >= iter_range[0], :]
-    if iter_range[1] is not None:
-        df = df.loc[df['t'] <= iter_range[1], :]
-    
-    if noise:
-        # separate minibatches from aggregate
-        df_minibatch = df.loc[~(df['minibatch_id'] == 'ALL'), :]
-        if df_minibatch.shape[0] == 0:
-            print('[load_gradients] WARNING: No minibatch information. Try turning off calculation of gradient noise')
-        df_all = df.loc[df['minibatch_id'] == 'ALL', :]
-        df_minibatch.set_index(['t', 'minibatch_id'], inplace=True)
-        df_all = df_all.set_index('t').drop('minibatch_id', axis=1)
-        df = df_minibatch - df_all
-        df.reset_index(inplace=True)
-    return df
-
-def load_weights(dataset, model, replace_index, seed, diffinit=False, 
-        iter_range=(None, None), params=None, verbose=True, data_privacy='all'):
-    path_stub = trace_path_stub(dataset, model, replace_index, seed, diffinit=diffinit, data_privacy=data_privacy)
-    path = path_stub + '.weights.csv' 
-    if not params is None:
-        assert type(params) == list
-        usecols = ['t'] + params
-    else:
-        if verbose: print('WARNING: Loading all columns can be slow!')
-        usecols = None
-    
-    df = pd.read_csv(path, skiprows=1, usecols=usecols)
-    
-    if iter_range[0] is not None:
-        df = df.loc[df['t'] >= iter_range[0], :]
-    if iter_range[1] is not None:
-        df = df.loc[df['t'] <= iter_range[1], :]
-    
-    if verbose: print('Loaded weights from', path)
-    return df
-
-def load_loss(dataset, model, replace_index, seed, iter_range=(None, None), diffinit=False, verbose=False, data_privacy='all'):
-    path_stub = trace_path_stub(dataset, model, replace_index, seed, diffinit=diffinit, data_privacy=data_privacy)
-    path = path_stub + '.loss.csv' 
-    df = pd.read_csv(path, skiprows=1)
-    
-    if iter_range[0] is not None:
-        df = df.loc[df['t'] >= iter_range[0], :]
-    if iter_range[1] is not None:
-        df = df.loc[df['t'] <= iter_range[1], :]
-    return df
-
 def aggregated_loss(dataset, model, iter_range=(None, None), diffinit=False, data_privacy='all'):
     """ maybe i should include save/load here """
     path = 'fig_data/aggregated_loss.' + dataset + '.' + model + '.' + data_privacy + '.csv'
@@ -605,11 +452,11 @@ def aggregated_loss(dataset, model, iter_range=(None, None), diffinit=False, dat
     except FileNotFoundError:
         print('Couldn\'t load from', path)
 
-        df = get_available_results(dataset, model)
+        df = results_utils.get_available_results(dataset, model)
         train_list = []
         vali_list = []
         for i, row in df.iterrows():
-            loss = load_loss(dataset, model, replace_index=row['replace'],
+            loss = results_utils.load_loss(dataset, model, replace_index=row['replace'],
                     seed=row['seed'], iter_range=iter_range, diffinit=diffinit, verbose=False, data_privacy=data_privacy)
             loss_train = loss.loc[loss['minibatch_id'] == 'ALL', :].set_index('t')
             loss_vali = loss.loc[loss['minibatch_id'] == 'VALI', :].set_index('t')
@@ -642,10 +489,10 @@ def estimate_statistics_through_training(what, dataset, identifier, df=None, par
         # get from the all_gradients file
         model, replace_index, seed = identifier
         if what == 'gradients':
-            df = load_gradients(dataset, model, replace_index, seed, noise=True, params=params, iter_range=iter_range)
+            df = results_utils.load_gradients(dataset, model, replace_index, seed, noise=True, params=params, iter_range=iter_range)
         else:
             print('Getting posterior for weights, seed is irrelevant')
-            df = get_posterior_samples(dataset, model=model, replace_index=replace_index, iter_range=iter_range, params=params, diffinit=diffinit)
+            df = results_utils.get_posterior_samples(dataset, model=model, replace_index=replace_index, iter_range=iter_range, params=params, diffinit=diffinit)
         if df is False: 
             print('ERROR: No data found')
             return False
@@ -806,7 +653,7 @@ def compute_wu_bound(lipschitz_constant, t, N, batch_size, eta, verbose=True):
 def get_sens_and_var_distribution(dataset, model, t, n_pairs=None, by_parameter=False, diffinit=False):
     """
     """
-    df = get_available_results(dataset, model)
+    df = results_utils.get_available_results(dataset, model)
     replace_counts = df['replace'].value_counts()
     replaces = replace_counts[replace_counts > 10].index.values
     print('Found', len(replaces), 'datasets with at least 10 seeds')
@@ -845,8 +692,8 @@ def compute_pairwise_sens_and_var(dataset, model, t, replace_indices, by_paramet
     """
     if by_parameter:
         raise NotImplementedError
-    samples_1 = get_posterior_samples(dataset, (t, t+1), model, replace_index=replace_indices[0], params=None, seeds='all', verbose=False, diffinit=diffinit)
-    samples_2 = get_posterior_samples(dataset, (t, t+1), model, replace_index=replace_indices[1], params=None, seeds='all', verbose=False, diffinit=diffinit)
+    samples_1 = results_utils.get_posterior_samples(dataset, (t, t+1), model, replace_index=replace_indices[0], params=None, seeds='all', verbose=False, diffinit=diffinit)
+    samples_2 = results_utils.get_posterior_samples(dataset, (t, t+1), model, replace_index=replace_indices[1], params=None, seeds='all', verbose=False, diffinit=diffinit)
     try:
         samples_1.set_index('seed', inplace=True)
         samples_2.set_index('seed', inplace=True)
@@ -893,7 +740,7 @@ def estimate_variability(dataset, model, t, by_parameter, replaces=None, diffini
     except FileNotFoundError:
         print('[estimate_variability] Failed to load', data_path)
         if replaces is None:
-            df = get_available_results(dataset, model, data_privacy=data_privacy)
+            df = results_utils.get_available_results(dataset, model, data_privacy=data_privacy)
             replace_counts = df['replace'].value_counts()
             replaces = replace_counts[replace_counts > 2].index.values
         else:
@@ -903,7 +750,7 @@ def estimate_variability(dataset, model, t, by_parameter, replaces=None, diffini
         print('Warning: this can be slow...')
         sigmas = []
         for replace_index in replaces:
-            samples = get_posterior_samples(dataset, (t, t+1), model, replace_index=replace_index, params=None, seeds='all', verbose=False, diffinit=diffinit, data_privacy=data_privacy)
+            samples = results_utils.get_posterior_samples(dataset, (t, t+1), model, replace_index=replace_index, params=None, seeds='all', verbose=False, diffinit=diffinit, data_privacy=data_privacy)
             try:
                 params = samples.columns[2:]
                 if by_parameter:
@@ -927,23 +774,6 @@ def estimate_variability(dataset, model, t, by_parameter, replaces=None, diffini
     return estimated_variability
 
  ### VESTIGIAL ###
-def estimate_epsilon(dataset, model, delta, t, sensitivity=None, variability=None,
-        method='gaussian_mechanism', by_parameter=False, distance_percentile=90):
-    if method == 'gaussian_mechanism':
-        # do stuff
-        if sensitivity is None:
-            sensitivity = estimate_sensitivity(dataset, model, t, by_parameter, distance_percentile)
-        else:
-            assert type(sensitivity) in [float, list, np.ndarray]
-        print('Sensitivity is', sensitivity)
-        if variability is None:
-            sigma = estimate_variability(dataset, model, t, by_parameter)
-        print('Sigma is', sigma)
-        c = np.sqrt(2 * np.log(1.25 / delta))
-        epsilon = c * sensitivity / sigma
-    else:
-        raise NotImplementedError(method)
-    return epsilon
 
 def validate_sigmas_sens_var(dataset, model, t, n_pairs, diffinit):
     """
@@ -991,7 +821,7 @@ def find_convergence_point_for_single_experiment(dataset, model, replace_index, 
     """
     """
     # load the trace
-    loss = load_loss(dataset, model, replace_index, seed, iter_range=(None, None), diffinit=diffinit, data_privacy=data_privacy)
+    loss = results_utils.load_loss(dataset, model, replace_index, seed, iter_range=(None, None), diffinit=diffinit, data_privacy=data_privacy)
     try:
         assert metric in loss.columns
     except AssertionError:
@@ -1020,7 +850,7 @@ def find_convergence_point_for_single_experiment(dataset, model, replace_index, 
 
 def find_convergence_point(dataset, model, diffinit, tolerance, metric, data_privacy='all'):
     """ wrapper for the whole experiment """
-    results = get_available_results(dataset, model, diffinit=diffinit, data_privacy=data_privacy)
+    results = results_utils.get_available_results(dataset, model, diffinit=diffinit, data_privacy=data_privacy)
     n_results = results.shape[0]
     points = np.zeros(n_results)
     for index, row in results.iterrows():
