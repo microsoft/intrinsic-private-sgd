@@ -8,7 +8,6 @@
 import numpy as np
 import pandas as pd
 import re
-from scipy.stats import ttest_rel
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -21,10 +20,10 @@ params={'font.family': 'sans-serif',
 plt.rcParams.update(params)
 
 from matplotlib import cm
-import random
 import seaborn as sns
 import ipdb
 
+import results_utils
 import eval_utils
 import vis_utils
 
@@ -37,103 +36,6 @@ bolton_colour = '#c3871c'
 
 #N_WEIGHTS = 407050
 
-def calculate_epsilon(dataset, model, t, use_bound=False, diffinit=True, num_deltas='max'):
-    """
-    just get the intrinsic epsilon
-    """
-    task, batch_size, lr, n_weights, N = eval_utils.get_experiment_details(dataset, model)
-    delta = 1.0/N
-    if use_bound:
-        sensitivity = eval_utils.compute_wu_bound(lipschitz_constant=np.sqrt(2), t=t, N=N, batch_size=batch_size, eta=lr)
-    else:
-        sensitivity = eval_utils.estimate_sensitivity_empirically(dataset, model, t, num_deltas=num_deltas, diffinit=diffinit)
-    variability = eval_utils.estimate_variability(dataset, model, t, by_parameter=False, diffinit=diffinit)
-    print('sensitivity:', sensitivity)
-    print('variability:', variability)
-    print('delta:', delta)
-    c = np.sqrt(2 * np.log(1.25/delta))
-    epsilon = c * sensitivity / variability
-    return epsilon
-
-def accuracy_at_eps(dataset, model, t, use_bound=False, num_experiments=50, num_deltas='max', epsilon=1, do_test=False):
-    """
-    """
-    path = './fig_data/utility.' + str(dataset) + '.' + str(model) + '.t' + str(t) + '.nd_' + str(num_deltas) + '.ne_' + str(num_experiments) + '.csv'
-    try:
-        utility_data = pd.read_csv(path)
-    except:
-        print('ERROR: couldn\'t load', path)
-        return False
-    if use_bound:
-        utility_data = utility_data.loc[utility_data['sensitivity_from_bound'] == True, :]
-    else:
-        utility_data = utility_data.loc[utility_data['sensitivity_from_bound'] == False, :]
-    df_eps = utility_data.loc[utility_data['epsilon'] == epsilon, :]
-    mean_accuracy = df_eps['augment'].mean()
-    std_accuracy = df_eps['augment'].std()
-    mean_accuracy_diffinit = df_eps['augment_diffinit'].mean()
-    std_accuracy_diffinit = df_eps['augment_diffinit'].std()
-    mean_noiseless = df_eps['noiseless'].mean()
-    std_noiseless = df_eps['noiseless'].std()
-    mean_bolton = df_eps['bolton'].mean()
-    std_bolton = df_eps['bolton'].std()
-    
-    if do_test:
-        # do a paired (dependent) t-test
-        print('\tAcross all epsilon...')
-        statistic, pval = ttest_rel(utility_data['augment'], utility_data['bolton'])
-        print('Pval of ttest between AUGMENT and BOLTON:', pval)
-        print('Average difference:', np.mean(utility_data['augment'] - utility_data['bolton']))
-        statistic, pval = ttest_rel(utility_data['augment_diffinit'], utility_data['bolton'])
-        print('Pval of ttest between AUGMENT_DIFFINIT and BOLTON:', pval)
-        print('Average difference:', np.mean(utility_data['augment_diffinit'] - utility_data['bolton']))
-        diff = utility_data['augment_diffinit'] - utility_data['bolton']
-        gap = utility_data['noiseless'] - utility_data['bolton']
-        #wat = diff/gap
-        #wat = wat[np.isfinite(wat)]
-        #print(100*wat.mean())
-        frac_improvement = diff/gap
-        frac_improvement[~np.isfinite(frac_improvement)] = 0
-        print('Average percent difference of gap:', np.mean(100*frac_improvement))
-                #print('Average percent difference of gap:', np.nanmean(100*(diff/gap).dropna()))
-        
-        print('\tAt epsilon = ' + str(epsilon) + '...')
-        statistic, pval = ttest_rel(df_eps['augment'], df_eps['bolton'])
-        print('Pval of ttest between AUGMENT and BOLTON:', pval)
-        print('Average difference:', np.mean(df_eps['augment'] - df_eps['bolton']))
-        statistic, pval = ttest_rel(df_eps['augment_diffinit'], df_eps['bolton'])
-        print('Pval of ttest between AUGMENT_DIFFINIT and BOLTON:', pval)
-        diff = df_eps['augment_diffinit'] - df_eps['bolton']
-        print('Average difference:', np.mean(diff))
-        gap = df_eps['noiseless'] - df_eps['bolton']
-        frac_improvement = diff/gap
-        frac_improvement[~np.isfinite(frac_improvement)] = 0
-        #frac_improvement = frac_improvement[np.isfinite(frac_improvement)]
-        print('Average percent difference of gap:', np.mean(100*frac_improvement))
-
-    results = {'acc': [mean_accuracy, std_accuracy],
-            'acc_diffinit': [mean_accuracy_diffinit, std_accuracy_diffinit],
-            'bolton': [mean_bolton, std_bolton],
-            'noiseless': [mean_noiseless, std_noiseless]}
-    return results
-
-### WRAPPER OF WRAPPERS ! ###
-def generate_amortised_data(dataset, model, num_pairs, num_experiments, t, metric_to_report='binary_accuracy'):
-    """
-    need to generate the
-    - delta distribution
-    - sens-var distribution
-    """
-    print('delta histogram')
-    delta_histogram(dataset, model, t=t, num_deltas='max')
-    print('epsilon distribution')
-    epsilon_distribution(dataset, model, t=t, delta=None, n_pairs=num_pairs, sensitivity_from='empirical')
-    if model == 'logistic':
-        epsilon_distribution(dataset, model, t=t, delta=None, n_pairs=num_pairs, sensitivity_from='wu_bound')
-    print('utility curve')
-    utility_curve(dataset, model, delta=None, t=t, metric_to_report=metric_to_report, verbose=True, num_deltas=num_deltas, diffinit=False, num_experiments=num_experiments)
-    return True
-
 def weight_evolution(dataset, model, n_seeds=50, replace_indices=None, iter_range=(None, None), params=['#4', '#2'], diffinit=False, aggregate=False):
     """
     """
@@ -144,7 +46,7 @@ def weight_evolution(dataset, model, n_seeds=50, replace_indices=None, iter_rang
         colours = cm.get_cmap('Set1')(np.linspace(0.2, 0.8, len(replace_indices)))
         assert n_seeds > 1
         for i, replace_index in enumerate(replace_indices):
-            vary_S = eval_utils.get_posterior_samples(dataset, iter_range, model, replace_index=replace_index, params=params, seeds='all', n_seeds=n_seeds, diffinit=diffinit)
+            vary_S = results_utils.get_posterior_samples(dataset, iter_range, model, replace_index=replace_index, params=params, seeds='all', n_seeds=n_seeds, diffinit=diffinit)
             vary_S_min = vary_S.groupby('t').min()
             vary_S_std = vary_S.groupby('t').std()
             vary_S_max = vary_S.groupby('t').max()
@@ -158,7 +60,7 @@ def weight_evolution(dataset, model, n_seeds=50, replace_indices=None, iter_rang
         colours = cm.get_cmap('plasma')(np.linspace(0.2, 0.8, n_seeds))
         assert len(replace_indices) == 1
         replace_index = replace_indices[0]
-        vary_S = eval_utils.get_posterior_samples(dataset, iter_range, model, replace_index=replace_index, params=params, seeds='all', n_seeds=n_seeds, diffinit=diffinit)
+        vary_S = results_utils.get_posterior_samples(dataset, iter_range, model, replace_index=replace_index, params=params, seeds='all', n_seeds=n_seeds, diffinit=diffinit)
         seeds = vary_S['seed'].unique()
         for i, s in enumerate(seeds):
             vary_Ss = vary_S.loc[vary_S['seed'] == s, :]
@@ -192,14 +94,14 @@ def weight_posterior(dataset, model, replace_indices=None, t=500, param='#0', ov
         print(pairs[0])
     elif replace_indices == 'random':
         print('Picking two *random* replace indices for this setting...')
-        df = eval_utils.get_available_results(dataset, model)
+        df = results_utils.get_available_results(dataset, model)
         replace_counts = df['replace'].value_counts()
         replaces = replace_counts[replace_counts > 2].index.values
         replace_indices = np.random.choice(replaces, 2, replace=False)
     assert len(replace_indices) == 2
     # now load the data!
-    df_1 = eval_utils.get_posterior_samples(dataset, iter_range, model, replace_index=replace_indices[0], params=[param], seeds='all')
-    df_2 = eval_utils.get_posterior_samples(dataset, iter_range, model, replace_index=replace_indices[1], params=[param], seeds='all')
+    df_1 = results_utils.get_posterior_samples(dataset, iter_range, model, replace_index=replace_indices[0], params=[param], seeds='all')
+    df_2 = results_utils.get_posterior_samples(dataset, iter_range, model, replace_index=replace_indices[1], params=[param], seeds='all')
     print('Loaded', df_1.shape[0], 'and', df_2.shape[0], 'samples respectively')
     fig, axarr = plt.subplots(nrows=1, ncols=1)
     n_bins = 25
@@ -224,7 +126,7 @@ def weight_posterior(dataset, model, replace_indices=None, t=500, param='#0', ov
     plt.savefig('./plots/analyses/weight_posterior.' + str(dataset) + '.' + str(model) + '.' + param + '.pdf')
     return True
 
-def delta_histogram(dataset, model, num_deltas='max', t=500, include_bounds=False, xlim=None, ylim=None, data_privacy='all', plot=True):
+def plot_delta_histogram(dataset, model, num_deltas='max', t=500, include_bounds=False, xlim=None, ylim=None, data_privacy='all', plot=True):
     """
     num_deltas is the number of examples we're using to estimate the histograms
     """
@@ -239,23 +141,8 @@ def delta_histogram(dataset, model, num_deltas='max', t=500, include_bounds=Fals
         print('Loaded from file:', path_string)
     except FileNotFoundError:
         print('Couldn\'t find', path_string)
-        # vary-both
-        vary_both, identifiers_both = eval_utils.get_deltas(dataset, iter_range=(t, t+1), model=model, vary_seed=True, vary_data=True, num_deltas=num_deltas, diffinit=False, data_privacy=data_privacy)
-        # vary-S
-        vary_S, identifiers_S = eval_utils.get_deltas(dataset, iter_range=(t, t+1), model=model, vary_seed=False, vary_data=True, num_deltas=num_deltas, diffinit=False, data_privacy=data_privacy)
-        # vary-r
-        vary_r, identifiers_r = eval_utils.get_deltas(dataset, iter_range=(t, t+1), model=model, vary_seed=True, vary_data=False, num_deltas=num_deltas, diffinit=False, data_privacy=data_privacy)
-
-        # save plot data
-        plot_data = {'vary_both': vary_both, 
-                'both_identifiers': identifiers_both,
-                'vary_S': vary_S, 
-                'S_identifiers': identifiers_S,
-                'vary_r': vary_r,
-                'r_identifiers': identifiers_r}
-        np.save(path_string, plot_data)
-        print('Saved to file:', path_string)
-
+        return False
+        
     path_string_diffinit = './fig_data/delta_histogram.' + str(dataset) + '.' + data_privacy + '.' + str(model) + '.nd_' + str(num_deltas) + '.t_' + str(t) + '.DIFFINIT.npy'
     try:
         plot_data_diffinit = np.load(path_string_diffinit).item()
@@ -264,84 +151,68 @@ def delta_histogram(dataset, model, num_deltas='max', t=500, include_bounds=Fals
         vary_r_diffinit = plot_data_diffinit['vary_r']
         print('Loaded from file:', path_string_diffinit)
     except FileNotFoundError:
-        # vary-both
-        vary_both_diffinit, identifiers_both_diffinit = eval_utils.get_deltas(dataset, iter_range=(t, t+1), model=model, vary_seed=True, vary_data=True, num_deltas=num_deltas, diffinit=True, data_privacy=data_privacy)
-        # vary-S
-        vary_S_diffinit, identifiers_S_diffinit = eval_utils.get_deltas(dataset, iter_range=(t, t+1), model=model, vary_seed=False, vary_data=True, num_deltas=num_deltas, diffinit=True, data_privacy=data_privacy)
-        # vary-r
-        vary_r_diffinit, identifiers_r_diffinit = eval_utils.get_deltas(dataset, iter_range=(t, t+1), model=model, vary_seed=True, vary_data=False, num_deltas=num_deltas, diffinit=True, data_privacy=data_privacy)
+        print('Couldn\'t find', path_string_diffinit)
+        return False
 
-        # save plot data
-        plot_data_diffinit = {'vary_both': vary_both_diffinit, 
-                'both_identifiers': identifiers_both_diffinit,
-                'vary_S': vary_S_diffinit, 
-                'S_identifiers': identifiers_S_diffinit,
-                'vary_r': vary_r_diffinit,
-                'r_identifiers': identifiers_r_diffinit}
-        np.save(path_string_diffinit, plot_data_diffinit)
-        print('Saved to file:', path_string_diffinit)
+    # remove NANs
+    vary_both = vary_both[~np.isnan(vary_both)]
+    vary_S = vary_S[~np.isnan(vary_S)]
+    vary_r = vary_r[~np.isnan(vary_r)]
+    vary_both_diffinit = vary_both_diffinit[~np.isnan(vary_both_diffinit)]
+    vary_S_diffinit = vary_S_diffinit[~np.isnan(vary_S_diffinit)]
+    vary_r_diffinit = vary_r_diffinit[~np.isnan(vary_r_diffinit)]
+    # merge vary_S for the different initialisations
+    vary_S = np.concatenate([vary_S, vary_S_diffinit])
+    # plot
+    fig, axarr = plt.subplots(nrows=1, ncols=1, figsize=(4, 2.1))
+    print('Plotting varying S... number of deltas:', vary_S.shape[0])
+    sns.distplot(vary_S, ax=axarr, color=bolton_colour, label=r'$\Delta_S$', kde=True, norm_hist=True)
+    print('Plotting varying r... number of deltas:', vary_r.shape[0])
+    print('Plotting varying both... number of deltas:', vary_both.shape[0])
+    sns.distplot(vary_r, ax=axarr, color=augment_colour, label=r'$\Delta_V^{fix}$', kde=True, norm_hist=True)
+    sns.distplot(vary_both, ax=axarr, 
+            color=both_colour, 
+            label=r'$\Delta_{S+V}^{fix}$', 
+            kde=True, 
+            hist=False,
+            #            norm_hist=True, 
+            kde_kws={'linestyle': '--'})
+    sns.distplot(vary_r_diffinit, ax=axarr, color=augment_diffinit_colour, label=r'$\Delta_V^{vary}$', kde=True, norm_hist=True)
+    sns.distplot(vary_both_diffinit, ax=axarr, 
+            color=both_diffinit_colour, 
+            label=r'$\Delta_{S+V}^{vary}$', 
+            kde=True, 
+            hist=False,
+            #norm_hist=True
+            #            norm_hist=True, 
+            kde_kws={'linestyle': ':', 'lw': 2})
 
-    if plot:
-        # remove NANs
-        vary_both = vary_both[~np.isnan(vary_both)]
-        vary_S = vary_S[~np.isnan(vary_S)]
-        vary_r = vary_r[~np.isnan(vary_r)]
-        vary_both_diffinit = vary_both_diffinit[~np.isnan(vary_both_diffinit)]
-        vary_S_diffinit = vary_S_diffinit[~np.isnan(vary_S_diffinit)]
-        vary_r_diffinit = vary_r_diffinit[~np.isnan(vary_r_diffinit)]
-        # merge vary_S for the different initialisations
-        vary_S = np.concatenate([vary_S, vary_S_diffinit])
-        # plot
-        fig, axarr = plt.subplots(nrows=1, ncols=1, figsize=(4, 2.1))
-        print('Plotting varying S... number of deltas:', vary_S.shape[0])
-        sns.distplot(vary_S, ax=axarr, color=bolton_colour, label=r'$\Delta_S$', kde=True, norm_hist=True)
-        print('Plotting varying r... number of deltas:', vary_r.shape[0])
-        print('Plotting varying both... number of deltas:', vary_both.shape[0])
-        sns.distplot(vary_r, ax=axarr, color=augment_colour, label=r'$\Delta_V^{fix}$', kde=True, norm_hist=True)
-        sns.distplot(vary_both, ax=axarr, 
-                color=both_colour, 
-                label=r'$\Delta_{S+V}^{fix}$', 
-                kde=True, 
-                hist=False,
-                #            norm_hist=True, 
-                kde_kws={'linestyle': '--'})
-        sns.distplot(vary_r_diffinit, ax=axarr, color=augment_diffinit_colour, label=r'$\Delta_V^{vary}$', kde=True, norm_hist=True)
-        sns.distplot(vary_both_diffinit, ax=axarr, 
-                color=both_diffinit_colour, 
-                label=r'$\Delta_{S+V}^{vary}$', 
-                kde=True, 
-                hist=False,
-                #norm_hist=True
-                #            norm_hist=True, 
-                kde_kws={'linestyle': ':', 'lw': 2})
+    #axarr.set_title('Dataset: ' +  dataset + ', model: ' + model +  ', t:' + str(t))
+    if include_bounds:
+        assert model == 'logistic'
+        lipschitz_constant = np.sqrt(2.0)
+        #print('using empirical lipschitz constant of', lipschitz_constant)
+        _, batch_size, lr, _, N = eval_utils.get_experiment_details(dataset, model, verbose=True)
+        wu_bound = eval_utils.compute_wu_bound(lipschitz_constant, t=t, N=N, batch_size=batch_size, eta=lr)
+        #axarr.axvline(x=wu_bound, ls='--', color=bolton_colour, label=r'bound on $\Delta_r$')
+        axarr.axvline(x=wu_bound, ls='--', color=bolton_colour, label=r'$\hat{\Delta}_S$')
+    axarr.legend()
+    axarr.set_xlabel(r'$\|w - w^\prime\|$')
+    axarr.set_ylabel('density')
 
-        #axarr.set_title('Dataset: ' +  dataset + ', model: ' + model +  ', t:' + str(t))
-        if include_bounds:
-            assert model == 'logistic'
-            lipschitz_constant = np.sqrt(2.0)
-            #_, _, lipschitz_constant = eval_utils.estimate_empirical_lipschitz(dataset, model, diffinit=True, iter_range=(None, t+1), n_samples=50)
-            #print('using empirical lipschitz constant of', lipschitz_constant)
-            _, batch_size, lr, _, N = eval_utils.get_experiment_details(dataset, model, verbose=True)
-            wu_bound = eval_utils.compute_wu_bound(lipschitz_constant, t=t, N=N, batch_size=batch_size, eta=lr)
-            #axarr.axvline(x=wu_bound, ls='--', color=bolton_colour, label=r'bound on $\Delta_r$')
-            axarr.axvline(x=wu_bound, ls='--', color=bolton_colour, label=r'$\hat{\Delta}_S$')
-        axarr.legend()
-        axarr.set_xlabel(r'$\|w - w^\prime\|$')
-        axarr.set_ylabel('density')
-
-        if not xlim is None:
-            axarr.set_xlim(xlim)
-        if not ylim is None:
+    if not xlim is None:
+        axarr.set_xlim(xlim)
+    if not ylim is None:
             axarr.set_ylim(ylim)
 
-        vis_utils.beautify_axes(np.array([axarr]))
-        plt.tight_layout()
+    vis_utils.beautify_axes(np.array([axarr]))
+    plt.tight_layout()
 
-        plt.savefig('./plots/analyses/delta_histogram_' + dataset + '_' + data_privacy + '_' + model + '_t' + str(t) + '.png')
-        plt.savefig('./plots/analyses/delta_histogram_' + dataset + '_' + data_privacy + '_' + model + '_t' + str(t) + '.pdf')
+    plt.savefig('./plots/analyses/delta_histogram_' + dataset + '_' + data_privacy + '_' + model + '_t' + str(t) + '.png')
+    plt.savefig('./plots/analyses/delta_histogram_' + dataset + '_' + data_privacy + '_' + model + '_t' + str(t) + '.pdf')
     return True
 
-def epsilon_distribution(dataset, model, t, delta, n_pairs, 
+def plot_epsilon_distribution(dataset, model, t, delta, n_pairs, 
         which='both',
         sensitivity_from='local', sharex=False, 
         variability_from='empirical', xlim=None, ylim=None,
@@ -356,16 +227,12 @@ def epsilon_distribution(dataset, model, t, delta, n_pairs,
         df = pd.read_csv(path)
         print('Loaded from file', path)
     except FileNotFoundError:
-        print('Couldn\'t load sens and var values from', path, '- computing')
-        df = eval_utils.get_sens_and_var_distribution(dataset, model, t, n_pairs=n_pairs, by_parameter=False, diffinit=False)
-        df.to_csv(path, header=True, index=False)
+        print('Couldn\'t load sens and var values from', path)
     try:
         df_diffinit = pd.read_csv(path_diffinit)
         print('Loaded from file', path_diffinit)
     except FileNotFoundError:
-        print('Couldn\'t load sens and var values from', path_diffinit, '- computing')
-        df_diffinit = eval_utils.get_sens_and_var_distribution(dataset, model, t, n_pairs=n_pairs, by_parameter=False, diffinit=True)
-        df_diffinit.to_csv(path_diffinit, header=True, index=False)
+        print('Couldn\'t load sens and var values from', path_diffinit)
     # now set it all up
     _, batch_size, eta, _, N = eval_utils.get_experiment_details(dataset, model)
     if delta is None:
@@ -447,7 +314,7 @@ def epsilon_distribution(dataset, model, t, delta, n_pairs,
     plt.savefig('./plots/analyses/epsilon_distribution_' + str(dataset) + '_' + str(model) + '_' + sensitivity_from + '_' + which + '.pdf')
     return True
 
-def utility_curve(dataset, model, delta, t, metric_to_report='binary_accuracy', verbose=True, num_deltas='max', 
+def plot_utility_curve(dataset, model, delta, t, metric_to_report='binary_accuracy', verbose=True, num_deltas='max', 
         diffinit=False, num_experiments=50, xlim=None, ylim=None, identifier=None, include_fix=False):
     """
     for a single model (this is how it is right now), plot
@@ -466,50 +333,9 @@ def utility_curve(dataset, model, delta, t, metric_to_report='binary_accuracy', 
         utility_data = pd.read_csv(path)
         print('Loaded from', path)
     except FileNotFoundError:
-        print('Couldn\'t find', path, ' - computing')
-        # prepare columns of dataframe
-        seed = []
-        replace = []
-        eps_array = []
-        noiseless = []
-        bolton = []
-        augment = []
-        augment_diffinit = []
-        sens_from = []
-        # select a set of experiments
-        df = eval_utils.get_available_results(dataset, model, diffinit=diffinit)
-        random_experiments = df.iloc[np.random.choice(df.shape[0], num_experiments), :]
-        for i, exp in random_experiments.iterrows():
-            exp_seed = exp['seed']
-            exp_replace = exp['replace']
-            for sensitivity_from_bound in [True, False]:
-                if sensitivity_from_bound:
-                    if not model == 'logistic':
-                        print('Skipping because model is', model, ' - cant get sensitivity from bound')
-                        # bound isnt meaningful for this model
-                        continue
-                for eps in epsilons:
-                    results = eval_utils.test_model_with_noise(dataset=dataset, model=model, replace_index=exp_replace, 
-                            seed=exp_seed, t=t, epsilon=eps, delta=delta, sensitivity_from_bound=sensitivity_from_bound, 
-                            metric_to_report=metric_to_report, verbose=verbose, num_deltas=num_deltas, diffinit=diffinit)
-                    noiseless_at_eps, bolton_at_eps, augment_at_eps, augment_with_diffinit_at_eps = results
-                    seed.append(exp_seed)
-                    replace.append(exp_replace)
-                    eps_array.append(eps)
-                    noiseless.append(noiseless_at_eps)
-                    bolton.append(bolton_at_eps)
-                    augment.append(augment_at_eps)
-                    augment_diffinit.append(augment_with_diffinit_at_eps)
-                    sens_from.append(sensitivity_from_bound)
-        utility_data = pd.DataFrame({'seed': seed, 'replace': replace, 'epsilon': eps_array, 
-            'noiseless': noiseless, 'bolton': bolton, 'augment': augment, 'augment_diffinit': augment_diffinit, 'sensitivity_from_bound': sens_from})
-        utility_data.to_csv(path, header=True, index=False, mode='a')
-    # NOW FOR PLOTTING!
-    #if True in utility_data['sensitivity_from_bound'].unique():
-    #    with_bound = True
-    #else:
-    #    with_bound = False
-    
+        print('Couldn\'t find', path)
+        return False
+   
     #if with_bound:
     fig, axarr = plt.subplots(nrows=1, ncols=1, sharex=True, sharey=True, figsize=(4, 2.1))
     #else:
@@ -597,7 +423,7 @@ def utility_curve(dataset, model, delta, t, metric_to_report='binary_accuracy', 
     plt.savefig('./plots/analyses/utility_' + str(dataset) + '_' + str(model) + '_withfix'*include_fix + '.pdf')
     return True
 
-def sens_and_var_over_time(dataset, model, num_deltas=500, iter_range=(0, 1000), data_privacy='all', metric='binary_crossentropy'):
+def plot_sens_and_var_over_time(dataset, model, num_deltas=500, iter_range=(0, 1000), data_privacy='all', metric='binary_crossentropy'):
     """
     Estimate the empirical (and theoretical I guess) sensitivity and variability v. "convergence point" (time)
     The objective is to create a CSV with columns:
@@ -614,51 +440,8 @@ def sens_and_var_over_time(dataset, model, num_deltas=500, iter_range=(0, 1000),
     try:
         df = pd.read_csv(path)
     except FileNotFoundError:
-        print('Didn\'t find', path, ' - creating!')
-        # get experiment details
-        if model == 'logistic':
-            _, batch_size, lr, _, N = eval_utils.get_experiment_details(dataset, model, data_privacy=data_privacy)
-            L = np.sqrt(2)
-        assert not None in iter_range
-        t_range = np.arange(iter_range[0], iter_range[1], 200)
-        n_T = len(t_range)
-        theoretical_sensitivity_list = [np.nan]*n_T
-        empirical_sensitivity_list = [np.nan]*n_T
-        variability_fixinit_list = [np.nan]*n_T
-        variability_diffinit_list = [np.nan]*n_T
-        for i, t in enumerate(t_range):
-            # sensitivity
-            if model == 'logistic':
-                theoretical_sensitivity = eval_utils.compute_wu_bound(L, t=t, N=N, batch_size=batch_size, eta=lr)
-            else:
-                theoretical_sensitivity = np.nan
-            empirical_sensitivity = eval_utils.estimate_sensitivity_empirically(dataset, model, t, num_deltas=num_deltas, diffinit=True, data_privacy=data_privacy)
-            if not empirical_sensitivity:
-                print('Running delta histogram...')
-                delta_histogram(dataset, model, num_deltas=num_deltas, t=t, include_bounds=False, xlim=None, ylim=None, data_privacy=data_privacy, plot=False)
-                print('Rerunning empirical sensitivity estimate...')
-                empirical_sensitivity = eval_utils.estimate_sensitivity_empirically(dataset, model, t, num_deltas=num_deltas, diffinit=True, data_privacy=data_privacy)
-                assert not empirical_sensitivity is False
-            # variability
-            variability_fixinit = eval_utils.estimate_variability(dataset, model, t, by_parameter=False, diffinit=False, data_privacy=data_privacy)
-            variability_diffinit = eval_utils.estimate_variability(dataset, model, t, by_parameter=False, diffinit=True, data_privacy=data_privacy)
-            # record everything
-            theoretical_sensitivity_list[i] = theoretical_sensitivity
-            empirical_sensitivity_list[i] = empirical_sensitivity
-            variability_fixinit_list[i] = variability_fixinit
-            variability_diffinit_list[i] = variability_diffinit
-        df = pd.DataFrame({'t': t_range, 
-            'theoretical_sensitivity': theoretical_sensitivity_list,
-            'empirical_sensitivity': empirical_sensitivity_list,
-            'variability_fixinit': variability_fixinit_list,
-            'variability_diffinit': variability_diffinit_list})
-        df.set_index('t', inplace=True)
-        # now join the losses... 
-        # (actually we can just load the losses as needed)
-        losses = eval_utils.aggregated_loss(dataset, model, iter_range=iter_range, data_privacy=data_privacy)
-        df = df.join(losses)
-        ###
-        df.to_csv(path)
+        print('Didn\'t find', path)
+        return False
     fig, axarr = plt.subplots(nrows=3, ncols=1, sharex=True, figsize=(3.5, 4.2))
     # losse 
     losses = eval_utils.aggregated_loss(dataset, model, iter_range=iter_range, data_privacy=data_privacy)

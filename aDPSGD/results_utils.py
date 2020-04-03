@@ -18,13 +18,8 @@ def trace_path_stub(dataset, model, replace_index=None, seed=None, diffinit=Fals
         path_stub = path_stub + '.seed_' + str(seed)
     return path_stub
 
-def get_list_of_params(dataset, identifier):
-    model, replace_index, seed = identifier
-    weights = load_weights(dataset, model, replace_index, seed, iter_range=(None, 5))
-    params = weights.columns[1:]
-    return params
-
 def get_available_results(dataset, model, replace_index=None, seed=None, diffinit=False, data_privacy='all'):
+    # TODO fix this is the worst thing ever
     available_results = ['.'.join(x.split('/')[-1].split('.')[:-2]) for x in glob.glob(trace_path_stub(dataset, model, diffinit=diffinit, data_privacy=data_privacy) + '.*.weights.csv')]
     # remove replace_NA!
     available_results = [x for x in available_results if not 'replace_NA' in x]
