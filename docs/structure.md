@@ -16,7 +16,9 @@ This section is more aspirational right now.
 ## Primary results
 
 We compute results from many experiments, these are recorded as trace files containing loss, gradients, weights, etc.
-These are the primary data for the project. They live in
+These are the primary data for the project. 
+
+They live in
 ```./traces/```
 
 ## Derived quantities
