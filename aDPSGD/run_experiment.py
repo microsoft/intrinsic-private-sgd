@@ -67,13 +67,12 @@ def check_cfg_for_consistency(cfg):
     print('cfg passed checks')
 
 def get_model_init_path(cfg):
-    # TODO
-    raise NotImplementedError
     if cfg['model']['diffinit'] is True:
         init_path = None
     else:
-        # TODO make sure this logic is sound
-        init_path = 'models/' + model_type + '/' + data_type + '_' + model_type + '_init.h5'
+        architecture = cfg['model']['architecture']
+        cfg_name = cfg['name']
+        init_path = os.path.join('models', architecture + '_' + cfg_name + '_init.h5')
     return init_path
 
 

@@ -366,10 +366,14 @@ def prep_for_training(model_object, seed, optimizer_settings, task_type):
         #metrics=metrics)
     # moving metrics to my part
     model_object.define_metrics(metrics)
-    if os.path.exists(model_object.init_path):
-        print('Not saving weights as path already exists')
+    if model_object.init_path is None:
+        print('Not saving weights as no init path given')
     else:
-        model_object.save_weights(path=model_object.init_path)
+        if os.path.exists(model_object.init_path):
+            print('Not saving weights as path already exists')
+        else:
+            model_object.save_weights(path=model_object.init_path)
+            print('Saved weights to', model_object.init_path)
     #K.backend.get_session().run(tf.global_variables_initializer())
     return True
 
