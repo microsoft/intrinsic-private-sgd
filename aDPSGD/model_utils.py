@@ -81,7 +81,7 @@ class Inspector(object):
         for f in [self.weights_file, self.grads_file, self.loss_file]:
             f.flush()
 
-def build_model(architecture, input_size, output_size, task_type, hidden_size, init_path, **kwargs, t=None):
+def build_model(architecture, input_size, output_size, task_type, hidden_size, init_path, t=None, **kwargs):
     """
     Wrapper around defining the model architecture
     """
@@ -342,7 +342,7 @@ class cnn(model):
 def prep_for_training(model_object, seed, optimizer_settings, task_type):
     """
     """
-    tf.random.set_random_seed(seed)         # not sure this one is actually necesary
+    tf.random.set_seed(seed)         # not sure this one is actually necesary
     np.random.seed(seed)
     #sgd = K.optimizers.SGD(lr=lr, decay=1e-6, momentum=0.9, nesterov=True)
     if optimizer_settings['name'] == 'SGD':

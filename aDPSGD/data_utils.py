@@ -46,7 +46,7 @@ def load_data(options, replace_index):
     print('WARNING: Data privacy is fixed to all right now')
     
     if data_type == 'mnist':
-        flatten = options['flat']
+        flatten = options['flatten']
         binary = options['binary']
         if binary:
             # only care about doing this for binary classification atm, could just make an option
@@ -73,7 +73,7 @@ def load_data(options, replace_index):
                 crop=crop,
                 pca=pca)
     elif data_type == 'cifar10':
-        flatten = options['flat']
+        flatten = options['flatten']
         binary = options['binary']
         if binary:
             enforce_max_norm = True
@@ -155,7 +155,7 @@ def load_protein(data_privacy='all'):
     """
     path = os.path.join('data', 'protein_' + data_privacy + '.npy')
     try:
-        data = np.load(path).item()
+        data = np.load(path, allow_pickle=True).item()
         x_train = data['x_train']
         x_test = data['x_test']
         y_train = data['y_train']
@@ -203,7 +203,7 @@ def load_forest(data_privacy='all'):
     """
     path = os.path.join('data', 'forest_' + data_privacy + '.npy')
     try:
-        data = np.load(path).item()
+        data = np.load(path, allow_pickle=True).item()
         x_train = data['x_train']
         x_test = data['x_test']
         y_train = data['y_train']
@@ -321,7 +321,7 @@ def public_private_split(dataset, data_privacy, x_train, y_train, x_test, y_test
         print('Splitting data into public/private!')
         split_path = os.path.join('data', dataset + '_public_private_split.npy')
         try:
-            split = np.load(split_path).item()
+            split = np.load(split_path, allow_pickle=True).item()
             print('Loaded pre-computed split from', split_path)
             public_train_idx = split['public_train_idx']
             public_test_idx = split['public_test_idx']
@@ -360,10 +360,10 @@ def public_private_split(dataset, data_privacy, x_train, y_train, x_test, y_test
 
 
 def load_mnist(binary=False, enforce_max_norm=False, flatten=True, data_privacy='all', project=True, pca=False, crop=False):
-    dataset_identifier = 'mnist_' data_privacy + '_binary'*binary + '_maxnorm'*enforce_max_norm + '_square'*(not flatten) + '_pca'*pca + '_crop'*crop + '.npy'
+    dataset_identifier = 'mnist' + '_' + data_privacy + '_binary'*binary + '_maxnorm'*enforce_max_norm + '_square'*(not flatten) + '_pca'*pca + '_crop'*crop + '.npy'
     dataset_string = os.path.join('data', dataset_identifier)
     try:
-        data = np.load(dataset_string).item()
+        data = np.load(dataset_string, allow_pickle=True).item()
         x_train = data['x_train']
         x_test = data['x_test']
         y_train = data['y_train']
@@ -478,7 +478,7 @@ def load_cifar10(binary=False, enforce_max_norm=False, flatten=True, data_privac
     dataset_identifier = 'cifar10' + '_' + data_privacy + '_binary'*binary + '_maxnorm'*enforce_max_norm + '_square'*(not flatten) + '_pca'*pca + '_crop'*crop + '.npy'
     dataset_string = os.path.join('data', dataset_identifier)
     try:
-        data = np.load(dataset_string).item()
+        data = np.load(dataset_string, allow_pickle=True).item()
         x_train = data['x_train']
         x_test = data['x_test']
         y_train = data['y_train']
@@ -587,7 +587,7 @@ def load_adult(data_privacy='all', pca=False):
     """
     path = os.path.join('data', 'adult' + '_' + data_privacy + '_pca'*pca + '.npy')
     try:
-        data = np.load(path).item()
+        data = np.load(path, allow_pickle=True).item()
         x_train = data['x_train']
         y_train = data['y_train']
         x_test = data['x_test']
@@ -765,7 +765,7 @@ def compute_cosine_distances_for_dataset(data_type):
     """
     path = os.path.join('data', data_type + '.cosine_distances.npy')
     try:
-        data = np.load(path).item()
+        data = np.load(path, allow_pickle=True).item()
         pairs = data['pairs']
         distances = data['distances']
         print('Loaded from file')

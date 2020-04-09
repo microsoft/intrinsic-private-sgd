@@ -3,6 +3,7 @@ data:
     name: mnist
     binary: false
     flatten: true
+    preprocessing: PCA 
 model:
     architecture: mlp
     diffinit: true
