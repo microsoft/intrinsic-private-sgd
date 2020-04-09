@@ -4,12 +4,18 @@
 import tensorflow.keras.datasets as datasets
 import numpy as np
 import pandas as pd
+import os
 from scipy.stats import entropy 
 from scipy.spatial.distance import cosine
 from sklearn.random_projection import GaussianRandomProjection
 from sklearn.decomposition import PCA
 import ipdb
 
+# CONSTANTS
+PROTEIN_PATH = os.path.join('data', 'bio_train.dat')
+FOREST_PATH = os.path.join('data', 'covtype.data')
+ADULT_PATH = os.path.join('data', 'adult.data')
+ADULT_TEST_PATH = os.path.join('data', 'adult.test')
 
 def min_max_rescale(df_train, df_test, good_columns=None):
     if good_columns is None:
@@ -40,22 +46,22 @@ def load_data(options, replace_index):
     print('WARNING: Data privacy is fixed to all right now')
     
     if data_type == 'mnist':
-        flatten = data_options['flat']
-        binary = data_options['binary']
+        flatten = options['flat']
+        binary = options['binary']
         if binary:
             # only care about doing this for binary classification atm, could just make an option
             enforce_max_norm = True
         else:
             enforce_max_norm = False
-        if data_options['preprocessing'] == 'PCA':
+        if options['preprocessing'] == 'PCA':
             project = True
             pca = True
             crop = False
-        elif data_options['preprocessing'] == 'GRP':
+        elif options['preprocessing'] == 'GRP':
             project = True
             pca = False
             crop = False
-        elif data_options['preprocessing'] == 'crop':
+        elif options['preprocessing'] == 'crop':
             project= False
             pca = False
             crop = True
@@ -67,8 +73,8 @@ def load_data(options, replace_index):
                 crop=crop,
                 pca=pca)
     elif data_type == 'cifar10':
-        flatten = data_options['flat']
-        binary = data_options['binary']
+        flatten = options['flat']
+        binary = options['binary']
         if binary:
             enforce_max_norm = True
         else:
@@ -86,7 +92,7 @@ def load_data(options, replace_index):
                 project=project, 
                 pca=pca)
     elif data_type == 'housing':
-        binary = data_options['binary']
+        binary = options['binary']
         if binary:
             enforce_max_norm = True
         else:
@@ -99,7 +105,7 @@ def load_data(options, replace_index):
     elif data_type == 'forest':
         x_train, y_train, x_test, y_test = load_forest(data_privacy=data_privacy)
     elif data_type == 'adult':
-        if data_options['preprocessing'] == 'PCA':
+        if options['preprocessing'] == 'PCA':
             pca = True
         else:
             pca = False
@@ -147,7 +153,7 @@ def load_protein(data_privacy='all'):
     Protein homology dataset
     always binary, always normed
     """
-    path = './data/' + data_privacy + '/protein.npy'
+    path = os.path.join('data', 'protein_' + data_privacy + '.npy')
     try:
         data = np.load(path).item()
         x_train = data['x_train']
@@ -155,7 +161,7 @@ def load_protein(data_privacy='all'):
         y_train = data['y_train']
         y_test = data['y_test']
     except FileNotFoundError:
-        all_data = pd.read_csv('./data/bio_train.dat', delim_whitespace=True, header=None)
+        all_data = pd.read_csv(PROTEIN_PATH, delim_whitespace=True, header=None)
         # from the website, non-data columns:
         ## 0: BLOCK ID (which native sequence the example belongs to
         ## 1: EXAMPLE ID uniquely identifying the sample
@@ -195,7 +201,7 @@ def load_forest(data_privacy='all'):
     forest covertype
     always binary, always normed
     """
-    path = './data/' + data_privacy + '/forest.npy'
+    path = os.path.join('data', 'forest_' + data_privacy + '.npy')
     try:
         data = np.load(path).item()
         x_train = data['x_train']
@@ -204,7 +210,7 @@ def load_forest(data_privacy='all'):
         y_test = data['y_test']
     except FileNotFoundError:
         print('Loading...')
-        all_data = pd.read_csv('./data/covtype.data', header=None)
+        all_data = pd.read_csv(FOREST_PATH, header=None)
         # select just types 1 and 2 (these are the most common)
         print('Selecting classes 1 and 2')
         binary_data = all_data.loc[all_data.iloc[:, -1].isin({1, 2}), :]
@@ -313,7 +319,7 @@ def public_private_split(dataset, data_privacy, x_train, y_train, x_test, y_test
         print('Including all data')
     else:
         print('Splitting data into public/private!')
-        split_path = './data/' + dataset + '_public_private_split.npy'
+        split_path = os.path.join('data', dataset + '_public_private_split.npy')
         try:
             split = np.load(split_path).item()
             print('Loaded pre-computed split from', split_path)
@@ -354,11 +360,8 @@ def public_private_split(dataset, data_privacy, x_train, y_train, x_test, y_test
 
 
 def load_mnist(binary=False, enforce_max_norm=False, flatten=True, data_privacy='all', project=True, pca=False, crop=False):
-    """
-    Load MNIST, specifying the option to delete one of the training examples.
-    This will be our empirical window into differential privacy.
-    """
-    dataset_string = './data/' + data_privacy + '/mnist' + '_binary'*binary + '_maxnorm'*enforce_max_norm + '_square'*(not flatten) + '_pca'*pca + '_crop'*crop + '.npy'
+    dataset_identifier = 'mnist_' data_privacy + '_binary'*binary + '_maxnorm'*enforce_max_norm + '_square'*(not flatten) + '_pca'*pca + '_crop'*crop + '.npy'
+    dataset_string = os.path.join('data', dataset_identifier)
     try:
         data = np.load(dataset_string).item()
         x_train = data['x_train']
@@ -472,7 +475,8 @@ def load_cifar10(binary=False, enforce_max_norm=False, flatten=True, data_privac
     copying what i did for mnist, but for cifar10
     cropping is also a 10x10 square in the middle
     """
-    dataset_string = './data/' + data_privacy + '/cifar10' + '_binary'*binary + '_maxnorm'*enforce_max_norm + '_square'*(not flatten) + '_pca'*pca + '_crop'*crop + '.npy'
+    dataset_identifier = 'cifar10' + '_' + data_privacy + '_binary'*binary + '_maxnorm'*enforce_max_norm + '_square'*(not flatten) + '_pca'*pca + '_crop'*crop + '.npy'
+    dataset_string = os.path.join('data', dataset_identifier)
     try:
         data = np.load(dataset_string).item()
         x_train = data['x_train']
@@ -578,52 +582,10 @@ def load_cifar10(binary=False, enforce_max_norm=False, flatten=True, data_privac
     return x_train, y_train, x_test, y_test
 
 
-def load_cifar10_vestigial(flatten=True, data_privacy='all'):
-    """
-    """
-    dataset_string = './data/' + data_privacy + '/cifar' + '_flat'*flatten + '.npy'
-    try:
-        data = np.load(dataset_string).item()
-        x_train = data['x_train']
-        x_test = data['x_test']
-        y_train = data['y_train']
-        y_test = data['y_test']
-        print('Loaded data from', dataset_string)
-    except FileNotFoundError:
-        print('Couldn\'t load data from', dataset_string)
-        # cant load from file, build it up again
-        cifar10 = datasets.cifar10
-        (x_train, y_train), (x_test, y_test) = cifar10.load_data()
-        # split it up 
-        x_train, y_train, x_test, y_test = public_private_split('cifar', data_privacy, x_train, y_train, x_test, y_test)
-        # typical normalisation
-        x_train, x_test = x_train/255.0, x_test/255.0
-        if flatten:
-            # do random projection on CIFAR
-            # in the Wu paper they project to 50 dimensions (on MNIST, we can do the same)
-            transformer = GaussianRandomProjection(n_components=50)
-            # fit to train data
-            transformer.fit(x_train.reshape(-1, 32*32*3))
-            # transform everything
-            x_train = transformer.transform(x_train.reshape(-1, 32*32*3))
-            x_test = transformer.transform(x_test.reshape(-1, 32*32*3))
-            assert x_train.shape[1] == 50
-            assert x_test.shape[1] == 50
-        else:
-            assert x_train[0].shape == (32, 32, 3)
-        data = {'x_train': x_train,
-                'x_test': x_test,
-                'y_train': y_train,
-                'y_test': y_test}
-        np.save(dataset_string, data)
-        print('Saved data to', dataset_string)
-    return x_train, y_train, x_test, y_test
-
-
 def load_adult(data_privacy='all', pca=False):
     """
     """
-    path = './data/' + data_privacy + '/adult' + '_pca'*pca + '.npy'
+    path = os.path.join('data', 'adult' + '_' + data_privacy + '_pca'*pca + '.npy')
     try:
         data = np.load(path).item()
         x_train = data['x_train']
@@ -647,8 +609,8 @@ def load_adult(data_privacy='all', pca=False):
                 'hours-per-week',
                 'native-country',
                 'label']
-        df = pd.read_csv('./data/adult.data', sep=', ', header=None)
-        df_test = pd.read_csv('./data/adult.test', sep=', ', skiprows=1, header=None)
+        df = pd.read_csv(ADULT_PATH, sep=', ', header=None)
+        df_test = pd.read_csv(ADULT_TEST_PATH, sep=', ', skiprows=1, header=None)
         df.columns = adult_header
         df_test.columns = adult_header
         label_replace_dict = {'>50K': 1, '<=50K': 0, 
@@ -801,7 +763,7 @@ def compute_cosine_distances_for_dataset(data_type):
     (assuming training data!)
     focusing on 
     """
-    path = './data/' + data_type + '.cosine_distances.npy'
+    path = os.path.join('data', data_type + '.cosine_distances.npy')
     try:
         data = np.load(path).item()
         pairs = data['pairs']

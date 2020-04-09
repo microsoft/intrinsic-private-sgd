@@ -23,10 +23,10 @@ class Inspector(object):
         self.cadence = cadence
         self.counter = 0
         
-        self.weights_file = open('traces/' + experiment_identifier + '.weights.csv', 'w')
-        self.grads_file = open('traces/' + experiment_identifier + '.all_gradients.csv', 'w')
-        self.loss_file = open('traces/' + experiment_identifier + '.loss.csv', 'w')
-        print('[inspector] Saving weights and gradient information to traces/' + experiment_identifier + '.{loss/weights/all_gradients}.csv')
+        self.weights_file = open(os.path.join('traces', experiment_identifier + '.weights.csv'), 'w')
+        self.grads_file = open(os.path.join('traces', experiment_identifier + '.all_gradients.csv'), 'w')
+        self.loss_file = open(os.path.join('traces', experiment_identifier + '.loss.csv'), 'w')
+        print('[inspector] Saving weights and gradient information to ' + os.path.join('traces', experiment_identifier) + '.{loss/weights/all_gradients}.csv')
 
     def initialise_files(self):
         header = '#METADATA: Minibatch size is ' + str(self.minibatch_size) + '\n'

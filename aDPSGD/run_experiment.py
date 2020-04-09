@@ -51,7 +51,7 @@ def run_experiment(cfg, seed, replace_index):
     # load data
     x_train, y_train, x_vali, y_vali, x_test, y_test = load_data(options=cfg['data'])
     # define model
-    init_path = get_model_int_path(cfg)
+    init_path = get_model_init_path(cfg)
     model = model_utils.build_model(**cfg['model'], init_path=init_path)
     # prep model for training
     model_utils.prep_for_training(model, seed=seed,
