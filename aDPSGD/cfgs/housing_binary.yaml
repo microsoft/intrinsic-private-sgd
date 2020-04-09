@@ -1,0 +1,26 @@
+---
+data:
+    name: housing
+    binary: true
+    replace_index: 1
+model:
+    architecture: logistic
+    diffinit: true
+    task_type: binary
+    input_size: 100
+    output_size: 1
+    hidden_size:
+training:
+    seed: 1
+    n_epochs: 250
+    batch_size: 28
+    optimization_algorithm:
+        name: SGD
+        learning_rate: 0.1
+logging:
+    cadence: 10
+    save_weights: true
+    save_gradients: true
+    sample_minibatch_gradients: false
+    n_gradients: 0
+...

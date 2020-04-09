@@ -33,12 +33,13 @@ def min_max_rescale(df_train, df_test, good_columns=None):
     return df_train, df_test
 
 
-def load_data(data_type, data_options, replace_index=None, data_privacy='all'):
-    if data_privacy not in ['all', 'public', 'private']:
-        raise ValueError(data_privacy)
-    if replace_index == 'NA':
-        replace_index = None
-
+def load_data(options):
+    # these are shared options
+    data_type = options['name']
+    data_privacy = 'all'
+    print('WARNING: Data privacy is fixed to all right now')
+    replace_index = options['replace_index']
+    
     if data_type == 'mnist':
         flatten = data_options['flat']
         binary = data_options['binary']
@@ -47,7 +48,7 @@ def load_data(data_type, data_options, replace_index=None, data_privacy='all'):
             enforce_max_norm = True
         else:
             enforce_max_norm = False
-        if data_options['preprocesing'] == 'PCA':
+        if data_options['preprocessing'] == 'PCA':
             project = True
             pca = True
             crop = False

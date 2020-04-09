@@ -82,117 +82,30 @@ class Inspector(object):
         for f in [self.weights_file, self.grads_file, self.loss_file]:
             f.flush()
 
-def build_model(model_type, data_type, init_path, t=None):
+def build_model(architecture, input_size, output_size, task_type, hidden_size, init_path, **kwargs, t=None):
     """
-    Selector based on the experiment
+    Wrapper around defining the model architecture
     """
-    if data_type == 'mnist':
-        #input_size = (28, 28)
-        input_size = 50
-        output_size = 10
-        output_type = 'categorical'
-        #hidden_size = 16        # from mild HP opt
-        hidden_size = 5         # lets try be small here
-    elif 'mnist_binary' in data_type:
-        # allow for the PCA option in the data type
-        if 'cropped' in data_type:
-            input_size = 100
-        else:
-            input_size = 50
-        output_size = 1
-        output_type = 'binary'
-        hidden_size = 10 # picked from mild HP opt
-    elif data_type == 'mnist_square':
-        input_size = (28, 28)
-        output_size = 10
-        output_type = 'categorical'
-        hidden_size = 10             # mild HP opt
-    elif data_type == 'cifar10':
-        raise NotImplementedError
-        input_size = 50
-        output_size = 10
-        output_type = 'categorical'
-        #hidden_size = 16         #
-        #hidden_size = 32         # 
-        #hidden_size = 64         # 
-        hidden_size = 128         # does better than 64 with smaller lr
-        #hidden_size = 256      # overfits too much
-    elif 'cifar10_binary' in data_type:
-        if 'cropped' in data_type:
-            input_size = 300
-            # cifar10 cropped is a bit weird i guess
-        else:
-            input_size = 50
-        output_size = 1
-#        hidden_size = 4        # just trying
-        output_type = 'binary'
-    elif data_type == 'cifar10_square':
-        input_size = (32, 32, 3)
-        output_size = 10
-        output_type = 'categorical'
-        hidden_size = 16             # from mild HP opt
-    elif 'housing' in data_type:
-        input_size = 13
-        output_size = 1
-        if 'binary' in data_type:
-            output_type = 'binary'
-        else:
-            output_type = 'continuous'
-        hidden_size = 8     # this works
-    elif data_type == 'protein':
-        input_size = 74
-        output_size = 1
-        output_type = 'binary'
-        hidden_size = 8
-    elif data_type == 'forest':
-        input_size = 49
-        output_size = 1
-        output_type = 'binary'
-        hidden_size = 8
-    elif data_type == 'adult':
-        input_size = 100
-        output_size = 1
-        output_type = 'binary'
-        hidden_size = 8
-    elif data_type == 'adult_pca':
-        input_size = 50
-        output_size = 1
-        output_type = 'binary'
-    elif data_type == 'mvn':
-        input_size = 25
-        output_size = 1
-        output_type = 'continuous'
-        hidden_size = 32
-    elif data_type == 'mvn_2d':
-        input_size = 2
-        output_size = 1
-        output_type = 'continuous'
-        hidden_size = 2
+    if architecture == 'mlp':
+        model = feedforward(input_size, output_size, task_type, init_path, hidden_size, t)
+    elif architecture == 'linear':
+        model = linear(input_size, output_size, task_type, init_path, hidden_size, t)
+    elif architecture == 'logistic':
+        model = logistic(input_size, output_size, task_type, init_path, hidden_size, t)
+    elif architecture == 'cnn':
+        model = cnn(input_size, output_size, task_type, init_path, hidden_size, t)
     else:
-        raise ValueError(data_type)
-    if model_type == 'mlp':
-        model = feedforward(input_size, output_size, output_type, init_path, hidden_size, t)
-    elif model_type == 'linear':
-        hidden_size = None
-        model = linear(input_size, output_size, output_type, init_path, hidden_size, t)
-    elif model_type == 'logistic':
-        hidden_size = None
-        model = logistic(input_size, output_size, output_type, init_path, hidden_size, t)
-    elif model_type == 'cnn':
-        assert 'square' in data_type
-        model = cnn(input_size, output_size, output_type, init_path, hidden_size, t)
-    else:
-        raise ValueError(model_type)
+        raise ValueError(architecture)
     return model
 
 class model(object):
     """
     """
-    def __init__(self, input_size, output_size, output_type, init_path, hidden_size, t):
-        model = self.define_model(input_size, output_size, output_type, hidden_size)
+    def __init__(self, input_size, output_size, task_type, init_path, hidden_size, t):
+        model = self.define_model(input_size, output_size, task_type, hidden_size)
         self.model = model
         self.init_path = init_path
-        self.output_type = output_type
+        self.task_type = task_type
         self.override = None
         self.grads = None
         self.metrics = None
@@ -207,7 +120,7 @@ class model(object):
                 print('WARNING: Could not load weights from', self.init_path)
 
     @abc.abstractmethod
-    def define_model(self, input_size, output_size, output_type, hidden_size):
+    def define_model(self, input_size, output_size, task_type, hidden_size):
         pass
 
     def load_weights(self, path, t=None):
@@ -337,10 +250,10 @@ class linear(model):
     Massive overkill doing this in Keras
     """
     
-    def define_model(self, input_size, output_size=1, output_type='continuous', hidden_size=None):
+    def define_model(self, input_size, output_size=1, task_type='regression', hidden_size=None):
         if not output_size == 1:
             print('WARNING: output size for linear model is forced to 1')
-        if not output_type == 'continuous':
+        if not task_type == 'regression':
             print('WARNING: linear model has continuous output type')
         model = K.models.Sequential([K.layers.Dense(1, activation='linear', input_shape=(input_size,))])
         return model
@@ -349,10 +262,10 @@ class linear(model):
 class logistic(model):
     """
     """
-    def define_model(self, input_size, output_size=1, output_type='binary', hidden_size=None):
+    def define_model(self, input_size, output_size=1, task_type='binary', hidden_size=None):
         if not output_size == 1:
             print('WARNING: output size for logistic model is forced to 1')
-        if not output_type == 'binary':
+        if not task_type == 'binary':
             print('WARNING: logistic has binary output type')
         model = K.models.Sequential([K.layers.Dense(1, activation='sigmoid', input_shape=(input_size,))])
         return model
@@ -361,7 +274,7 @@ class feedforward(model):
     """
     This model was taken from the Tensorflow MNIST tutorial!
     """
-    def define_model(self, input_size=(28, 28), output_size=10, output_type='categorical', hidden_size=512):
+    def define_model(self, input_size=(28, 28), output_size=10, task_type='classification', hidden_size=512):
         if type(input_size) == int:
             # no flatten required if input is a vector
             layers = [K.layers.Dense(hidden_size, input_dim=input_size, activation='relu')]
@@ -371,17 +284,17 @@ class feedforward(model):
         # shared piece
         layers.append(K.layers.Dropout(rate=0.2))
         # output-size-dependent piece
-        if output_type == 'categorical':
+        if task_type == 'classification':
             # use a softmax
             layers.append(K.layers.Dense(output_size, activation='softmax'))
-        elif output_type == 'binary':
+        elif task_type == 'binary':
             # sigmoid
             layers.append(K.layers.Dense(output_size, activation='sigmoid'))
-        elif output_type == 'continuous':
+        elif task_type == 'regression':
             # linear
             layers.append(K.layers.Dense(output_size, activation='linear'))
         else:
-            raise ValueError(output_type)
+            raise ValueError(task_type)
         model = K.models.Sequential(layers)
         
         return model
@@ -393,7 +306,7 @@ class cnn(model):
     no dropout
     no mention of any other HPs in that paper from what I can tell
     """
-    def define_model(self, input_size=(32, 32, 3), output_size=10, output_type='categorical', hidden_size=512):
+    def define_model(self, input_size=(32, 32, 3), output_size=10, task_type='classification', hidden_size=512):
         # input validation
         if len(input_size) < 1:
             print('ERROR: CNN is not designed to take flat inputs!')
@@ -413,16 +326,16 @@ class cnn(model):
                 K.layers.MaxPooling2D(pool_size=(2, 2)),
                 K.layers.Flatten(),
                 K.layers.Dense(hidden_size, activation='relu')]
-        if output_type == 'categorical':
+        if task_type == 'classification':
             layers.append(K.layers.Dense(output_size, activation='softmax'))
-        elif output_type == 'binary':
+        elif task_type == 'binary':
             # sigmoid
             layers.append(K.layers.Dense(output_size, activation='sigmoid'))
-        elif output_type == 'continuous':
+        elif task_type == 'regression':
             # linear
             layers.append(K.layers.Dense(output_size, activation='linear'))
         else:
-            raise ValueError(output_type)
+            raise ValueError(task_type)
         model = K.models.Sequential(layers)
         
         return model

@@ -1,0 +1,26 @@
+---
+data:
+    name: mvn
+    binary: false
+    replace_index: 1
+model:
+    architecture: linear
+    diffinit: true
+    task_type: regression
+    input_size: 25
+    output_size: 1
+    hidden_size: 32
+training:
+    seed: 1
+    n_epochs: 2
+    batch_size: 32
+    optimization_algorithm:
+        name: SGD
+        learning_rate: 0.01
+logging:
+    cadence: 5
+    save_weights: true
+    save_gradients: true
+    sample_minibatch_gradients: false
+    n_gradients: 0
+...

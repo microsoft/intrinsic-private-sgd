@@ -1,0 +1,22 @@
+---
+data:
+    name: mnist
+    preprocessing: none
+    replace_index: 1
+model:
+    architecture: linear
+    task_type: binary
+training:
+    seed: 1
+    n_epochs: 20
+    batch_size: 32
+    optimization_algorithm:
+        name: SGD
+        learning_rate: 0.1
+logging:
+    cadence: 20
+    save_weights: true
+    save_gradients: true
+    sample_minibatch_gradients: false
+    n_gradients: 0
+...

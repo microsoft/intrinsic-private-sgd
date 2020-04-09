@@ -1,0 +1,28 @@
+---
+data:
+    name: mnist
+    binary: true
+    flatten: true
+    replace_index: 1
+    preprocessing: GRP
+model:
+    architecture: logistic
+    diffinit: true
+    task_type: binary
+    input_size: 100
+    output_size: 1
+    hidden_size: 10      # doesnt make sense for logistic
+training:
+    seed: 1
+    n_epochs: 20
+    batch_size: 32
+    optimization_algorithm:
+        name: SGD
+        learning_rate: 0.5
+logging:
+    cadence: 50
+    save_weights: true
+    save_gradients: true
+    sample_minibatch_gradients: false
+    n_gradients: 0
+...
