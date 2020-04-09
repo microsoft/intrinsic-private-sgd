@@ -13,8 +13,11 @@ import re
 import seaborn as sns
 import ipdb
 
-import eval_utils
+import results_utils
+import derived_results
+import test_private_model
 import data_utils
+import experiment_metadata
 
 def beautify_axes(axarr):
     """
@@ -88,18 +91,18 @@ def qq_plot(what, dataset, identifier, times=[50], params='random'):
     colours = cm.viridis(np.linspace(0.2, 0.8, len(times)))
     if params == 'random':
         if what == 'gradients':
-            df = eval_utils.load_gradients(dataset, model, replace_index, seed, noise=True, params=None, iter_range=(min(times), max(times)+1))
+            df = results_utils.load_gradients(dataset, model, replace_index, seed, noise=True, params=None, iter_range=(min(times), max(times)+1))
         else:
-            df = eval_utils.get_posterior_samples(dataset, model=model, replace_index=replace_index, iter_range=(min(times), max(times) + 1), params=None)
+            df = results_utils.get_posterior_samples(dataset, model=model, replace_index=replace_index, iter_range=(min(times), max(times) + 1), params=None)
         params = np.random.choice(df.columns[2:], 1)
         print('picking random parameter', params)
         first_two_cols = df.columns[:2].tolist()
         df = df.loc[:, first_two_cols + list(params)]
     else:
         if what == 'gradients':
-            df = eval_utils.load_gradients(dataset, model, replace_index, seed, noise=True, params=params, iter_range=(min(times), max(times)+1))
+            df = results_utils.load_gradients(dataset, model, replace_index, seed, noise=True, params=params, iter_range=(min(times), max(times)+1))
         else:
-            df = eval_utils.get_posterior_samples(dataset, model=model, replace_index=replace_index, iter_range=(min(times), max(times) + 1), params=params)
+            df = results_utils.get_posterior_samples(dataset, model=model, replace_index=replace_index, iter_range=(min(times), max(times) + 1), params=params)
     if df is False:
         print('ERROR: No data available')
         return False
@@ -133,7 +136,7 @@ def visualise_gradient_values(dataset, identifiers, save=True, iter_range=(None,
     for i, identifier in enumerate(identifiers):
         label = ':'.join(identifier)
         model, replace_index, seed = identifier
-        df = eval_utils.load_gradients(dataset, model, replace_index, seed, noise=False, iter_range=iter_range, params=params, diffinit=diffinit)
+        df = results_utils.load_gradients(dataset, model, replace_index, seed, noise=False, iter_range=iter_range, params=params, diffinit=diffinit)
         if full_batch:
             # only use gradients from full dataset
             df = df.loc[df['minibatch_id'] == 'ALL', :]
@@ -162,7 +165,7 @@ def visualise_gradient_values(dataset, identifiers, save=True, iter_range=(None,
 def bivariate_gradients(dataset, model, replace_index, seed, df=None, params=['#3', '#5'], iter_range=(None, None), n_times=2, save=False):
     print('Comparing gradients for parameters', params, 'at', n_times, 'random time-points')
     if df is None:
-        df = eval_utils.load_gradients(dataset, model, replace_index, seed, noise=True, iter_range=iter_range, params=params)
+        df = results_utils.load_gradients(dataset, model, replace_index, seed, noise=True, iter_range=iter_range, params=params)
     if params is None:
         params = np.random.choice(df.columns[2:], 2, replace=False)
     else:
@@ -204,7 +207,7 @@ def fit_pval_histogram(what, dataset, model, t, n_experiments=3, diffinit=False,
     colours = cm.viridis(np.linspace(0.2, 0.8, n_experiments))
     pval_colour = '#b237c4'
     # sample experiments
-    df = eval_utils.get_available_results(dataset, model, diffinit=diffinit)
+    df = results_utils.get_available_results(dataset, model, diffinit=diffinit)
     replace_indices = df['replace'].unique()
     replace_indices = np.random.choice(replace_indices, n_experiments, replace=False)
     print('Looking at replace indices...', replace_indices)
@@ -212,11 +215,11 @@ def fit_pval_histogram(what, dataset, model, t, n_experiments=3, diffinit=False,
     for i, replace_index in enumerate(replace_indices):
         if what == 'gradients':
             print('Loading gradients...')
-            df = eval_utils.load_gradients(dataset, model, replace_index,
+            df = results_utils.load_gradients(dataset, model, replace_index,
                     seed, noise=True, params=None, iter_range=iter_range)
             second_col = df.columns[1]
         elif what == 'weights':
-            df = eval_utils.get_posterior_samples(dataset, iter_range=iter_range, model=model, replace_index=replace_index, params=None, seeds='all')
+            df = results_utils.get_posterior_samples(dataset, iter_range=iter_range, model=model, replace_index=replace_index, params=None, seeds='all')
             second_col = df.columns[1]
         else:
             raise ValueError(what)
@@ -230,7 +233,7 @@ def fit_pval_histogram(what, dataset, model, t, n_experiments=3, diffinit=False,
         p_vals = np.zeros(shape=(n_params))
         for j, p in enumerate(params):
             print('getting fit for parameter', p)
-            df_fit = eval_utils.estimate_statistics_through_training(what=what, dataset=None, identifier=None, df=df.loc[:, ['t', second_col, p]], params=None, iter_range=None)
+            df_fit = derived_results.estimate_statistics_through_training(what=what, dataset=None, identifier=None, df=df.loc[:, ['t', second_col, p]], params=None, iter_range=None)
             p_vals[j] = df_fit.loc[t, 'norm_p']
             del df_fit
         log_pvals = np.log(p_vals)
@@ -274,7 +277,7 @@ def visualise_fits(dataset, identifier, save=True, params=None):
     colours = cm.viridis(np.linspace(0.2, 0.8, n_comparators))
     for i, p in enumerate(params):
         print('visualising fit for parameter parameter', p)
-        df_fit = eval_utils.estimate_statistics_through_training(what='gradients', dataset=dataset, identifier=identifier, params=[p])
+        df_fit = derived_results.estimate_statistics_through_training(what='gradients', dataset=dataset, identifier=identifier, params=[p])
         if df_fit is False:
             print('No fit data available for identifier:', identifier)
             return False
@@ -404,7 +407,7 @@ def visualise_trace(datasets, models, replaces, seeds, privacys, save=True,
     loss_list = []
     for identifier in identifiers:
         dataset, model, replace_index, seed, data_privacy = identifier
-        df_loss = eval_utils.load_loss(dataset, model, replace_index, seed, iter_range=iter_range, diffinit=diffinit, data_privacy=data_privacy)
+        df_loss = results_utils.load_loss(dataset, model, replace_index, seed, iter_range=iter_range, diffinit=diffinit, data_privacy=data_privacy)
         if df_loss is False:
             print('No fit data available for identifier:', identifier)
             df_loss = []
@@ -452,7 +455,7 @@ def visualise_trace(datasets, models, replaces, seeds, privacys, save=True,
     if include_convergence:
         for j, identifier in enumerate(identifiers):
             dataset, model, replace_index, seed, data_privacy  = identifier
-            convergence_point = eval_utils.find_convergence_point_for_single_experiment(dataset, model, replace_index, seed, diffinit, tolerance=convergence_tolerance, metric=metrics[0], data_privacy=data_privacy)
+            convergence_point = derived_results.find_convergence_point_for_single_experiment(dataset, model, replace_index, seed, diffinit, tolerance=convergence_tolerance, metric=metrics[0], data_privacy=data_privacy)
             print('Convergence point:', convergence_point)
             for ax in axarr:
                 ax.axvline(x=convergence_point, ls='--', color=colours[j])
@@ -470,7 +473,7 @@ def visualise_trace(datasets, models, replaces, seeds, privacys, save=True,
 
 def visualise_autocorrelation(dataset, model, replace_index, seed, params, save=True):
     """ what's the autocorrelation of the weights?.... or gradients? """
-    df = eval_utils.load_weights(dataset, model, replace_index, seed, params=params)
+    df = results_utils.load_weights(dataset, model, replace_index, seed, params=params)
     n_lags = 500
     autocorr = np.zeros(n_lags)
     fig, axarr = plt.subplots(nrows=len(params), ncols=1, sharex='col', figsize=(4, 1.5*len(params) + 1))
@@ -497,7 +500,7 @@ def examine_parameter_level_gradient_noise(dataset, identifier, times=[10, 25], 
     print('demonstrating gradient noise distributions for', identifier, 'at times', times, 'for parameters', params)
     iter_range = (min(times) - 1, max(times) + 1)
     assert not params is None
-    df = eval_utils.load_gradients(dataset, model, replace_index, seed, noise=True, iter_range=iter_range, params=params)
+    df = results_utils.load_gradients(dataset, model, replace_index, seed, noise=True, iter_range=iter_range, params=params)
 
     ncols = len(params)
     param_cols = cm.viridis(np.linspace(0.2, 0.8, ncols))
@@ -530,7 +533,7 @@ def examine_parameter_level_gradient_noise(dataset, identifier, times=[10, 25], 
 def visually_compare_distributions(identifier, df=None, times=[10, 25], save=False, iter_range=(None, None), params=None):
     print('Visually comparing distributions for', identifier, 'at times', times)
     if df is None:
-        df = eval_utils.load_gradients(dataset, model, replace_index, seed, noise=True, iter_range=iter_range, params=params)
+        df = results_utils.load_gradients(dataset, model, replace_index, seed, noise=True, iter_range=iter_range, params=params)
     else:
         if not params is None:
             print('WARNING: Data provided, params argument ignored.')
@@ -546,7 +549,7 @@ def visually_compare_distributions(identifier, df=None, times=[10, 25], save=Fal
         if df_t.shape[0] == 0:
             print('WARNING: No data from iteration', t, ' - skipping!')
             continue
-        df_fit = eval_utils.estimate_statistics_through_training(what='gradinets', dataset=dataset, identifier=identifier, df=df_t)
+        df_fit = derived_results.estimate_statistics_through_training(what='gradinets', dataset=dataset, identifier=identifier, df=df_t)
         if not params is None:
             n_params = len(params)
             grad_noise = df_t.iloc[:, -n_params:].values.flatten()
@@ -596,7 +599,7 @@ def visualise_weight_trajectory(dataset, identifiers, df=None, save=True, iter_r
     df_list = []
     for identifier in identifiers:
         model, replace_index, seed = identifier
-        df = eval_utils.load_weights(dataset, model, replace_index, seed, diffinit=diffinit, iter_range=iter_range, params=params)
+        df = results_utils.load_weights(dataset, model, replace_index, seed, diffinit=diffinit, iter_range=iter_range, params=params)
         df_list.append(df)
     colors = cm.viridis(np.linspace(0.2, 0.8, len(df_list)))
     labels = [':'.join(x) for x in identifiers]
@@ -667,7 +670,7 @@ def compare_posteriors_with_different_data(dataset, model, t, replace_indices, p
     colours = cm.viridis(np.linspace(0.2, 0.8, len(replace_indices)))
     for j, replace_index in enumerate(replace_indices):
         for i, p in enumerate(params):
-            samples = eval_utils.get_posterior_samples(dataset, iter_range=(t, t+1), model=model, replace_index=replace_index, params=[p])
+            samples = results_utils.get_posterior_samples(dataset, iter_range=(t, t+1), model=model, replace_index=replace_index, params=[p])
             sns.distplot(samples, ax=axarr[i], color=to_hex(colours[j]), label=str(replace_index), kde=False)
     # save
     for i, p in enumerate(params):
@@ -684,10 +687,10 @@ def delta_over_time(dataset, model, identifier_pair, iter_range, include_bound=F
     assert len(identifier_pair) == 2
     replace_1, seed_1 = identifier_pair[0]
     replace_2, seed_2 = identifier_pair[1]
-    samples_1 = eval_utils.load_weights(dataset, model, replace_1, seed_1, iter_range=iter_range)
-    samples_2 = eval_utils.load_weights(dataset, model, replace_2, seed_2, iter_range=iter_range)
-    gradients_1 = eval_utils.load_gradients(dataset, model, replace_1, seed_1, iter_range=iter_range)
-    gradients_2 = eval_utils.load_gradients(dataset, model, replace_2, seed_2, iter_range=iter_range)
+    samples_1 = results_utils.load_weights(dataset, model, replace_1, seed_1, iter_range=iter_range)
+    samples_2 = results_utils.load_weights(dataset, model, replace_2, seed_2, iter_range=iter_range)
+    gradients_1 = results_utils.load_gradients(dataset, model, replace_1, seed_1, iter_range=iter_range)
+    gradients_2 = results_utils.load_gradients(dataset, model, replace_2, seed_2, iter_range=iter_range)
     # align the time-points
     samples_1.set_index('t', inplace=True)
     samples_2.set_index('t', inplace=True)
@@ -710,11 +713,11 @@ def delta_over_time(dataset, model, identifier_pair, iter_range, include_bound=F
     axarr[0].set_ylabel('|| w - w\' ||')
     if include_bound:
         assert model == 'logistic'
-        _, batch_size, eta, _, N = eval_utils.get_experiment_details(dataset, model)
+        _, batch_size, eta, _, N = experiment_metadata.get_experiment_details(dataset, model)
         L = np.sqrt(2)
         bound = np.zeros(len(t))
         for i, ti in enumerate(t):
-            bound[i] = eval_utils.compute_wu_bound(L, ti, N, batch_size, eta, verbose=False)
+            bound[i] = test_private_model.compute_wu_bound(L, ti, N, batch_size, eta, verbose=False)
         axarr[0].plot(t, bound)
     axarr[1].plot(t, gradnorm_1)
     axarr[2].plot(t, gradnorm_2)

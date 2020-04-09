@@ -1,4 +1,5 @@
 #!usr/bin/env ipython
+# Functions related to loading, saving, processing datasets
 
 import tensorflow.keras.datasets as datasets
 import numpy as np

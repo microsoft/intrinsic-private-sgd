@@ -15,18 +15,19 @@ import random
 import ipdb
 
 import results_utils
+import stats_utils
 
 def calculate_epsilon(dataset, model, t, use_bound=False, diffinit=True, num_deltas='max'):
     """
     just get the intrinsic epsilon
     """
-    task, batch_size, lr, n_weights, N = eval_utils.get_experiment_details(dataset, model)
+    task, batch_size, lr, n_weights, N = test_private_model.get_experiment_details(dataset, model)
     delta = 1.0/N
     if use_bound:
-        sensitivity = eval_utils.compute_wu_bound(lipschitz_constant=np.sqrt(2), t=t, N=N, batch_size=batch_size, eta=lr)
+        sensitivity = test_private_model.compute_wu_bound(lipschitz_constant=np.sqrt(2), t=t, N=N, batch_size=batch_size, eta=lr)
     else:
-        sensitivity = eval_utils.estimate_sensitivity_empirically(dataset, model, t, num_deltas=num_deltas, diffinit=diffinit)
-    variability = eval_utils.estimate_variability(dataset, model, t, by_parameter=False, diffinit=diffinit)
+        sensitivity = test_private_model.estimate_sensitivity_empirically(dataset, model, t, num_deltas=num_deltas, diffinit=diffinit)
+    variability = test_private_model.estimate_variability(dataset, model, t, by_parameter=False, diffinit=diffinit)
     print('sensitivity:', sensitivity)
     print('variability:', variability)
     print('delta:', delta)
@@ -126,11 +127,11 @@ def generate_delta_histogram(dataset, model, num_deltas='max', t=500, include_bo
     except FileNotFoundError:
         print('Couldn\'t find', path_string)
         # vary-both
-        vary_both, identifiers_both = eval_utils.get_deltas(dataset, iter_range=(t, t+1), model=model, vary_seed=True, vary_data=True, num_deltas=num_deltas, diffinit=False, data_privacy=data_privacy)
+        vary_both, identifiers_both = get_deltas(dataset, iter_range=(t, t+1), model=model, vary_seed=True, vary_data=True, num_deltas=num_deltas, diffinit=False, data_privacy=data_privacy)
         # vary-S
-        vary_S, identifiers_S = eval_utils.get_deltas(dataset, iter_range=(t, t+1), model=model, vary_seed=False, vary_data=True, num_deltas=num_deltas, diffinit=False, data_privacy=data_privacy)
+        vary_S, identifiers_S = get_deltas(dataset, iter_range=(t, t+1), model=model, vary_seed=False, vary_data=True, num_deltas=num_deltas, diffinit=False, data_privacy=data_privacy)
         # vary-r
-        vary_r, identifiers_r = eval_utils.get_deltas(dataset, iter_range=(t, t+1), model=model, vary_seed=True, vary_data=False, num_deltas=num_deltas, diffinit=False, data_privacy=data_privacy)
+        vary_r, identifiers_r = get_deltas(dataset, iter_range=(t, t+1), model=model, vary_seed=True, vary_data=False, num_deltas=num_deltas, diffinit=False, data_privacy=data_privacy)
 
         # save plot data
         plot_data = {'vary_both': vary_both, 
@@ -151,11 +152,11 @@ def generate_delta_histogram(dataset, model, num_deltas='max', t=500, include_bo
         print('Loaded from file:', path_string_diffinit)
     except FileNotFoundError:
         # vary-both
-        vary_both_diffinit, identifiers_both_diffinit = eval_utils.get_deltas(dataset, iter_range=(t, t+1), model=model, vary_seed=True, vary_data=True, num_deltas=num_deltas, diffinit=True, data_privacy=data_privacy)
+        vary_both_diffinit, identifiers_both_diffinit = get_deltas(dataset, iter_range=(t, t+1), model=model, vary_seed=True, vary_data=True, num_deltas=num_deltas, diffinit=True, data_privacy=data_privacy)
         # vary-S
-        vary_S_diffinit, identifiers_S_diffinit = eval_utils.get_deltas(dataset, iter_range=(t, t+1), model=model, vary_seed=False, vary_data=True, num_deltas=num_deltas, diffinit=True, data_privacy=data_privacy)
+        vary_S_diffinit, identifiers_S_diffinit = get_deltas(dataset, iter_range=(t, t+1), model=model, vary_seed=False, vary_data=True, num_deltas=num_deltas, diffinit=True, data_privacy=data_privacy)
         # vary-r
-        vary_r_diffinit, identifiers_r_diffinit = eval_utils.get_deltas(dataset, iter_range=(t, t+1), model=model, vary_seed=True, vary_data=False, num_deltas=num_deltas, diffinit=True, data_privacy=data_privacy)
+        vary_r_diffinit, identifiers_r_diffinit = get_deltas(dataset, iter_range=(t, t+1), model=model, vary_seed=True, vary_data=False, num_deltas=num_deltas, diffinit=True, data_privacy=data_privacy)
 
         # save plot data
         plot_data_diffinit = {'vary_both': vary_both_diffinit, 
@@ -183,14 +184,14 @@ def generate_epsilon_distribution(dataset, model, t, delta, n_pairs,
         print('Loaded from file', path)
     except FileNotFoundError:
         print('Couldn\'t load sens and var values from', path, '- computing')
-        df = eval_utils.get_sens_and_var_distribution(dataset, model, t, n_pairs=n_pairs, by_parameter=False, diffinit=False)
+        df = get_sens_and_var_distribution(dataset, model, t, n_pairs=n_pairs, by_parameter=False, diffinit=False)
         df.to_csv(path, header=True, index=False)
     try:
         df_diffinit = pd.read_csv(path_diffinit)
         print('Loaded from file', path_diffinit)
     except FileNotFoundError:
         print('Couldn\'t load sens and var values from', path_diffinit, '- computing')
-        df_diffinit = eval_utils.get_sens_and_var_distribution(dataset, model, t, n_pairs=n_pairs, by_parameter=False, diffinit=True)
+        df_diffinit = get_sens_and_var_distribution(dataset, model, t, n_pairs=n_pairs, by_parameter=False, diffinit=True)
         df_diffinit.to_csv(path_diffinit, header=True, index=False)
     return True
 
@@ -221,7 +222,7 @@ def generate_utility_curve(dataset, model, delta, t, metric_to_report='binary_ac
         augment_diffinit = []
         sens_from = []
         # select a set of experiments
-        df = eval_utils.get_available_results(dataset, model, diffinit=diffinit)
+        df = results_utils.get_available_results(dataset, model, diffinit=diffinit)
         random_experiments = df.iloc[np.random.choice(df.shape[0], num_experiments), :]
         for i, exp in random_experiments.iterrows():
             exp_seed = exp['seed']
@@ -233,7 +234,7 @@ def generate_utility_curve(dataset, model, delta, t, metric_to_report='binary_ac
                         # bound isnt meaningful for this model
                         continue
                 for eps in epsilons:
-                    results = eval_utils.test_model_with_noise(dataset=dataset, model=model, replace_index=exp_replace, 
+                    results = test_private_model.test_model_with_noise(dataset=dataset, model=model, replace_index=exp_replace, 
                             seed=exp_seed, t=t, epsilon=eps, delta=delta, sensitivity_from_bound=sensitivity_from_bound, 
                             metric_to_report=metric_to_report, verbose=verbose, num_deltas=num_deltas, diffinit=diffinit)
                     noiseless_at_eps, bolton_at_eps, augment_at_eps, augment_with_diffinit_at_eps = results
@@ -270,7 +271,7 @@ def sens_and_var_over_time(dataset, model, num_deltas=500, iter_range=(0, 1000),
         print('Didn\'t find', path, ' - creating!')
         # get experiment details
         if model == 'logistic':
-            _, batch_size, lr, _, N = eval_utils.get_experiment_details(dataset, model, data_privacy=data_privacy)
+            _, batch_size, lr, _, N = experiment_metadata.get_experiment_details(dataset, model, data_privacy=data_privacy)
             L = np.sqrt(2)
         assert not None in iter_range
         t_range = np.arange(iter_range[0], iter_range[1], 200)
@@ -282,19 +283,19 @@ def sens_and_var_over_time(dataset, model, num_deltas=500, iter_range=(0, 1000),
         for i, t in enumerate(t_range):
             # sensitivity
             if model == 'logistic':
-                theoretical_sensitivity = eval_utils.compute_wu_bound(L, t=t, N=N, batch_size=batch_size, eta=lr)
+                theoretical_sensitivity = test_private_model.compute_wu_bound(L, t=t, N=N, batch_size=batch_size, eta=lr)
             else:
                 theoretical_sensitivity = np.nan
-            empirical_sensitivity = eval_utils.estimate_sensitivity_empirically(dataset, model, t, num_deltas=num_deltas, diffinit=True, data_privacy=data_privacy)
+            empirical_sensitivity = derived_results.estimate_sensitivity_empirically(dataset, model, t, num_deltas=num_deltas, diffinit=True, data_privacy=data_privacy)
             if not empirical_sensitivity:
                 print('Running delta histogram...')
                 delta_histogram(dataset, model, num_deltas=num_deltas, t=t, include_bounds=False, xlim=None, ylim=None, data_privacy=data_privacy, plot=False)
                 print('Rerunning empirical sensitivity estimate...')
-                empirical_sensitivity = eval_utils.estimate_sensitivity_empirically(dataset, model, t, num_deltas=num_deltas, diffinit=True, data_privacy=data_privacy)
+                empirical_sensitivity = derived_results.estimate_sensitivity_empirically(dataset, model, t, num_deltas=num_deltas, diffinit=True, data_privacy=data_privacy)
                 assert not empirical_sensitivity is False
             # variability
-            variability_fixinit = eval_utils.estimate_variability(dataset, model, t, by_parameter=False, diffinit=False, data_privacy=data_privacy)
-            variability_diffinit = eval_utils.estimate_variability(dataset, model, t, by_parameter=False, diffinit=True, data_privacy=data_privacy)
+            variability_fixinit = derived_results.estimate_variability(dataset, model, t, by_parameter=False, diffinit=False, data_privacy=data_privacy)
+            variability_diffinit = derived_results.estimate_variability(dataset, model, t, by_parameter=False, diffinit=True, data_privacy=data_privacy)
             # record everything
             theoretical_sensitivity_list[i] = theoretical_sensitivity
             empirical_sensitivity_list[i] = empirical_sensitivity
@@ -308,7 +309,7 @@ def sens_and_var_over_time(dataset, model, num_deltas=500, iter_range=(0, 1000),
         df.set_index('t', inplace=True)
         # now join the losses... 
         # (actually we can just load the losses as needed)
-        losses = eval_utils.aggregated_loss(dataset, model, iter_range=iter_range, data_privacy=data_privacy)
+        losses = derived_results.aggregated_loss(dataset, model, iter_range=iter_range, data_privacy=data_privacy)
         df = df.join(losses)
         ###
         df.to_csv(path)
@@ -535,23 +536,23 @@ def estimate_statistics_through_training(what, dataset, identifier, df=None, par
         N = X.shape[0]
         df_fits['N'] = N
         # fit alpha_stable
-        alpha, fit = fit_alpha_stable(X)
+        alpha, fit = stats_utils.fit_alpha_stable(X)
         df_fits.loc[t, 'alpha'] = alpha
         df_fits.loc[t, 'alpha_fit'] = fit
         # fit gaussian
-        mu, sigma, W, p = fit_normal(X)
+        mu, sigma, W, p = stats_utils.fit_normal(X)
         df_fits.loc[t, 'norm_mu'] = mu
         df_fits.loc[t, 'norm_sigma'] = sigma
         df_fits.loc[t, 'norm_W'] = W
         df_fits.loc[t, 'norm_p'] = p
         # fit laplace
-        loc, scale, D, p= fit_laplace(X)
+        loc, scale, D, p = stats_utils.fit_laplace(X)
         df_fits.loc[t, 'lap_loc'] = loc
         df_fits.loc[t, 'lap_scale'] = scale
         df_fits.loc[t, 'lap_D'] = D 
         df_fits.loc[t, 'lap_p'] = p 
         # logistic
-        #mean, s, D, p = fit_logistic(X)
+        #mean, s, D, p = stats_utils.fit_logistic(X)
         #df_fits.loc[t, 'logo_m'] = mean
         #df_fits.loc[t, 'log_s'] = s
         #df_fits.loc[t, 'log_D'] = D
@@ -721,3 +722,57 @@ def validate_sigmas_sens_var(dataset, model, t, n_pairs, diffinit):
             bad_pairs.add(pair)
     print('Found', len(bad_pairs), 'bad pairs! That\'s', np.round(100*len(bad_pairs)/sens_and_var_df.shape[0], 2), '%')
     return bad_pairs
+
+
+def find_convergence_point_for_single_experiment(dataset, model, replace_index, seed, diffinit=False, tolerance=3,
+        metric='ce', verbose=False, data_privacy='all'):
+    # load the trace
+    loss = results_utils.load_loss(dataset, model, replace_index, seed, iter_range=(None, None), diffinit=diffinit, data_privacy=data_privacy)
+    try:
+        assert metric in loss.columns
+    except AssertionError:
+        print('ERROR:', metric, 'is not in columns...', loss.columns)
+        return np.nan
+    loss = loss.loc[:, ['t', 'minibatch_id', metric]]
+    loss = loss.pivot(index='t', columns='minibatch_id', values=metric)
+    vali_loss = loss['VALI']
+    delta_vali = vali_loss - vali_loss.shift()
+    # was there a decrease at that time point? (1 if yes --> good)
+    decrease = (delta_vali < 0)
+    counter = 0
+    for t, dec in decrease.items():
+        if not dec:
+            counter += 1
+        else:
+            counter = 0
+        if counter >= tolerance:
+            convergence_point = t
+            break
+    else:
+        if verbose:
+            print('Did not find instance of validation loss failing to decrease for', tolerance, 'steps - returning nan')
+        convergence_point = np.nan
+    return convergence_point
+
+def find_convergence_point(dataset, model, diffinit, tolerance, metric, data_privacy='all'):
+    """ wrapper for the whole experiment """
+    results = results_utils.get_available_results(dataset, model, diffinit=diffinit, data_privacy=data_privacy)
+    n_results = results.shape[0]
+    points = np.zeros(n_results)
+    for index, row in results.iterrows():
+        replace_index = row['replace']
+        seed = row['seed']
+        try:
+            point = find_convergence_point_for_single_experiment(dataset, model, replace_index, seed, diffinit=diffinit, tolerance=tolerance, metric=metric, data_privacy=data_privacy)
+        except:
+            point = np.nan
+        points[index] = point
+    print('For dataset', dataset, 'and model', model, 'with diffinit', diffinit, 'we have:')
+    print('STDEV:', np.nanstd(points))
+    print('MEDIAN:', np.nanmedian(points))
+    print('MEAN:', np.nanmean(points))
+    print('FRACTION INVALID:', np.mean(np.isnan(points)))
+    convergence_point = np.nanmedian(points)
+    valid_frac = np.mean(np.isfinite(points))
+    print('Selecting median as convergence point:', convergence_point)
+    return convergence_point, valid_frac
