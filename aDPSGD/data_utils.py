@@ -33,12 +33,11 @@ def min_max_rescale(df_train, df_test, good_columns=None):
     return df_train, df_test
 
 
-def load_data(options):
+def load_data(options, replace_index):
     # these are shared options
     data_type = options['name']
     data_privacy = 'all'
     print('WARNING: Data privacy is fixed to all right now')
-    replace_index = options['replace_index']
     
     if data_type == 'mnist':
         flatten = data_options['flat']

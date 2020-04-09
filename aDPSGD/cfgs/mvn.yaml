@@ -2,7 +2,6 @@
 data:
     name: mvn
     binary: false
-    replace_index: 1
 model:
     architecture: linear
     diffinit: true
@@ -11,7 +10,6 @@ model:
     output_size: 1
     hidden_size: 32
 training:
-    seed: 1
     n_epochs: 2
     batch_size: 32
     optimization_algorithm:

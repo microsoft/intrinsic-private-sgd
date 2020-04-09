@@ -2,7 +2,6 @@
 data:
     name: housing
     binary: false
-    replace_index: 1
 model:
     architecture: linear
     diffinit: true
@@ -11,7 +10,6 @@ model:
     output_size: 1
     hidden_size: 8
 training:
-    seed: 1
     n_epochs: 50
     batch_size: 28
     optimization_algorithm:

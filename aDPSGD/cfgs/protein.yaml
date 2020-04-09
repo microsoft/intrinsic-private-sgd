@@ -2,7 +2,6 @@
 data:
     name: protein
     binary: true
-    replace_index: 1
 model:
     architecture: logistic
     diffinit: true
@@ -11,7 +10,6 @@ model:
     output_size: 1
     hidden_size: 8
 training:
-    seed: 1
     n_epochs: 3
     batch_size: 50
     optimization_algorithm:

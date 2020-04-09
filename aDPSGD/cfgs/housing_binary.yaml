@@ -2,7 +2,6 @@
 data:
     name: housing
     binary: true
-    replace_index: 1
 model:
     architecture: logistic
     diffinit: true
@@ -11,7 +10,6 @@ model:
     output_size: 1
     hidden_size:
 training:
-    seed: 1
     n_epochs: 250
     batch_size: 28
     optimization_algorithm:

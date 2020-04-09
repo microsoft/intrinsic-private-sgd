@@ -5,6 +5,7 @@ import abc
 from tensorflow import keras as K
 import numpy as np
 import pandas as pd
+import os
 
 class Inspector(object):
     """
@@ -340,14 +341,19 @@ class cnn(model):
         
         return model
 
-def prep_for_training(model_object, seed, lr, task_type):
+def prep_for_training(model_object, seed, optimizer_settings, task_type):
     """
     """
     tf.random.set_random_seed(seed)         # not sure this one is actually necesary
     np.random.seed(seed)
     #sgd = K.optimizers.SGD(lr=lr, decay=1e-6, momentum=0.9, nesterov=True)
-    sgd = K.optimizers.SGD(lr=lr, decay=0, momentum=0, nesterov=False)
-    # note: the tutorial I took the model from uses Adam, but SGD + momentum works okay too
+    if optimizer_settings['name'] == 'SGD':
+        lr = optimizer_settings['learning_rate']
+        sgd = K.optimizers.SGD(lr=lr, decay=0, momentum=0, nesterov=False)
+        # note: the tutorial I took the model from uses Adam, but SGD + momentum works okay too
+    else:
+        print('Only SGD is implemented currently')
+        raise NotImplementedError
     if task_type == 'classification':
         loss = 'sparse_categorical_crossentropy'
         metrics = ['ce', 'accuracy']
@@ -362,7 +368,10 @@ def prep_for_training(model_object, seed, lr, task_type):
         #metrics=metrics)
     # moving metrics to my part
     model_object.define_metrics(metrics)
-    #model_object.save_weights(path=model_object.init_path)
+    if os.path.exists(model_object.init_path):
+        print('Not saving weights as path already exists')
+    else:
+        model_object.save_weights(path=model_object.init_path)
     #K.backend.get_session().run(tf.global_variables_initializer())
     return True
 

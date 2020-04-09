@@ -3,7 +3,6 @@ data:
     name: mnist
     binary: true
     flatten: true
-    replace_index: 1
     preprocessing: crop
 model:
     architecture: logistic
@@ -13,7 +12,6 @@ model:
     output_size: 1
     hidden_size: 10
 training:
-    seed: 1
     n_epochs: 15
     batch_size: 32
     optimization_algorithm:
