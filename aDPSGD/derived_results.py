@@ -9,13 +9,14 @@
 
 import numpy as np
 import pandas as pd
-import re
 from scipy.stats import ttest_rel
-import random
 import ipdb
 
+import test_private_model
 import results_utils
 import stats_utils
+import experiment_metadata
+
 
 def calculate_epsilon(dataset, model, t, use_bound=False, diffinit=True, num_deltas='max'):
     """
@@ -35,19 +36,20 @@ def calculate_epsilon(dataset, model, t, use_bound=False, diffinit=True, num_del
     epsilon = c * sensitivity / variability
     return epsilon
 
+
 def accuracy_at_eps(dataset, model, t, use_bound=False, num_experiments=50, num_deltas='max', epsilon=1, do_test=False):
     """
     """
     path = './fig_data/utility.' + str(dataset) + '.' + str(model) + '.t' + str(t) + '.nd_' + str(num_deltas) + '.ne_' + str(num_experiments) + '.csv'
     try:
         utility_data = pd.read_csv(path)
-    except:
+    except FileNotFoundError:
         print('ERROR: couldn\'t load', path)
         return False
     if use_bound:
-        utility_data = utility_data.loc[utility_data['sensitivity_from_bound'] == True, :]
+        utility_data = utility_data.loc[utility_data['sensitivity_from_bound'] is True, :]
     else:
-        utility_data = utility_data.loc[utility_data['sensitivity_from_bound'] == False, :]
+        utility_data = utility_data.loc[utility_data['sensitivity_from_bound'] is False, :]
     df_eps = utility_data.loc[utility_data['epsilon'] == epsilon, :]
     mean_accuracy = df_eps['augment'].mean()
     std_accuracy = df_eps['augment'].std()
@@ -97,6 +99,7 @@ def accuracy_at_eps(dataset, model, t, use_bound=False, num_experiments=50, num_
             'noiseless': [mean_noiseless, std_noiseless]}
     return results
 
+
 def generate_amortised_data(dataset, model, num_pairs, num_experiments, t, metric_to_report='binary_accuracy'):
     """
     need to generate the
@@ -104,14 +107,16 @@ def generate_amortised_data(dataset, model, num_pairs, num_experiments, t, metri
     - sens-var distribution
     """
     print('delta histogram')
-    delta_histogram(dataset, model, t=t, num_deltas='max')
+    generate_delta_histogram(dataset, model, t=t, num_deltas='max')
     print('epsilon distribution')
-    epsilon_distribution(dataset, model, t=t, delta=None, n_pairs=num_pairs, sensitivity_from='empirical')
     if model == 'logistic':
-        epsilon_distribution(dataset, model, t=t, delta=None, n_pairs=num_pairs, sensitivity_from='wu_bound')
+        generate_epsilon_distribution(dataset, model, t=t, delta=None, n_pairs=num_pairs, sensitivity_from='wu_bound')
+    else:
+        generate_epsilon_distribution(dataset, model, t=t, delta=None, n_pairs=num_pairs, sensitivity_from='empirical')
     print('utility curve')
-    utility_curve(dataset, model, delta=None, t=t, metric_to_report=metric_to_report, verbose=True, num_deltas=num_deltas, diffinit=False, num_experiments=num_experiments)
+    generate_utility_curve(dataset, model, delta=None, t=t, metric_to_report=metric_to_report, verbose=True, num_deltas='max', diffinit=False, num_experiments=num_experiments)
     return True
+
 
 def generate_delta_histogram(dataset, model, num_deltas='max', t=500, include_bounds=False, xlim=None, ylim=None, data_privacy='all'):
     """
@@ -170,6 +175,7 @@ def generate_delta_histogram(dataset, model, num_deltas='max', t=500, include_bo
 
     return True
 
+
 def generate_epsilon_distribution(dataset, model, t, delta, n_pairs, 
         which='both',
         sensitivity_from='local', sharex=False, 
@@ -194,6 +200,7 @@ def generate_epsilon_distribution(dataset, model, t, delta, n_pairs,
         df_diffinit = get_sens_and_var_distribution(dataset, model, t, n_pairs=n_pairs, by_parameter=False, diffinit=True)
         df_diffinit.to_csv(path_diffinit, header=True, index=False)
     return True
+
 
 def generate_utility_curve(dataset, model, delta, t, metric_to_report='binary_accuracy', verbose=True, num_deltas='max', 
         diffinit=False, num_experiments=50, xlim=None, ylim=None, identifier=None, include_fix=False):
@@ -250,7 +257,8 @@ def generate_utility_curve(dataset, model, delta, t, metric_to_report='binary_ac
             'noiseless': noiseless, 'bolton': bolton, 'augment': augment, 'augment_diffinit': augment_diffinit, 'sensitivity_from_bound': sens_from})
         utility_data.to_csv(path, header=True, index=False, mode='a')
     return True
-    
+
+
 def sens_and_var_over_time(dataset, model, num_deltas=500, iter_range=(0, 1000), data_privacy='all', metric='binary_crossentropy'):
     """
     Estimate the empirical (and theoretical I guess) sensitivity and variability v. "convergence point" (time)
@@ -273,7 +281,7 @@ def sens_and_var_over_time(dataset, model, num_deltas=500, iter_range=(0, 1000),
         if model == 'logistic':
             _, batch_size, lr, _, N = experiment_metadata.get_experiment_details(dataset, model, data_privacy=data_privacy)
             L = np.sqrt(2)
-        assert not None in iter_range
+        assert None not in iter_range
         t_range = np.arange(iter_range[0], iter_range[1], 200)
         n_T = len(t_range)
         theoretical_sensitivity_list = [np.nan]*n_T
@@ -286,16 +294,16 @@ def sens_and_var_over_time(dataset, model, num_deltas=500, iter_range=(0, 1000),
                 theoretical_sensitivity = test_private_model.compute_wu_bound(L, t=t, N=N, batch_size=batch_size, eta=lr)
             else:
                 theoretical_sensitivity = np.nan
-            empirical_sensitivity = derived_results.estimate_sensitivity_empirically(dataset, model, t, num_deltas=num_deltas, diffinit=True, data_privacy=data_privacy)
+            empirical_sensitivity = estimate_sensitivity_empirically(dataset, model, t, num_deltas=num_deltas, diffinit=True, data_privacy=data_privacy)
             if not empirical_sensitivity:
                 print('Running delta histogram...')
-                delta_histogram(dataset, model, num_deltas=num_deltas, t=t, include_bounds=False, xlim=None, ylim=None, data_privacy=data_privacy, plot=False)
+                generate_delta_histogram(dataset, model, num_deltas=num_deltas, t=t, include_bounds=False, xlim=None, ylim=None, data_privacy=data_privacy, plot=False)
                 print('Rerunning empirical sensitivity estimate...')
-                empirical_sensitivity = derived_results.estimate_sensitivity_empirically(dataset, model, t, num_deltas=num_deltas, diffinit=True, data_privacy=data_privacy)
-                assert not empirical_sensitivity is False
+                empirical_sensitivity = estimate_sensitivity_empirically(dataset, model, t, num_deltas=num_deltas, diffinit=True, data_privacy=data_privacy)
+                assert empirical_sensitivity is not False
             # variability
-            variability_fixinit = derived_results.estimate_variability(dataset, model, t, by_parameter=False, diffinit=False, data_privacy=data_privacy)
-            variability_diffinit = derived_results.estimate_variability(dataset, model, t, by_parameter=False, diffinit=True, data_privacy=data_privacy)
+            variability_fixinit = estimate_variability(dataset, model, t, by_parameter=False, diffinit=False, data_privacy=data_privacy)
+            variability_diffinit = estimate_variability(dataset, model, t, by_parameter=False, diffinit=True, data_privacy=data_privacy)
             # record everything
             theoretical_sensitivity_list[i] = theoretical_sensitivity
             empirical_sensitivity_list[i] = empirical_sensitivity
@@ -309,11 +317,12 @@ def sens_and_var_over_time(dataset, model, num_deltas=500, iter_range=(0, 1000),
         df.set_index('t', inplace=True)
         # now join the losses... 
         # (actually we can just load the losses as needed)
-        losses = derived_results.aggregated_loss(dataset, model, iter_range=iter_range, data_privacy=data_privacy)
+        losses = aggregated_loss(dataset, model, iter_range=iter_range, data_privacy=data_privacy)
         df = df.join(losses)
         ###
         df.to_csv(path)
     return True
+
 
 def estimate_empirical_lipschitz(dataset, model, diffinit, iter_range, n_samples=5000):
     """
@@ -355,6 +364,7 @@ def estimate_empirical_lipschitz(dataset, model, diffinit, iter_range, n_samples
     ave_norm = cumulative/cum_count
     return min_norm, ave_norm, max_norm
 
+
 def estimate_sensitivity_empirically(dataset, model, t, num_deltas, diffinit=False, data_privacy='all'):
     """ pull up the histogram
     """
@@ -367,6 +377,7 @@ def estimate_sensitivity_empirically(dataset, model, t, num_deltas, diffinit=Fal
     vary_data_deltas = plot_data['vary_S']
     sensitivity = np.nanmax(vary_data_deltas)
     return sensitivity
+
 
 def get_deltas(dataset, iter_range, model, 
         vary_seed=True, vary_data=True, params=None, num_deltas=100,
@@ -392,7 +403,7 @@ def get_deltas(dataset, iter_range, model,
         print('ERROR: Run more experiments, or set num_deltas to be at most', int(df.shape[0]/2))
         return False
     w_rows = np.random.choice(df.shape[0], num_deltas, replace=False)
-    remaining_rows = [x for x in range(df.shape[0]) if not x in w_rows]
+    remaining_rows = [x for x in range(df.shape[0]) if x not in w_rows]
     df_remaining = df.iloc[remaining_rows]
     seed_options = df_remaining['seed'].unique()
     if len(seed_options) < 2:
@@ -466,6 +477,7 @@ def get_deltas(dataset, iter_range, model,
     identifiers = np.array(list(zip(w_identifiers, wp_identifiers)))
     return deltas, identifiers
 
+
 def aggregated_loss(dataset, model, iter_range=(None, None), diffinit=False, data_privacy='all'):
     """ maybe i should include save/load here """
     path = 'fig_data/aggregated_loss.' + dataset + '.' + model + '.' + data_privacy + '.csv'
@@ -501,7 +513,9 @@ def aggregated_loss(dataset, model, iter_range=(None, None), diffinit=False, dat
         df.to_csv(path, header=True, index=True)
     return df
 
-def estimate_statistics_through_training(what, dataset, identifier, df=None, params=None, iter_range=(None, None)):
+
+def estimate_statistics_through_training(what, dataset, model, replace_index, seed, df=None, 
+        params=None, iter_range=(None, None), diffinit=True):
     """
     Grab a trace file for a model, estimate the alpha value for gradient noise throughout training
     NOTE: All weights taken together as IID (in the list of params supplied)
@@ -510,9 +524,6 @@ def estimate_statistics_through_training(what, dataset, identifier, df=None, par
     """
     assert what in ['gradients', 'weights']
     if df is None:
-        assert not identifier is None
-        # get from the all_gradients file
-        model, replace_index, seed = identifier
         if what == 'gradients':
             df = results_utils.load_gradients(dataset, model, replace_index, seed, noise=True, params=params, iter_range=iter_range)
         else:
@@ -559,6 +570,7 @@ def estimate_statistics_through_training(what, dataset, identifier, df=None, par
         #df_fits.loc[t, 'log_p'] = p
     return df_fits
 
+
 def get_sens_and_var_distribution(dataset, model, t, n_pairs=None, by_parameter=False, diffinit=False):
     """
     TODO: amortise, save
@@ -577,7 +589,7 @@ def get_sens_and_var_distribution(dataset, model, t, n_pairs=None, by_parameter=
         for j in range(i + 1, n_replaces):
             dj = replaces[j]
             pairs_array.append((di, dj))
-    if not n_pairs is None:
+    if n_pairs is not None:
         total_pairs = len(pairs_array)
         print(total_pairs)
         pair_picks = np.random.choice(total_pairs, n_pairs, replace=False)
@@ -590,6 +602,7 @@ def get_sens_and_var_distribution(dataset, model, t, n_pairs=None, by_parameter=
         overlap_array.append(n_seeds)
     df = pd.DataFrame({'pair': pairs_array, 'sensitivity': sens_array, 'variability': var_array, 'overlapping_seeds': overlap_array})
     return df
+
 
 def compute_pairwise_sens_and_var(dataset, model, t, replace_indices, by_parameter=False, verbose=True, diffinit=False):
     """
@@ -624,18 +637,22 @@ def compute_pairwise_sens_and_var(dataset, model, t, replace_indices, by_paramet
     ### compute the distances on the same seed
     distances = np.linalg.norm(samples_1_intersection - samples_2_intersection, axis=1)
     sensitivity = np.max(distances)
-    if verbose: print('Max sensitivity from same seed diff data:', sensitivity)
+    if verbose: 
+        print('Max sensitivity from same seed diff data:', sensitivity)
     #### compute distance by getting average value and comparing
     mean_1 = samples_1.mean(axis=0)
     mean_2 = samples_2.mean(axis=0)
     sensitivity_bymean = np.linalg.norm(mean_1 - mean_2)
-    if verbose: print('Sensitivity from averaging posteriors and comparing:', sensitivity_bymean)
+    if verbose: 
+        print('Sensitivity from averaging posteriors and comparing:', sensitivity_bymean)
     variability_1 = (samples_1 - mean_1).values.std()
     variability_2 = (samples_2 - mean_2).values.std()
     # NOT SURE ABOUT THIS
     variability = 0.5*(variability_1 + variability_2)
-    if verbose: print('Variability:', variability)
+    if verbose: 
+        print('Variability:', variability)
     return sensitivity, variability, n_seeds
+
 
 def estimate_variability(dataset, model, t, by_parameter, replaces=None, diffinit=False, data_privacy='all'):
     """
@@ -682,6 +699,7 @@ def estimate_variability(dataset, model, t, by_parameter, replaces=None, diffini
         np.save(data_path, data)
     estimated_variability = np.nanmedian(sigmas, axis=0)
     return estimated_variability
+
 
 def validate_sigmas_sens_var(dataset, model, t, n_pairs, diffinit):
     """
@@ -753,6 +771,7 @@ def find_convergence_point_for_single_experiment(dataset, model, replace_index, 
             print('Did not find instance of validation loss failing to decrease for', tolerance, 'steps - returning nan')
         convergence_point = np.nan
     return convergence_point
+
 
 def find_convergence_point(dataset, model, diffinit, tolerance, metric, data_privacy='all'):
     """ wrapper for the whole experiment """

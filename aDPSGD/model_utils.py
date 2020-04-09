@@ -2,7 +2,6 @@
 
 import tensorflow as tf
 import abc
-from time import time
 from tensorflow import keras as K
 import numpy as np
 import pandas as pd
@@ -204,7 +203,7 @@ class model(object):
         else:
             try:
                 self.load_weights(self.init_path, t)
-            except:
+            except FileNotFoundError:
                 print('WARNING: Could not load weights from', self.init_path)
 
     @abc.abstractmethod
@@ -255,7 +254,7 @@ class model(object):
         print('[model_utils] Loading flattened weights from', path, 'at time', t)
         # WARNING: THIS IS SPECIFIC TO HOW I'VE ENCODED THE WEIGHTS
         weights = pd.read_csv(path, skiprows=1)
-        if not t in weights['t'].unique():
+        if t not in weights['t'].unique():
             print('ERROR: Timepoint', t, ' is not available in file', path, '(largest t is', weights['t'].max(), ')')
             raise ValueError(t)
         weights_at_t = weights.loc[weights['t'] == t, :].values[0, 1:]
@@ -327,7 +326,7 @@ class model(object):
         self.metrics = metrics
 
     def compute_metrics(self, X, y):
-        assert not self.metrics is None
+        assert self.metrics is not None
         feed_dict = {self.model.input: X, self.model.targets[0]: y.reshape(-1, 1)}
         metrics = K.backend.get_session().run(self.metrics, feed_dict=feed_dict)
         return metrics
@@ -467,14 +466,8 @@ def train_model(model_object, n_epochs, x_train, y_train, x_vali, y_vali,
     N = x_train.shape[0]
     if not N % batch_size == 0:
         print('[model utils] WARNING: Training set size is not multiple of batch size - some data will be missed every epoch!')
-    #try:
-    #    assert N % batch_size == 0
-    #except AssertionError:
-    #    print(N, batch_size)
     n_batches = N // batch_size
 
-    metric_names = model_object.model.metrics_names
-    #my_callback.on_train_begin(logs={})
     inspector.initialise_files()
     for e in range(n_epochs):
         if e % 100 == 0:
@@ -482,23 +475,15 @@ def train_model(model_object, n_epochs, x_train, y_train, x_vali, y_vali,
         shuf = np.random.permutation(N)
         x_train = x_train[shuf]
         y_train = y_train[shuf]
-        t0 = time()
         # at the very beginning!
         inspector.on_batch_end(x_vali, y_vali)
         for batch_idx in range(n_batches):
             x_batch = x_train[batch_idx*batch_size:(batch_idx+1)*batch_size]
             y_batch = y_train[batch_idx*batch_size:(batch_idx+1)*batch_size]
-            metrics = model_object.model.train_on_batch(x_batch, y_batch)
-            #    vali_metrics = model_object.model.test_on_batch(x_vali, y_vali)
-            #    vali_logs = dict(zip(['val_' + s for s in metric_names], vali_metrics))
-            #    logs.update(vali_logs)
+            _ = model_object.model.train_on_batch(x_batch, y_batch)
             inspector.on_batch_end(x_vali, y_vali)
-            #my_callback.on_batch_end(batch_idx, logs=logs)
         # at the end of the epoch, test on everything
         inspector.on_epoch_end()
-        #print(my_callback.train_loss)
-        #metrics = model_object.model.train_on_batch(x_train, y_train)
-        #print('epoch', str(e).zfill(2), 'batch', str(batch_idx).zfill(3), 'loss:', np.round(logs['loss'], 3), 'vali loss:', np.round(logs['val_loss'], 3))
     K.backend.clear_session()
     #tf.reset_default_graph()
     return True
@@ -522,7 +507,7 @@ def estimate_sensitivity(weights_with_different_data, reference_idx=0, return_al
     for i in range(n_runs):
         if i == reference_idx:
             distance = np.nan
-        elif (not identifiers is None) and (identifiers[i] == identifiers[reference_idx]):
+        elif (identifiers is not None) and (identifiers[i] == identifiers[reference_idx]):
             distance = np.nan
         else:
             distance = np.linalg.norm(weights_with_different_data[i] - weights_with_different_data[reference_idx])

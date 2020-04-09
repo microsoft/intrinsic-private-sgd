@@ -4,7 +4,6 @@
 
 import numpy as np
 import pandas as pd
-import ipdb
 import glob
 import os
 
@@ -60,7 +59,6 @@ def get_posterior_samples(dataset, iter_range, model='linear', replace_index=Non
         available_seeds = seeds
     if not n_seeds is None:
         available_seeds = np.random.choice(available_seeds, n_seeds, replace=False)
-    S = len(available_seeds) 
     if verbose:
         print('Loading samples from seeds:', available_seeds, 'in range', iter_range)
     samples = []
@@ -75,7 +73,6 @@ def get_posterior_samples(dataset, iter_range, model='linear', replace_index=Non
                 samples.append(weights_from_s)
         except AttributeError:
             print('WARNING: No data from seed', s, 'in range', iter_range, 'or something, not sure why this error happened? - skipping')
-            ipdb.set_trace()
     if len(samples) > 1:
         samples = pd.concat(samples)
     else:

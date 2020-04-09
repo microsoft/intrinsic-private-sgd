@@ -2,7 +2,6 @@
 # Functions mostly around fitting distributions
 
 import numpy as np
-import ipdb
 from scipy.stats import kstest, laplace, shapiro, anderson
 
 def fit_alpha_stable(X):

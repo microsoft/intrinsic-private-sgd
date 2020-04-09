@@ -19,6 +19,7 @@ import test_private_model
 import data_utils
 import experiment_metadata
 
+
 def beautify_axes(axarr):
     """
     Standard prettification edits I do in matplotlib
@@ -35,6 +36,7 @@ def beautify_axes(axarr):
             ax.tick_params(bottom=False, left=False)
             ax.grid(linestyle='--', alpha=0.5)
     return True
+
 
 def process_identifiers(datasets, models, replaces, seeds, privacys):
     # figure out length of longest provided list
@@ -77,6 +79,7 @@ def process_identifiers(datasets, models, replaces, seeds, privacys):
         privacys = [privacys]*n_identifiers
     identifiers = list(zip(datasets, models, replaces, seeds, privacys))
     return identifiers
+
 
 def qq_plot(what, dataset, identifier, times=[50], params='random'):
     """
@@ -127,12 +130,12 @@ def qq_plot(what, dataset, identifier, times=[50], params='random'):
     plt.savefig('plots/' + dataset + '/' + plot_label + '_qq' + '_' + what + '.png')
     return True
 
+
 def visualise_gradient_values(dataset, identifiers, save=True, iter_range=(None, None), params=None, full_batch=True, include_max=False, diffinit=False, what='norm'):
     """
     if include_max: plot the max gradient norm (this would be the empirical lipschitz constant)
     """
     fig, axarr = plt.subplots(nrows=1, ncols=1)
-    assert len(identifiers) == len(scaling)
     for i, identifier in enumerate(identifiers):
         label = ':'.join(identifier)
         model, replace_index, seed = identifier
@@ -161,6 +164,7 @@ def visualise_gradient_values(dataset, identifiers, save=True, iter_range=(None,
         plot_label = '_'.join([':'.join(x) for x in identifiers])
         plt.savefig('plots/' + dataset + '/grad' + what + '_' + plot_label + '.png')
     return True
+
 
 def bivariate_gradients(dataset, model, replace_index, seed, df=None, params=['#3', '#5'], iter_range=(None, None), n_times=2, save=False):
     print('Comparing gradients for parameters', params, 'at', n_times, 'random time-points')
@@ -191,20 +195,20 @@ def bivariate_gradients(dataset, model, replace_index, seed, df=None, params=['#
     beautify_axes(axarr)
     plt.tight_layout()
     if save:
-        assert not identifier is None
+        identifier = dataset + '_' + model + '_replace' + str(replace_index) + '_seed' + str(seed) + '_params' + '_'.join(params) + '.png'
         plt.savefig('plots/' + identifier + '_gradient_pairs.png')
         plt.clf()
         plt.close()
     return True
 
-def fit_pval_histogram(what, dataset, model, t, n_experiments=3, diffinit=False, xlim=None):
+
+def fit_pval_histogram(what, dataset, model, t, n_experiments=3, diffinit=False, xlim=None, seed=1):
     """
     histogram of p-values (across parameters-?) for a given model etc.
     """
     # set some stuff up
     iter_range = (t, t +1)
     fig, axarr = plt.subplots(nrows=1, ncols=1, figsize=(3.5, 2.1))
-    colours = cm.viridis(np.linspace(0.2, 0.8, n_experiments))
     pval_colour = '#b237c4'
     # sample experiments
     df = results_utils.get_available_results(dataset, model, diffinit=diffinit)
@@ -233,13 +237,13 @@ def fit_pval_histogram(what, dataset, model, t, n_experiments=3, diffinit=False,
         p_vals = np.zeros(shape=(n_params))
         for j, p in enumerate(params):
             print('getting fit for parameter', p)
-            df_fit = derived_results.estimate_statistics_through_training(what=what, dataset=None, identifier=None, df=df.loc[:, ['t', second_col, p]], params=None, iter_range=None)
+            df_fit = derived_results.estimate_statistics_through_training(what=what, dataset=None, model=None, replace_index=None, seed=None, df=df.loc[:, ['t', second_col, p]], params=None, iter_range=None)
             p_vals[j] = df_fit.loc[t, 'norm_p']
             del df_fit
         log_pvals = np.log(p_vals)
         all_pvals.append(log_pvals)
     log_pvals = np.concatenate(all_pvals)
-    if not xlim is None:
+    if xlim is not None:
         # remove values below the limit
         number_below = (log_pvals < xlim[0]).sum()
         print('There are', number_below, 'p-values below the limit of', xlim[0])
@@ -253,7 +257,7 @@ def fit_pval_histogram(what, dataset, model, t, n_experiments=3, diffinit=False,
     axarr.legend()
     axarr.set_xlabel(r'$\log(p)$')
     axarr.set_ylabel('density')
-    if not xlim is None:
+    if xlim is not None:
         axarr.set_xlim(xlim)
     else:
         axarr.set_xlim((None, 0.01))
@@ -264,7 +268,8 @@ def fit_pval_histogram(what, dataset, model, t, n_experiments=3, diffinit=False,
     plt.savefig('plots/analyses/' + dataset + '_' + model + '_' + what + '_pval_histogram.pdf')
     return True
 
-def visualise_fits(dataset, identifier, save=True, params=None):
+
+def visualise_fits(dataset, model, replace_index, seed, save=True, params=None):
     print('Visualising distribution fits through training')
     # load and fit the data
     if params is None:
@@ -277,9 +282,9 @@ def visualise_fits(dataset, identifier, save=True, params=None):
     colours = cm.viridis(np.linspace(0.2, 0.8, n_comparators))
     for i, p in enumerate(params):
         print('visualising fit for parameter parameter', p)
-        df_fit = derived_results.estimate_statistics_through_training(what='gradients', dataset=dataset, identifier=identifier, params=[p])
+        df_fit = derived_results.estimate_statistics_through_training(what='gradients', dataset=dataset, model=model, replace_index=replace_index, seed=seed, params=[p])
         if df_fit is False:
-            print('No fit data available for identifier:', identifier)
+            print('No fit data available')
             return False
         iterations = df_fit.index
         color = to_hex(colours[i])
@@ -293,18 +298,6 @@ def visualise_fits(dataset, identifier, save=True, params=None):
         axarr[2].plot(iterations, df_fit['norm_p'], c=color, alpha=0.75, zorder=2, label='_nolegend_')
         axarr[2].set_ylabel('log p-value')
         
-        #axarr[1, 0].scatter(iterations, df_fit['lap_scale'], c=color, alpha=1, s=4, zorder=2, label='scale' if i == 0 else '_nolegend_')
-        #axarr[1, 0].plot(iterations, df_fit['lap_scale'], c=color, alpha=0.75, zorder=2, label='_nolegend_')
-        #axarr[1, 1].scatter(iterations, df_fit['lap_D'], c=color, alpha=1, s=4, zorder=2, label='D (KS)' if i == 0 else '_nolegend_')
-        #axarr[1, 1].plot(iterations, df_fit['lap_D'], c=color, alpha=0.75, zorder=2, label='_nolegend_')
-        #axarr[1, 2].scatter(iterations, df_fit['lap_p'] + np.spacing(1), c=color, alpha=1, s=4, zorder=2, label='log(p)' if i == 0 else '_nolegend_')
-        #axarr[1, 2].plot(iterations, df_fit['lap_p'] + np.spacing(1), c=color, alpha=0.75, zorder=2, label='_nolegend_')
-
-        
-    #    axarr[2, 0].scatter(iterations, df_fit['alpha'], c='black', alpha=1, s=4, zorder=2, label='alpha')
-    #    axarr[2, 0].plot(iterations, df_fit['alpha'], c='black', alpha=0.75, zorder=2, label='_nolegend_')
-
-       
     if (len(params) > 1) and (len(params) < 5):
         print(len(params), 'parameters - adding a legend')
         axarr[0].legend()
@@ -312,21 +305,16 @@ def visualise_fits(dataset, identifier, save=True, params=None):
     axarr[-1].set_yscale('log')
     axarr[-1].axhline(y=0.05, c='red', ls='--', label='p = 0.05')
     axarr[-1].set_xlabel('training iterations')
-    # fix y-limits of first two rows
-    #for col in [0, 1, 2]:
-        #    y_max = np.max([axarr[0, col].get_ylim()[1], axarr[1, col].get_ylim()[1]])
-        #y_min = np.min([axarr[0, col].get_ylim()[0], axarr[1, col].get_ylim()[0]])
-        #axarr[0, col].set_ylim((y_min, y_max))
-        #axarr[1, col].set_ylim((y_min, y_max))
     beautify_axes(axarr)
     plt.tight_layout()
    
     if save:
-        plot_label = '.'.join(identifier) + '.'.join(params)
+        plot_label = model + '_replace' + str(replace_index) + '_seed' + str(seed) + '_'.join(params)
         plt.savefig('plots/' + dataset + '/' + plot_label + '_fits.png')
         plt.clf()
         plt.close()
     return True
+
 
 def visualise_variance(df, times, colormap=None, identifier=None, save=False, value_lim=None):
     """
@@ -367,16 +355,8 @@ def visualise_variance(df, times, colormap=None, identifier=None, save=False, va
                 ax.set_xlabel(what)
             if j == 0:
                 ax.set_ylabel('iter:' + str(t))
-            if j == ncols - 1 and not value_lim is None:
+            if j == ncols - 1 and value_lim is not None:
                 ax.set_xlim(value_lim)
-
-
-#    axarr[0].set_title(label)
-#    if not value_lim is None:
-#        axarr[-1].set_xlim(value_lim)
-   
-#    for ax in axarr[:-1]:
-#        ax.set_xlabel('')
 
     beautify_axes(axarr)
     plt.tight_layout()
@@ -385,6 +365,7 @@ def visualise_variance(df, times, colormap=None, identifier=None, save=False, va
         plt.clf()
         plt.close()
     return True
+
 
 def visualise_trace(datasets, models, replaces, seeds, privacys, save=True, 
         include_batches=False, iter_range=(None, None), 
@@ -471,6 +452,7 @@ def visualise_trace(datasets, models, replaces, seeds, privacys, save=True,
     plt.close()
     return True
 
+
 def visualise_autocorrelation(dataset, model, replace_index, seed, params, save=True):
     """ what's the autocorrelation of the weights?.... or gradients? """
     df = results_utils.load_weights(dataset, model, replace_index, seed, params=params)
@@ -496,10 +478,11 @@ def visualise_autocorrelation(dataset, model, replace_index, seed, params, save=
     plt.close()
     return True
 
-def examine_parameter_level_gradient_noise(dataset, identifier, times=[10, 25], save=True, params=['#1', '#5']):
-    print('demonstrating gradient noise distributions for', identifier, 'at times', times, 'for parameters', params)
+
+def examine_parameter_level_gradient_noise(dataset, model, replace_index, seed, times=[10, 25], save=True, params=['#1', '#5']):
+    print('demonstrating gradient noise distributions at times', times, 'for parameters', params)
     iter_range = (min(times) - 1, max(times) + 1)
-    assert not params is None
+    assert params is not None
     df = results_utils.load_gradients(dataset, model, replace_index, seed, noise=True, iter_range=iter_range, params=params)
 
     ncols = len(params)
@@ -524,18 +507,20 @@ def examine_parameter_level_gradient_noise(dataset, identifier, times=[10, 25], 
 
     beautify_axes(axarr)
     if save:
-        plot_label = identifier + '.gradient_noise.params' + '.'.join(params)
-        plt.savefig('plots/' + dataset + '/' + plot_label + '_trace.png')
+        identifier = dataset + '_' + model + '_replace' + str(replace_index) + '_seed' + str(seed)
+        plot_label = identifier + '.gradient_noise_params' + '_'.join(params)
+        plt.savefig('plots/' + dataset + '/' + plot_label + '.png')
     plt.clf()
     plt.close()
     return True
 
-def visually_compare_distributions(identifier, df=None, times=[10, 25], save=False, iter_range=(None, None), params=None):
-    print('Visually comparing distributions for', identifier, 'at times', times)
+
+def visually_compare_distributions(dataset, model, replace_index, seed, df=None, times=[10, 25], save=False, iter_range=(None, None), params=None):
+    print('Visually comparing distributions at times', times)
     if df is None:
         df = results_utils.load_gradients(dataset, model, replace_index, seed, noise=True, iter_range=iter_range, params=params)
     else:
-        if not params is None:
+        if params is not None:
             print('WARNING: Data provided, params argument ignored.')
     if df is False:
         print('[visually_compare_distributions] ERROR: No data available.')
@@ -549,8 +534,8 @@ def visually_compare_distributions(identifier, df=None, times=[10, 25], save=Fal
         if df_t.shape[0] == 0:
             print('WARNING: No data from iteration', t, ' - skipping!')
             continue
-        df_fit = derived_results.estimate_statistics_through_training(what='gradinets', dataset=dataset, identifier=identifier, df=df_t)
-        if not params is None:
+        df_fit = derived_results.estimate_statistics_through_training(what='gradients', dataset=dataset, model=model, replace_index=replace_index, seed=seed, df=df_t)
+        if params is not None:
             n_params = len(params)
             grad_noise = df_t.iloc[:, -n_params:].values.flatten()
             #grad_noise = df_t['grad_noise'].values
@@ -583,7 +568,8 @@ def visually_compare_distributions(identifier, df=None, times=[10, 25], save=Fal
     
     plt.tight_layout()
     if save:
-        if not params is None:
+        identifier = model + '_replace' + str(replace_index) + '_seed' + str(seed)
+        if params is not None:
             label = identifier + '_' + str(n_params) + 'params'
         else:
             label = identifier + '_joint'
@@ -591,6 +577,7 @@ def visually_compare_distributions(identifier, df=None, times=[10, 25], save=Fal
         plt.clf()
         plt.close()
     return True
+
 
 def visualise_weight_trajectory(dataset, identifiers, df=None, save=True, iter_range=(None, None), params=['#4', '#2'], include_optimum=False,
         include_autocorrelation=False, diffinit=False):
@@ -680,6 +667,7 @@ def compare_posteriors_with_different_data(dataset, model, t, replace_indices, p
     axarr[-1].legend()
     beautify_axes(axarr)
     return True
+
 
 def delta_over_time(dataset, model, identifier_pair, iter_range, include_bound=False):
     """

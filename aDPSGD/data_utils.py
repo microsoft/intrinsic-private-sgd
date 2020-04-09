@@ -4,16 +4,12 @@
 import tensorflow.keras.datasets as datasets
 import numpy as np
 import pandas as pd
-from scipy.stats import entropy, invwishart, multivariate_normal
+from scipy.stats import entropy 
 from scipy.spatial.distance import cosine
 from sklearn.random_projection import GaussianRandomProjection
 from sklearn.decomposition import PCA
 import ipdb
 
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-import seaborn as sns
 
 def min_max_rescale(df_train, df_test, good_columns=None):
     if good_columns is None:
@@ -36,8 +32,9 @@ def min_max_rescale(df_train, df_test, good_columns=None):
     assert np.isnan(df_test).sum() == 0
     return df_train, df_test
 
+
 def load_data(data_type, data_options, replace_index=None, data_privacy='all'):
-    if not data_privacy in ['all', 'public', 'private']:
+    if data_privacy not in ['all', 'public', 'private']:
         raise ValueError(data_privacy)
     if replace_index == 'NA':
         replace_index = None
@@ -67,6 +64,7 @@ def load_data(data_type, data_options, replace_index=None, data_privacy='all'):
                 flatten=flatten,
                 data_privacy=data_privacy,
                 project=project,
+                crop=crop,
                 pca=pca)
     elif data_type == 'cifar10':
         flatten = data_options['flat']
@@ -110,16 +108,17 @@ def load_data(data_type, data_options, replace_index=None, data_privacy='all'):
     else:
         raise ValueError(data_type)
 
-    x_train, y_train, x_vali, y_vali, x_test, y_test = validation_split(x_train, y_train, x_test, y_test)
+    x_train, y_train, x_vali, y_vali, x_test, y_test = validation_split(x_train, y_train, x_test, y_test, replace_index)
 
     return x_train, y_train, x_vali, y_vali, x_test, y_test
 
-def validation_split(x_train, y_train, x_test, y_test):
+
+def validation_split(x_train, y_train, x_test, y_test, replace_index):
     # we need to generate a validation set (do it from the train set)
     N = x_train.shape[0]
     n_vali = int(0.1*N)
     vali_idx = range(n_vali)
-    train_idx = [i for i in range(N) if not i in vali_idx]
+    train_idx = [i for i in range(N) if i not in vali_idx]
     assert len(set(vali_idx).intersection(set(train_idx))) == 0
     x_vali = x_train[vali_idx]
     y_vali = y_train[vali_idx]
@@ -141,6 +140,7 @@ def validation_split(x_train, y_train, x_test, y_test):
         y_train = np.delete(y_train, special_idx, axis=0)
 
     return x_train, y_train, x_vali, y_vali, x_test, y_test
+
 
 def load_protein(data_privacy='all'):
     """
@@ -174,12 +174,12 @@ def load_protein(data_privacy='all'):
         n_train = int((N+1)/2)
         assert n_train == 72876
         train_idx = np.random.choice(N, n_train, replace=False)
-        test_idx = [x for x in range(N) if not x in train_idx]
+        test_idx = [x for x in range(N) if x not in train_idx]
         x_train = features[train_idx, :]
         x_test = features[test_idx, :]
         y_train = y[train_idx]
         y_test = y[test_idx]
-    
+
         x_train, y_train, x_test, y_test = public_private_split('protein', data_privacy, x_train, y_train, x_test, y_test)
 
         data = {'x_train': x_train,
@@ -188,6 +188,7 @@ def load_protein(data_privacy='all'):
                 'y_test': y_test}
         np.save(path, data)
     return x_train, y_train, x_test, y_test
+
 
 def load_forest(data_privacy='all'):
     """
@@ -222,20 +223,20 @@ def load_forest(data_privacy='all'):
         n_train = int(N*train_frac)
         #n_train = 498010             # this is what they use in the bolt-on paper... but how do they make it binary?
         train_idx = np.random.choice(N, n_train, replace=False)
-        test_idx = [x for x in range(N) if not x in train_idx]
+        test_idx = [x for x in range(N) if x not in train_idx]
         print('n train:', n_train, 'n test:', len(test_idx))
         #assert len(test_idx) == 83002
         x_train = features[train_idx, :]
         x_test = features[test_idx, :]
         y_train = y[train_idx]
         y_test = y[test_idx]
-        
+
         # need to keep this to make sure the columns are all the same... when we do public/private split
         x_train_orig = x_train.copy()
 
         # do public/private split
         x_train, y_train, x_test, y_test = public_private_split('forest', data_privacy, x_train, y_train, x_test, y_test)
-        
+
         # now we need to normalise this
         # rescale to 0-1 first
         col_mins = x_train_orig.min(axis=0)
@@ -244,14 +245,14 @@ def load_forest(data_privacy='all'):
         good_columns = (col_ranges > 0)
         del x_train_orig
         x_train, x_test = min_max_rescale(x_train, x_test, good_columns=good_columns)
-        
+
         # and NOW we project to the unit sphere
         print('Projecting to sphere...')
         x_train = x_train / np.linalg.norm(x_train, axis=1).reshape(-1, 1)
         x_test = x_test / np.linalg.norm(x_test, axis=1).reshape(-1, 1)
         assert np.all(np.abs(np.linalg.norm(x_train, axis=1) - 1) < 1e-6)
         assert np.all(np.abs(np.linalg.norm(x_test, axis=1) - 1) < 1e-6)
-        
+
         data = {'x_train': x_train,
                 'x_test': x_test,
                 'y_train': y_train,
@@ -260,12 +261,13 @@ def load_forest(data_privacy='all'):
         np.save(path, data)
     return x_train, y_train, x_test, y_test
 
+
 def load_housing(binary=False, enforce_max_norm=True, data_privacy='all'):
     """
     Boston housing dataset
     """
     housing = datasets.boston_housing
-    
+
     (x_train, y_train), (x_test, y_test) = housing.load_data()
     # split it up 
     x_train, y_train, x_test, y_test = public_private_split('housing', data_privacy, x_train, y_train, x_test, y_test)
@@ -303,6 +305,7 @@ def load_housing(binary=False, enforce_max_norm=True, data_privacy='all'):
 
     return x_train, y_train, x_test, y_test
 
+
 def public_private_split(dataset, data_privacy, x_train, y_train, x_test, y_test):
     """
     """
@@ -318,15 +321,15 @@ def public_private_split(dataset, data_privacy, x_train, y_train, x_test, y_test
             public_test_idx = split['public_test_idx']
             private_train_idx = split['private_train_idx']
             private_test_idx = split['private_test_idx']
-        except:
+        except FileNotFoundError:
             print('No pre-defined split found!')
             N_train = x_train.shape[0]
             N_test = x_test.shape[0]
-            
+
             public_train_idx = np.random.choice(N_train, int(0.5*N_train), replace=False)
             public_test_idx = np.random.choice(N_test, int(0.5*N_test), replace=False)
-            private_train_idx = np.array([i for i in range(N_train) if not i in public_train_idx])
-            private_test_idx = np.array([i for i in range(N_test) if not i in public_test_idx])
+            private_train_idx = np.array([i for i in range(N_train) if i not in public_train_idx])
+            private_test_idx = np.array([i for i in range(N_test) if i not in public_test_idx])
             assert len(set(public_train_idx).intersection(set(private_train_idx))) == 0
             assert len(set(public_test_idx).intersection(set(private_test_idx))) == 0
 
@@ -349,6 +352,7 @@ def public_private_split(dataset, data_privacy, x_train, y_train, x_test, y_test
             y_test = y_test[private_test_idx]
     return x_train, y_train, x_test, y_test
 
+
 def load_mnist(binary=False, enforce_max_norm=False, flatten=True, data_privacy='all', project=True, pca=False, crop=False):
     """
     Load MNIST, specifying the option to delete one of the training examples.
@@ -367,7 +371,7 @@ def load_mnist(binary=False, enforce_max_norm=False, flatten=True, data_privacy=
         # cant load from file, build it up again
         mnist = datasets.mnist
         (x_train, y_train), (x_test, y_test) = mnist.load_data()
-        
+
         x_train, y_train, x_test, y_test = public_private_split('mnist', data_privacy, x_train, y_train, x_test, y_test)
         if binary:
             # keep only 3 and 5 (I chose these randomly)
@@ -385,10 +389,10 @@ def load_mnist(binary=False, enforce_max_norm=False, flatten=True, data_privacy=
             # sanity check
             assert set(y_train) == {1, 0}
             assert set(y_test) == {1, 0}
-        
+
         # typical normalisation
         x_train, x_test = x_train/255.0, x_test/255.0
-    
+
         if crop:
             assert x_train.shape[1:] == (28, 28)
             assert x_test.shape[1:] == (28, 28)
@@ -424,7 +428,7 @@ def load_mnist(binary=False, enforce_max_norm=False, flatten=True, data_privacy=
             # just add a sneaky little dimension on there for the CNN
             x_train = x_train.reshape(-1, side_length, side_length, 1)
             x_test = x_test.reshape(-1, side_length, side_length, 1)
-        
+
         if enforce_max_norm:
             # slightly different normalisation to what's normal in MNIST
             if len(x_train.shape) == 2:
@@ -441,7 +445,7 @@ def load_mnist(binary=False, enforce_max_norm=False, flatten=True, data_privacy=
             x_test = np.where(test_norms > 1, x_test/test_norms, x_test)
             assert np.all(np.abs(np.linalg.norm(x_train, axis=axis) - 1) < 1e-6)
             assert np.all(np.abs(np.linalg.norm(x_test, axis=axis) - 1) < 1e-6)
-        
+
         data = {'x_train': x_train,
                 'x_test': x_test,
                 'y_train': y_train,
@@ -449,7 +453,7 @@ def load_mnist(binary=False, enforce_max_norm=False, flatten=True, data_privacy=
 
         np.save(dataset_string, data)
         print('Saved data to', dataset_string)
-   
+
    ##  DEBUG TEST VARIANTS ! ###
 #    scale = 16.0
 #    x_train = scale*x_train/16
@@ -461,6 +465,7 @@ def load_mnist(binary=False, enforce_max_norm=False, flatten=True, data_privacy=
    #x_train = 0.5*x_train
    #x_test = 0.5*x_test
     return x_train, y_train, x_test, y_test
+
 
 def load_cifar10(binary=False, enforce_max_norm=False, flatten=True, data_privacy='all', project=True, pca=False, crop=False):
     """
@@ -481,7 +486,7 @@ def load_cifar10(binary=False, enforce_max_norm=False, flatten=True, data_privac
         (x_train, y_train), (x_test, y_test) = cifar10.load_data()
         y_train = y_train[:, 0]
         y_test = y_test[:, 0]
-        
+
         x_train, y_train, x_test, y_test = public_private_split('cifar10', data_privacy, x_train, y_train, x_test, y_test)
         if binary:
             # keep only 3 and 5
@@ -501,10 +506,10 @@ def load_cifar10(binary=False, enforce_max_norm=False, flatten=True, data_privac
             # sanity check
             assert set(y_train) == {1, 0}
             assert set(y_test) == {1, 0}
-        
+
         # typical normalisation
         x_train, x_test = x_train/255.0, x_test/255.0
-    
+
         if crop:
             assert x_train.shape[1:] == (32, 32, 3)
             assert x_test.shape[1:] == (32, 32, 3)
@@ -545,7 +550,7 @@ def load_cifar10(binary=False, enforce_max_norm=False, flatten=True, data_privac
             # keeping it not-flat
             assert len(x_train.shape) == 4
             assert len(x_test.shape) == 4
-        
+
         if enforce_max_norm:
             if len(x_train.shape) == 2:
                 axis = (1)
@@ -561,7 +566,7 @@ def load_cifar10(binary=False, enforce_max_norm=False, flatten=True, data_privac
             x_test = np.where(test_norms > 1, x_test/test_norms, x_test)
             assert np.all(np.abs(np.linalg.norm(x_train, axis=axis) - 1) < 1e-6)
             assert np.all(np.abs(np.linalg.norm(x_test, axis=axis) - 1) < 1e-6)
-        
+
         data = {'x_train': x_train,
                 'x_test': x_test,
                 'y_train': y_train,
@@ -569,8 +574,9 @@ def load_cifar10(binary=False, enforce_max_norm=False, flatten=True, data_privac
 
         np.save(dataset_string, data)
         print('Saved data to', dataset_string)
-   
+
     return x_train, y_train, x_test, y_test
+
 
 def load_cifar10_vestigial(flatten=True, data_privacy='all'):
     """
@@ -613,6 +619,7 @@ def load_cifar10_vestigial(flatten=True, data_privacy='all'):
         print('Saved data to', dataset_string)
     return x_train, y_train, x_test, y_test
 
+
 def load_adult(data_privacy='all', pca=False):
     """
     """
@@ -626,33 +633,33 @@ def load_adult(data_privacy='all', pca=False):
         print('Loaded from file')
     except FileNotFoundError:
         adult_header = ['age',
-				'workclass',
-				'fnlwgt',
-				'education',
-				'education-num',
-				'marital-status',
-				'occupation',
-				'relationship',
-				'race',
-				'sex',
-				'capital-gain',
-				'capital-loss',
-				'hours-per-week',
-				'native-country',
+                'workclass',
+                'fnlwgt',
+                'education',
+                'education-num',
+                'marital-status',
+                'occupation',
+                'relationship',
+                'race',
+                'sex',
+                'capital-gain',
+                'capital-loss',
+                'hours-per-week',
+                'native-country',
                 'label']
         df = pd.read_csv('./data/adult.data', sep=', ', header=None)
         df_test = pd.read_csv('./data/adult.test', sep=', ', skiprows=1, header=None)
         df.columns = adult_header
         df_test.columns = adult_header
         label_replace_dict = {'>50K': 1, '<=50K': 0, 
-                              '>50K.': 1, '<=50K.': 0}
+                '>50K.': 1, '<=50K.': 0}
         y_train = df['label'].replace(label_replace_dict).values
         y_test = df_test['label'].replace(label_replace_dict).values
         assert set(y_train) == set([0, 1])
         assert set(y_test) == set([0, 1])
         x_train = df.iloc[:, :-1]
         x_test = df_test.iloc[:, :-1]
-        
+
         # need to one-hot encode
         # pd.dummies does this, it is also smart about identifying categorical columns
         x_train = pd.get_dummies(x_train, drop_first=True)
@@ -688,7 +695,7 @@ def load_adult(data_privacy='all', pca=False):
         del x_train_orig
         # now normalise
         x_train, x_test = min_max_rescale(x_train, x_test, good_columns=good_columns)
-    
+
         # pca, if pca
         if pca:
             print('doing PCA!')
@@ -722,6 +729,7 @@ def load_adult(data_privacy='all', pca=False):
 
     return x_train, y_train, x_test, y_test
 
+
 def solve_with_linear_regression(dataset, replace_index=None):
     """
     assuming linear regression (mse loss, linear model) on dataset, compute the optimum value and the hessian at that point
@@ -736,7 +744,7 @@ def solve_with_linear_regression(dataset, replace_index=None):
     hessian = (2.0/N)*np.dot(x.T, x)
     assert hessian.shape[0] == hessian.shape[1]
     assert hessian.shape[0] == d + 1
-    
+
     #optimum = np.dot(np.linalg.inv(hessian), np.dot(x.T, y))
     optimum = np.dot(np.linalg.inv(np.dot(x.T, x)), np.dot(x.T, y))
 
@@ -744,6 +752,7 @@ def solve_with_linear_regression(dataset, replace_index=None):
     mse = np.mean((np.dot(x, optimum) - y)**2)
     print(mse)
     return optimum, hessian
+
 
 def compute_JS_distance(samples_A, samples_B, bins='auto'):
     """
@@ -767,12 +776,14 @@ def compute_JS_distance(samples_A, samples_B, bins='auto'):
     JS = 0.5*(KL_AM + KL_BM)
     return JS
 
+
 def pair_ind_to_dist_ind(d, i, j):
     """
     from https://gist.github.com/CMCDragonkai/d663840fc151fca01e2bee242e792a3d
     """
     index = d*(d-1)/2 - (d-i)*(d-i-1)/2 + j - i - 1
     return index
+
 
 def dist_ind_to_pair_ind(d, i):
     """
@@ -782,6 +793,7 @@ def dist_ind_to_pair_ind(d, i):
     x = np.floor((-b - np.sqrt(b**2 - 8*i))/2).astype(int)
     y = (i + x * (b + x + 2) / 2 + 1).astype(int)
     return x, y
+
 
 def compute_cosine_distances_for_dataset(data_type):
     """
@@ -815,6 +827,7 @@ def compute_cosine_distances_for_dataset(data_type):
         data = {'pairs': pairs, 'distances': distances}
         np.save(path, data)
     return distances, pairs
+
 
 def compute_distance_for_pairs(data_type, pairs):
     x, y, _, _, _, _ = load_data(data_type, replace_index='NA')

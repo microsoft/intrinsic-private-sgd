@@ -4,21 +4,23 @@
 
 import numpy as np
 import ipdb
-from scipy.stats import kstest, laplace, shapiro, anderson
 
 import data_utils
 import model_utils
 import results_utils
+import derived_results
 import experiment_metadata
 
 ### --- to do with testing the model's performance --- ###
+
+
 def get_target_noise_for_model(dataset, model, t, epsilon, delta, sensitivity, verbose):
     target_noise = compute_gaussian_noise(epsilon, delta, sensitivity)
     if verbose: 
         print('[test] Target noise:', target_noise)
 
     # without different initiaisation
-    intrinsic_noise = estimate_variability(dataset, model, t, by_parameter=False, diffinit=False)
+    intrinsic_noise = derived_results.estimate_variability(dataset, model, t, by_parameter=False, diffinit=False)
     if intrinsic_noise < target_noise:
         noise_to_add = compute_additional_noise(target_noise, intrinsic_noise)
     else:
@@ -28,7 +30,7 @@ def get_target_noise_for_model(dataset, model, t, epsilon, delta, sensitivity, v
         print('[augment_sgd] Hurray! Essentially no noise required!')
 
     # noise using different initialisation
-    intrinsic_noise_diffinit = estimate_variability(dataset, model, t, by_parameter=False, diffinit=True)
+    intrinsic_noise_diffinit = derived_results.estimate_variability(dataset, model, t, by_parameter=False, diffinit=True)
     if intrinsic_noise_diffinit < target_noise:
         noise_to_add_diffinit = compute_additional_noise(target_noise, intrinsic_noise_diffinit)
     else:
@@ -42,6 +44,7 @@ def get_target_noise_for_model(dataset, model, t, epsilon, delta, sensitivity, v
         ipdb.set_trace()
 
     return target_noise, noise_to_add, noise_to_add_diffinit
+
 
 def test_model_with_noise(dataset, model, replace_index, seed, t, epsilon=None, delta=None, sensitivity_from_bound=True, metric_to_report='binary_accuracy', verbose=False, num_deltas=1000, diffinit=False, data_privacy='all'):
     """
@@ -69,7 +72,7 @@ def test_model_with_noise(dataset, model, replace_index, seed, t, epsilon=None, 
     else:
         # compute sensitivity empirically!
         # diffinit set to False beacuse it doesn't make a differnce
-        sensitivity = estimate_sensitivity_empirically(dataset, model, t, num_deltas=num_deltas, diffinit=False, data_privacy=data_privacy)
+        sensitivity = derived_results.estimate_sensitivity_empirically(dataset, model, t, num_deltas=num_deltas, diffinit=False, data_privacy=data_privacy)
     if sensitivity is False:
         print('ERROR: Empirical sensitivity not available.')
         return False
@@ -129,6 +132,7 @@ def test_model_with_noise(dataset, model, replace_index, seed, t, epsilon=None, 
     model_utils.K.backend.clear_session()
     return noiseless_performance, bolton_performance, augment_performance, augment_performance_diffinit
 
+
 def debug_just_test(dataset, model, replace_index, seed, t, diffinit=False, use_vali=False):
     task, batch_size, lr, n_weights, N = experiment_metadata.get_experiment_details(dataset, model)
     _, _, x_vali, y_vali, x_test, y_test = data_utils.load_data(data_type=dataset, replace_index=replace_index)
@@ -159,6 +163,7 @@ def debug_just_test(dataset, model, replace_index, seed, t, diffinit=False, use_
     model_utils.K.backend.clear_session()
     return results
 
+
 def compute_gaussian_noise(epsilon, delta, sensitivity, verbose=True):
     """
     using gaussian mechanism assumption
@@ -170,6 +175,7 @@ def compute_gaussian_noise(epsilon, delta, sensitivity, verbose=True):
     sigma = c * (sensitivity/epsilon)
     return sigma
 
+
 def compute_additional_noise(target_noise, intrinsic_noise):
     """
     assuming we want to get to target_noise STDDEV, from intrinsic noise,
@@ -177,6 +183,7 @@ def compute_additional_noise(target_noise, intrinsic_noise):
     """
     additional_noise = np.sqrt(target_noise**2 - intrinsic_noise**2)
     return additional_noise
+
 
 def compute_wu_bound_strong(lipschitz_constant, gamma, n_samples, batch_size, verbose=True):
     """
@@ -191,6 +198,7 @@ def compute_wu_bound_strong(lipschitz_constant, gamma, n_samples, batch_size, ve
     if verbose: print('[test_private_model] Bound on L2 sensitivity:', l2_sensitivity)
     return l2_sensitivity
 
+
 def compute_wu_bound(lipschitz_constant, t, N, batch_size, eta, verbose=True):
     # k is the number of time you went through the data
     batches_per_epoch = N // batch_size
@@ -203,6 +211,7 @@ def compute_wu_bound(lipschitz_constant, t, N, batch_size, eta, verbose=True):
     #l2_sensitivity = 2 * n_epochs * lipschitz_constant * eta 
     if verbose: print('[test_private_model] Bound on L2 sensitivity:', l2_sensitivity)
     return l2_sensitivity
+
 
 def discretise_theoretical_sensitivity(dataset, model, theoretical_sensitivity):
     """
