@@ -10,7 +10,7 @@ import os
 class Inspector(object):
     """
     """
-    def __init__(self, model, X, y, label, n_minibatches=300, cadence=100):
+    def __init__(self, model, X, y, experiment_identifier, n_minibatches=300, cadence=100):
         """
         """
         self.model = model
@@ -23,14 +23,12 @@ class Inspector(object):
         self.cadence = cadence
         self.counter = 0
         
-        self.weights_file = open('traces/' + label + '.weights.csv', 'w')
-        self.grads_file = open('traces/' + label + '.all_gradients.csv', 'w')
-        self.loss_file = open('traces/' + label + '.loss.csv', 'w')
-        print('[inspector] Saving weights and gradient information to traces/' + label + '.{loss/weights/all_gradients}.csv')
+        self.weights_file = open('traces/' + experiment_identifier + '.weights.csv', 'w')
+        self.grads_file = open('traces/' + experiment_identifier + '.all_gradients.csv', 'w')
+        self.loss_file = open('traces/' + experiment_identifier + '.loss.csv', 'w')
+        print('[inspector] Saving weights and gradient information to traces/' + experiment_identifier + '.{loss/weights/all_gradients}.csv')
 
     def initialise_files(self):
-        """
-        """
         header = '#METADATA: Minibatch size is ' + str(self.minibatch_size) + '\n'
         for f in [self.weights_file, self.grads_file, self.loss_file]:
             f.write(header)
@@ -375,15 +373,16 @@ def prep_for_training(model_object, seed, optimizer_settings, task_type):
     #K.backend.get_session().run(tf.global_variables_initializer())
     return True
 
-def train_model(model_object, n_epochs, x_train, y_train, x_vali, y_vali, 
-        examine_gradients, label, batch_size=32, cadence=100):
-    if examine_gradients:
-        inspector = Inspector(model_object, x_train, y_train, label=label, cadence=cadence)
-        #my_callback.initialise(model_object, x_train, y_train, label=label)
-    else:
-        inspector = Inspector(model_object, x_train, y_train, label=label, cadence=cadence, n_minibatches=0)
-    #callbacks.append(my_callback)
+def train_model(model_object, training_cfg, logging_cfg, 
+        x_train, y_train, x_vali, y_vali, experiment_identifier):
+    # the inspector records things for us
+    inspector = Inspector(model_object, x_train, y_train, 
+            experiment_identifier=experiment_identifier, 
+            cadence=logging['cadence'],
+            n_minibatches=logging['n_gradients'])
 
+    n_epochs = training_cfg['n_epochs']
+    batch_size = training_cfg['batch_size']
     # breaking out of the fit method, back to old skool
     N = x_train.shape[0]
     if not N % batch_size == 0:
