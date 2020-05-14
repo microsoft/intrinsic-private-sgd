@@ -3,9 +3,15 @@
 import tensorflow as tf
 import abc
 from tensorflow import keras as K
+from pathlib import Path
 import numpy as np
 import pandas as pd
 import os
+import ipdb
+
+ROOT_DIR = Path('/bigdata/')
+TRACES_DIR = ROOT_DIR / 'traces_aDPSGD'
+
 
 class Inspector(object):
     """
@@ -23,10 +29,11 @@ class Inspector(object):
         self.cadence = cadence
         self.counter = 0
         
-        self.weights_file = open(os.path.join('traces', experiment_identifier + '.weights.csv'), 'w')
-        self.grads_file = open(os.path.join('traces', experiment_identifier + '.all_gradients.csv'), 'w')
-        self.loss_file = open(os.path.join('traces', experiment_identifier + '.loss.csv'), 'w')
-        print('[inspector] Saving weights and gradient information to ' + os.path.join('traces', experiment_identifier) + '.{loss/weights/all_gradients}.csv')
+        self.weights_file = open(TRACES_DIR / f'{experiment_identifier}.weights.csv', 'w')
+        self.grads_file = open(TRACES_DIR / f'{experiment_identifier}.grads.csv', 'w')
+        self.loss_file = open(TRACES_DIR / f'{experiment_identifier}.loss.csv', 'w')
+        print(f'[inspector] Saving weights and gradient information with identifier {experiment_identifier} to directory {TRACES_DIR}')
+
 
     def initialise_files(self):
         header = '#METADATA: Minibatch size is ' + str(self.minibatch_size) + '\n'
@@ -37,8 +44,9 @@ class Inspector(object):
         self.weights_file.write('t,' + ','.join(['#' + str(x) for x in range(n_parameters)]) + '\n')
         # gradients and loss are computed by minibatches
         self.grads_file.write('t,minibatch_id,' + ','.join(['#' + str(x) for x in range(n_parameters)]) + '\n')
-        metrics = self.model.metric_names
+        metrics = self.model.model.metrics_names
         self.loss_file.write('t,minibatch_id,' + ','.join(metrics) + '\n')
+
 
     def on_batch_end(self, X_vali, y_vali):
         """
@@ -58,17 +66,19 @@ class Inspector(object):
         self.counter += 1
 
     def inspect_model(self, X, y, minibatch_id, include_weights=False):
-        # get metrics (most likely loss, but defined by keras)
-        metrics = self.model.compute_metrics(X, y)
+        metrics = self.model.model.evaluate(X, y)
         # get gradients
-        gradients = self.model.compute_gradients(X, y)
+        # TODO get this to work
+        #gradients = self.model.compute_gradients(X, y)
+        gradients = np.nan
         # now write
         self.loss_file.write(str(self.counter) + ',' + minibatch_id + ',' + ','.join(map(str, metrics)) + '\n')
-        self.grads_file.write(str(self.counter) + ',' + minibatch_id)
-        for g in gradients:
-            self.grads_file.write(',')
-            self.grads_file.write(','.join(map(str, g.flatten())))
-        self.grads_file.write('\n')
+        #self.grads_file.write(str(self.counter) + ',' + minibatch_id)
+        # TODO get gradients ot work
+        #for g in gradients:
+        #    self.grads_file.write(',')
+        #    self.grads_file.write(','.join(map(str, g.flatten())))
+        #self.grads_file.write('\n')
         if include_weights:
             weights = self.model.get_weights(flat=False)            # will flatten in this function while writing
             self.weights_file.write(str(self.counter))
@@ -185,8 +195,8 @@ class model(object):
         you REALLY do not want to compute this for a large model!!!
         """
         if self.hessian is None:
-            self.hessian = tf.hessians(self.model.total_loss, self.model.weights)
-        feed_dict = {self.model.input: X, self.model.targets[0]: y.reshape(-1, 1)}
+            self.hessian = tf.hessians(ys=self.model.total_loss, xs=self.model.weights)
+        feed_dict = {self.model.input: X, self.model._targets[0]: y.reshape(-1, 1)}
         hessian = K.backend.get_session().run([self.hessian], feed_dict=feed_dict)
         return hessian
 
@@ -195,41 +205,41 @@ class model(object):
         """
         if self.grads is None: 
             # the loss only exists after the model has been compiled!
-            self.grads = tf.gradients(self.model.total_loss, self.model.weights)
-        feed_dict={self.model.input: X, self.model.targets[0]: y.reshape(-1, 1)}
+            self.grads = tf.gradients(ys=self.model.total_loss, xs=self.model.weights)
+        feed_dict={self.model.input: X, self.model._targets[0]: y.reshape(-1, 1)}
         #feed_dict.update(temp_weights_dict)
         gradients = K.backend.get_session().run([self.grads], feed_dict=feed_dict)[0]
         return gradients
   
     def define_metrics(self, metric_names, use_keras=True):
         metrics = [0]*len(metric_names)
-        y_ph = self.model.targets[0]
+        y_ph = self.model._targets[0]
         y_pred = self.model.output
         for i, metric in enumerate(metric_names):
             if metric == 'mse':
                 if use_keras:
                     # not sure why the mean is necessary here
-                    metrics[i] = tf.reduce_mean(K.metrics.mse(y_true=y_ph, y_pred=y_pred))
+                    metrics[i] = tf.reduce_mean(input_tensor=K.metrics.mse(y_true=y_ph, y_pred=y_pred))
                 else:
                     raise NotImplementedError
             elif metric == 'accuracy':
                 if use_keras:
-                    metrics[i] = tf.reduce_mean(K.metrics.sparse_categorical_accuracy(y_true=y_ph, y_pred=y_pred))
+                    metrics[i] = tf.reduce_mean(input_tensor=K.metrics.sparse_categorical_accuracy(y_true=y_ph, y_pred=y_pred))
                 else:
                     raise NotImplementedError
             elif metric == 'ce':
                 if use_keras:
-                    metrics[i] = tf.reduce_mean(K.metrics.sparse_categorical_crossentropy(y_true=y_ph, y_pred=y_pred))
+                    metrics[i] = tf.reduce_mean(input_tensor=K.metrics.sparse_categorical_crossentropy(y_true=y_ph, y_pred=y_pred))
                 else:
                     raise NotImplementedError
             elif metric == 'binary_crossentropy':
                 if use_keras:
-                    metrics[i] = tf.reduce_mean(K.metrics.binary_crossentropy(y_true=y_ph, y_pred=y_pred))
+                    metrics[i] = tf.reduce_mean(input_tensor=K.metrics.binary_crossentropy(y_true=y_ph, y_pred=y_pred))
                 else:
                     raise NotImplementedError
             elif metric == 'binary_accuracy':
                 if use_keras:
-                    metrics[i] = tf.reduce_mean(K.metrics.binary_accuracy(y_true=y_ph, y_pred=y_pred))
+                    metrics[i] = tf.reduce_mean(input_tensor=K.metrics.binary_accuracy(y_true=y_ph, y_pred=y_pred))
                 else:
                     raise NotImplementedError
             else:
@@ -239,7 +249,8 @@ class model(object):
 
     def compute_metrics(self, X, y):
         assert self.metrics is not None
-        feed_dict = {self.model.input: X, self.model.targets[0]: y.reshape(-1, 1)}
+        ipdb.set_trace()
+        feed_dict = {self.model.input: X, self.model._targets[0]: y.reshape(-1, 1)}
         metrics = K.backend.get_session().run(self.metrics, feed_dict=feed_dict)
         return metrics
 
@@ -362,10 +373,10 @@ def prep_for_training(model_object, seed, optimizer_settings, task_type):
         loss = 'binary_crossentropy'
         metrics = ['binary_crossentropy', 'binary_accuracy']
     model_object.model.compile(optimizer=sgd,
-        loss=loss)
-        #metrics=metrics)
+        loss=loss,
+        metrics=metrics)
     # moving metrics to my part
-    model_object.define_metrics(metrics)
+#    model_object.define_metrics(metrics)
     if model_object.init_path is None:
         print('Not saving weights as no init path given')
     else:
@@ -382,8 +393,8 @@ def train_model(model_object, training_cfg, logging_cfg,
     # the inspector records things for us
     inspector = Inspector(model_object, x_train, y_train, 
             experiment_identifier=experiment_identifier, 
-            cadence=logging['cadence'],
-            n_minibatches=logging['n_gradients'])
+            cadence=logging_cfg['cadence'],
+            n_minibatches=logging_cfg['n_gradients'])
 
     n_epochs = training_cfg['n_epochs']
     batch_size = training_cfg['batch_size']

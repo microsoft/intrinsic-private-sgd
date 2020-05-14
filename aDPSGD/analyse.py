@@ -479,7 +479,7 @@ def find_different_datasets(dataset, model, num_deltas, t):
         plot_data = np.load(path_string).item()
     except FileNotFoundError:
         print('[find_different_datasets] ERROR: Run delta_histogram for this setting first')
-            return False
+        return False
     vary_data_deltas = plot_data['vary_S']
     vary_data_identifiers = plot_data['S_identifiers']
     # just get the top 10 biggest
