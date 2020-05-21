@@ -1,139 +1,222 @@
 #!/usr/bin/env ipython
 
-import tensorflow as tf
 import abc
-from tensorflow import keras as K
-from pathlib import Path
+import os
 import numpy as np
 import pandas as pd
-import os
-import ipdb
+import tensorflow as tf
+from tensorflow import keras as K
+from tensorflow.keras.layers import Dense, Flatten, Dropout, Conv2D, MaxPooling2D
+from pathlib import Path
+
 
 ROOT_DIR = Path('/bigdata/')
 TRACES_DIR = ROOT_DIR / 'traces_aDPSGD'
 
 
-class Inspector(object):
-    """
-    """
-    def __init__(self, model, X, y, experiment_identifier, n_minibatches=300, cadence=100):
-        """
-        """
-        self.model = model
-        self.X = X
-        self.y = y
-        self.n_minibatches = n_minibatches
-        if self.n_minibatches == 0:
-            print('[inspector] No minibatches will be sampled')
-        self.minibatch_size = 32
-        self.cadence = cadence
-        self.counter = 0
-        
-        self.weights_file = open(TRACES_DIR / f'{experiment_identifier}.weights.csv', 'w')
-        self.grads_file = open(TRACES_DIR / f'{experiment_identifier}.grads.csv', 'w')
-        self.loss_file = open(TRACES_DIR / f'{experiment_identifier}.loss.csv', 'w')
-        print(f'[inspector] Saving weights and gradient information with identifier {experiment_identifier} to directory {TRACES_DIR}')
-
-
-    def initialise_files(self):
-        header = '#METADATA: Minibatch size is ' + str(self.minibatch_size) + '\n'
-        for f in [self.weights_file, self.grads_file, self.loss_file]:
-            f.write(header)
-        n_parameters = len(self.model.get_weights(flat=True))
-        print('[inspector] There are', n_parameters, 'weights in the model!')
-        self.weights_file.write('t,' + ','.join(['#' + str(x) for x in range(n_parameters)]) + '\n')
-        # gradients and loss are computed by minibatches
-        self.grads_file.write('t,minibatch_id,' + ','.join(['#' + str(x) for x in range(n_parameters)]) + '\n')
-        metrics = self.model.model.metrics_names
-        self.loss_file.write('t,minibatch_id,' + ','.join(metrics) + '\n')
-
-
-    def on_batch_end(self, X_vali, y_vali):
-        """
-        Internal counter of number of iterations...
-        """
-        if self.counter % self.cadence == 0:
-            self.inspect_model(X=self.X, y=self.y, minibatch_id='ALL', include_weights=True)
-            self.inspect_model(X_vali, y_vali, minibatch_id='VALI', include_weights=False)
-            N = self.X.shape[0]
-            # now over the minibatches
-            for s in range(self.n_minibatches):
-                minibatch_idx = np.random.choice(N, self.minibatch_size, replace=False)
-                X_batch = self.X[minibatch_idx]
-                y_batch = self.y[minibatch_idx]
-                self.inspect_model(X=X_batch, y=y_batch, minibatch_id=str(s), include_weights=False)
-            #N = self.X.shape[0]
-        self.counter += 1
-
-    def inspect_model(self, X, y, minibatch_id, include_weights=False):
-        metrics = self.model.model.evaluate(X, y)
-        # get gradients
-        # TODO get this to work
-        #gradients = self.model.compute_gradients(X, y)
-        gradients = np.nan
-        # now write
-        self.loss_file.write(str(self.counter) + ',' + minibatch_id + ',' + ','.join(map(str, metrics)) + '\n')
-        #self.grads_file.write(str(self.counter) + ',' + minibatch_id)
-        # TODO get gradients ot work
-        #for g in gradients:
-        #    self.grads_file.write(',')
-        #    self.grads_file.write(','.join(map(str, g.flatten())))
-        #self.grads_file.write('\n')
-        if include_weights:
-            weights = self.model.get_weights(flat=False)            # will flatten in this function while writing
-            self.weights_file.write(str(self.counter))
-            for w in weights:
-                self.weights_file.write(',')
-                self.weights_file.write(','.join(map(str, w.flatten())))
-            self.weights_file.write('\n')
-
-    def on_epoch_end(self):
-        for f in [self.weights_file, self.grads_file, self.loss_file]:
-            f.flush()
-
-def build_model(architecture, input_size, output_size, task_type, hidden_size, init_path, t=None, **kwargs):
+def build_model(architecture: str, input_size: int, output_size: int,
+                task_type: str, hidden_size: int, init_path, t=None, **kwargs) -> 'Model':
     """
     Wrapper around defining the model architecture
     """
     if architecture == 'mlp':
-        model = feedforward(input_size, output_size, task_type, init_path, hidden_size, t)
+        model = Feedforward(input_size, output_size, task_type, init_path, hidden_size, t)
     elif architecture == 'linear':
-        model = linear(input_size, output_size, task_type, init_path, hidden_size, t)
+        model = Linear(input_size, init_path, t)
     elif architecture == 'logistic':
-        model = logistic(input_size, output_size, task_type, init_path, hidden_size, t)
+        model = Logistic(input_size, init_path, t)
     elif architecture == 'cnn':
-        model = cnn(input_size, output_size, task_type, init_path, hidden_size, t)
+        model = CNN(input_size=input_size, output_size=output_size,
+                    task_type=task_type, init_path=init_path,
+                    hidden_size=hidden_size, t=t)
     else:
         raise ValueError(architecture)
     return model
 
-class model(object):
+
+class logger(object):
     """
     """
-    def __init__(self, input_size, output_size, task_type, init_path, hidden_size, t):
-        model = self.define_model(input_size, output_size, task_type, hidden_size)
+    def __init__(self, model: 'Model', experiment_identifier: str, cadence: int,
+                 X_train: np.ndarray, y_train: np.ndarray, X_vali: np.ndarray, y_vali: np.ndarray) -> None:
         self.model = model
+        self.experiment_identifier = experiment_identifier
+        self.logging_cadence = cadence
+        self.logging_counter = tf.Variable(initial_value=0, name='logging_counter', trainable=False, dtype=tf.int32)
+        self.X_train = X_train
+        self.X_vali = X_vali
+        self.y_train = y_train
+        self.y_vali = y_vali
+        self.metric_names = self.model.metric_names
+
+        # initialise some stuff now
+        self.initialise_log_files()
+        self.build_metrics()
+
+    def build_metrics(self) -> None:
+        """
+        These are defined in the logger and not the model because
+        if I define them in the model, they somehow get added to what keras
+        thinks are the 'weights' of the model.
+        """
+        metric_functions = [0]*len(self.metric_names)
+        for i, metric in enumerate(self.metric_names):
+            if metric == 'mse':
+                metric_functions[i] = K.metrics.MeanSquareError()
+            elif metric == 'accuracy':
+                metric_functions[i] = K.metrics.SparseCategoricalAccuracy()
+            elif metric == 'ce':
+                metric_functions[i] = K.metrics.SparseCategoricalCrossentropy()
+            elif metric == 'binary_crossentropy':
+                metric_functions[i] = K.metrics.BinaryCrossentropy()
+            elif metric == 'binary_accuracy':
+                metric_functions[i] = K.metrics.BinaryAccuracy(threshold=0.5)
+            else:
+                raise ValueError(metric)
+        self.metric_functions = metric_functions
+
+    def initialise_log_files(self) -> None:
+        # define paths (we will need this for tensorflow's print function later)
+        self.weights_file_path = TRACES_DIR / f'{self.experiment_identifier}.weights.csv'
+        self.grads_file_path = TRACES_DIR / f'{self.experiment_identifier}.grads.csv'
+        self.loss_file_path = TRACES_DIR / f'{self.experiment_identifier}.loss.csv'
+        print(f'[logging] Saving information with identifier {self.experiment_identifier} to directory {TRACES_DIR}')
+        # open them up
+        self.weights_file = open(self.weights_file_path, 'w')
+        self.grads_file = open(self.grads_file_path, 'w')
+        self.loss_file = open(self.loss_file_path, 'w')
+        # list of files makes flushing easier
+        self.log_files = [self.weights_file, self.grads_file, self.loss_file]
+        # store headers (TODO could do this while tidying the files up later)
+        n_parameters = len(self.model.get_weights(flat=True))
+        print(f'[logging] There are {n_parameters} weights in the model!')
+        self.weights_file.write('t,' + ','.join(['#' + str(x) for x in range(n_parameters)]) + '\n')
+        self.grads_file.write('t,minibatch_id,' + ','.join(['#' + str(x) for x in range(n_parameters)]) + '\n')
+        self.loss_file.write('t,minibatch_id,' + ','.join(self.metric_names) + '\n')
+        for f in self.log_files:
+            f.flush()
+
+    def finalise_log_files(self) -> None:
+        """
+        tf.print uglies up the files so we need to undo that at the end of training
+        """
+        for f in self.log_files:
+            f.flush()
+            f.close()
+        # loss is easy because there should be commas
+        loss = pd.read_csv(self.loss_file_path)
+        loss.replace('[\[\] ]', '', regex=True, inplace=True)
+        loss.to_csv(self.loss_file_path, index=False)
+        del loss
+        # weights has both commas and (single) spaces as delimeters
+        weights = pd.read_csv(self.weights_file_path, sep='[, ]', engine='python')
+        weights.replace('[\[\] ]', '', regex=True, inplace=True)
+        weights.to_csv(self.weights_file_path, index=False)
+        del weights
+        # gradients
+        # TODO should be the same as weights though
+
+    @tf.function
+    def log_model(self, X: np.ndarray, y: np.ndarray, minibatch_id: str,
+                  save_weights: bool = False, save_gradients: bool = False) -> None:
+        # --- metrics --- #
+        metric_results = self.model.compute_metrics(X, y, metric_functions=self.metric_functions)
+        tf.print(self.logging_counter, output_stream='file:///' + self.loss_file_path.as_posix(), end=',')
+        tf.print(minibatch_id, output_stream='file:///' + self.loss_file_path.as_posix(), end=',')
+        tf.print(metric_results, output_stream='file:///' + self.loss_file_path.as_posix(), summarize=-1, end='\n')
+        # --- weights --- #
+        if save_weights:
+            weights = self.model.get_weights(flat=True)
+            tf.print(self.logging_counter, output_stream='file:///' + self.weights_file_path.as_posix(), end=',')
+            tf.print(weights, output_stream='file:///' + self.weights_file_path.as_posix(), summarize=-1, end='\n')
+        # --- gradients --- #
+        if save_gradients:
+            # TODO
+            raise NotImplementedError
+            # TODO get this to work
+            # gradients = self.model.compute_gradients(X, y)
+            # self.grads_file.write(str(self.counter) + ',' + minibatch_id)
+            # for g in gradients:
+            #    self.grads_file.write(',')
+            #    self.grads_file.write(','.join(map(str, g.flatten())))
+            # self.grads_file.write('\n')
+
+    def on_batch_end(self) -> None:
+        if self.logging_counter % self.logging_cadence == 0:
+            self.log_model(X=self.X_train, y=self.y_train, minibatch_id='ALL', save_weights=True)
+            self.log_model(X=self.X_vali, y=self.y_vali, minibatch_id='VALI', save_weights=False)
+            # N = self.X_train.shape[0]
+            # now over the minibatches
+            # TODO do this
+#            for s in range(self.n_minibatches):
+#                minibatch_idx = np.random.choice(N, self.minibatch_size, replace=False)
+#                X_batch = self.X[minibatch_idx]
+#                y_batch = self.y[minibatch_idx]
+#                self.log_model(X=X_batch, y=y_batch, minibatch_id=str(s), save_weights=False)
+        self.logging_counter.assign_add(1)
+
+    def on_epoch_end(self) -> None:
+        for f in self.log_files:
+            f.flush()
+
+    def on_training_end(self) -> None:
+        self.finalise_log_files()
+        print('[logging] Log files finalised')
+
+
+class Model(K.Sequential):
+    """
+    """
+    def __init__(self, input_size: int, init_path: str, t: int) -> None:
+        super(Model, self).__init__()
+        self.init_t = t
+        self.input_size = input_size
         self.init_path = init_path
-        self.task_type = task_type
-        self.override = None
         self.grads = None
-        self.metrics = None
         self.hessian = None
 
-        if init_path is None:
+    def build(self) -> None:
+        self.define_layers()
+        if self.init_path is None:
             print('[model_utils] WARNING: No init path provided, not loading weights!')
         else:
             try:
-                self.load_weights(self.init_path, t)
+                self.load_weights(self.init_path, self.init_t)
             except FileNotFoundError:
-                print('WARNING: Could not load weights from', self.init_path)
+                print(f'WARNING: Could not load weights from {self.init_path}')
 
     @abc.abstractmethod
-    def define_model(self, input_size, output_size, task_type, hidden_size):
+    def define_layers(self) -> None:
         pass
 
-    def load_weights(self, path, t=None):
-        print('Loading weights from', path)
+    def fit(self, x_train: np.ndarray, y_train: np.ndarray, batch_size: int,
+            epochs: int, logger: 'logger' = None) -> None:
+        N = x_train.shape[0]
+        if not N % batch_size == 0:
+            print('WARNING: Training set size is not multiple of batch size - some data will be missed every epoch!')
+        n_batches = N // batch_size
+        if logger is not None:
+            # just once at the start
+            logger.on_batch_end()
+        for e in range(epochs):
+            if e % 100 == 0:
+                print(f'epoch: {e}')
+            shuf = np.random.permutation(N)
+            x_train = x_train[shuf]
+            y_train = y_train[shuf]
+            for batch_idx in range(n_batches):
+                x_batch = x_train[batch_idx*batch_size:(batch_idx+1)*batch_size]
+                y_batch = y_train[batch_idx*batch_size:(batch_idx+1)*batch_size]
+                _ = self.train_on_batch(x_batch, y_batch)
+                if logger is not None:
+                    logger.on_batch_end()
+            if logger is not None:
+                logger.on_epoch_end()
+        if logger is not None:
+            logger.on_training_end()
+
+    def load_weights(self, path: str, t: int = None) -> None:
+        print(f'Loading weights from {path}')
         if '.csv' in path:
             if t is None:
                 t = 0
@@ -141,17 +224,17 @@ class model(object):
         else:
             assert '.h5' in path
             assert t is None
-            self.model.load_weights(path)
+            super(Model, self).load_weights(path)
 
-    def save_weights(self, path):
-        print('Saving weights to', path)
-        self.model.save_weights(path)
+    def save_weights(self, path: str) -> None:
+        print(f'Saving weights to {path}')
+        super(Model, self).save_weights(path)
 
-    def get_weights(self, flat=False):
-        weights = self.model.get_weights()
+    @tf.function
+    def get_weights(self, flat: bool = False) -> tf.Tensor:
+        weights = self.weights
         if flat:
-            weights_flat = [w.flatten() for  w in weights]
-            weights = np.concatenate(weights_flat)
+            weights = tf.squeeze(tf.concat([tf.reshape(w, [-1, 1]) for w in weights], axis=0))
         return weights
 
     def unflatten_weights(self, vector):
@@ -168,32 +251,34 @@ class model(object):
         return list_of_weights
 
     def get_shape_of_weights(self):
-        weights = self.model.get_weights()
+        weights = self.get_weights(flat=False)
         shapes = [w.shape for w in weights]
         return shapes
 
     def load_and_set_weights_from_flat(self, path, t):
-        print('[model_utils] Loading flattened weights from', path, 'at time', t)
+        print(f'[model_utils] Loading flattened weights from {path} at time {t}')
         # WARNING: THIS IS SPECIFIC TO HOW I'VE ENCODED THE WEIGHTS
         weights = pd.read_csv(path, skiprows=1)
         if t not in weights['t'].unique():
-            print('ERROR: Timepoint', t, ' is not available in file', path, '(largest t is', weights['t'].max(), ')')
+            print(f'ERROR: Timepoint {t} is not available in file {path} (largest t is {weights["t"].max()}')
             raise ValueError(t)
         weights_at_t = weights.loc[weights['t'] == t, :].values[0, 1:]
         list_of_weights = self.unflatten_weights(weights_at_t)
         self.set_weights(list_of_weights)
 
-    def set_weights(self, weights):
-        self.model.set_weights(weights)
-
-    def predict(self, x):
-        y = self.model.predict(x)
-        return y
+    @tf.function
+    def compute_metrics(self, X, y, metric_functions):
+        predictions = self(X)
+        results = []
+        for metric in metric_functions:
+            results.append(metric(y, predictions))
+        return results
 
     def compute_hessian(self, X, y):
         """
         you REALLY do not want to compute this for a large model!!!
         """
+        raise NotImplementedError
         if self.hessian is None:
             self.hessian = tf.hessians(ys=self.model.total_loss, xs=self.model.weights)
         feed_dict = {self.model.input: X, self.model._targets[0]: y.reshape(-1, 1)}
@@ -203,259 +288,167 @@ class model(object):
     def compute_gradients(self, X, y):
         """
         """
-        if self.grads is None: 
+        raise NotImplementedError
+        if self.grads is None:
             # the loss only exists after the model has been compiled!
             self.grads = tf.gradients(ys=self.model.total_loss, xs=self.model.weights)
-        feed_dict={self.model.input: X, self.model._targets[0]: y.reshape(-1, 1)}
-        #feed_dict.update(temp_weights_dict)
+        feed_dict = {self.model.input: X, self.model._targets[0]: y.reshape(-1, 1)}
+        # feed_dict.update(temp_weights_dict)
         gradients = K.backend.get_session().run([self.grads], feed_dict=feed_dict)[0]
         return gradients
-  
-    def define_metrics(self, metric_names, use_keras=True):
-        metrics = [0]*len(metric_names)
-        y_ph = self.model._targets[0]
-        y_pred = self.model.output
-        for i, metric in enumerate(metric_names):
-            if metric == 'mse':
-                if use_keras:
-                    # not sure why the mean is necessary here
-                    metrics[i] = tf.reduce_mean(input_tensor=K.metrics.mse(y_true=y_ph, y_pred=y_pred))
-                else:
-                    raise NotImplementedError
-            elif metric == 'accuracy':
-                if use_keras:
-                    metrics[i] = tf.reduce_mean(input_tensor=K.metrics.sparse_categorical_accuracy(y_true=y_ph, y_pred=y_pred))
-                else:
-                    raise NotImplementedError
-            elif metric == 'ce':
-                if use_keras:
-                    metrics[i] = tf.reduce_mean(input_tensor=K.metrics.sparse_categorical_crossentropy(y_true=y_ph, y_pred=y_pred))
-                else:
-                    raise NotImplementedError
-            elif metric == 'binary_crossentropy':
-                if use_keras:
-                    metrics[i] = tf.reduce_mean(input_tensor=K.metrics.binary_crossentropy(y_true=y_ph, y_pred=y_pred))
-                else:
-                    raise NotImplementedError
-            elif metric == 'binary_accuracy':
-                if use_keras:
-                    metrics[i] = tf.reduce_mean(input_tensor=K.metrics.binary_accuracy(y_true=y_ph, y_pred=y_pred))
-                else:
-                    raise NotImplementedError
-            else:
-                raise ValueError(metric)
-        self.metric_names = metric_names
-        self.metrics = metrics
-
-    def compute_metrics(self, X, y):
-        assert self.metrics is not None
-        ipdb.set_trace()
-        feed_dict = {self.model.input: X, self.model._targets[0]: y.reshape(-1, 1)}
-        metrics = K.backend.get_session().run(self.metrics, feed_dict=feed_dict)
-        return metrics
 
 
-class linear(model):
+class Linear(Model):
     """
     Massive overkill doing this in Keras
     """
-    
-    def define_model(self, input_size, output_size=1, task_type='regression', hidden_size=None):
-        if not output_size == 1:
-            print('WARNING: output size for linear model is forced to 1')
-        if not task_type == 'regression':
-            print('WARNING: linear model has continuous output type')
-        model = K.models.Sequential([K.layers.Dense(1, activation='linear', input_shape=(input_size,))])
-        return model
+    def __init__(self, input_size, init_path, t=0):
+        super(Linear, self).__init__(input_size=input_size, init_path=init_path, t=t)
+        self.build()
 
-        
-class logistic(model):
+    def define_layers(self):
+        self.add(Dense(1, activation='linear', input_shape=(self.input_size, )))
+
+
+class Logistic(Model):
     """
     """
-    def define_model(self, input_size, output_size=1, task_type='binary', hidden_size=None):
-        if not output_size == 1:
-            print('WARNING: output size for logistic model is forced to 1')
-        if not task_type == 'binary':
-            print('WARNING: logistic has binary output type')
-        model = K.models.Sequential([K.layers.Dense(1, activation='sigmoid', input_shape=(input_size,))])
-        return model
+    def __init__(self, input_size, init_path, t=0):
+        super(Logistic, self).__init__(input_size=input_size, init_path=init_path, t=t)
+        self.build()
 
-class feedforward(model):
+    def define_layers(self):
+        self.add(Dense(1, activation='sigmoid', input_shape=(self.input_size,)))
+
+
+class Feedforward(Model):
     """
     This model was taken from the Tensorflow MNIST tutorial!
     """
-    def define_model(self, input_size=(28, 28), output_size=10, task_type='classification', hidden_size=512):
-        if type(input_size) == int:
-            # no flatten required if input is a vector
-            layers = [K.layers.Dense(hidden_size, input_dim=input_size, activation='relu')]
-        else:
-            layers = [K.layers.Flatten(input_shape=input_size),
-                    K.layers.Dense(hidden_size, activation='relu')]
-        # shared piece
-        layers.append(K.layers.Dropout(rate=0.2))
-        # output-size-dependent piece
-        if task_type == 'classification':
-            # use a softmax
-            layers.append(K.layers.Dense(output_size, activation='softmax'))
-        elif task_type == 'binary':
-            # sigmoid
-            layers.append(K.layers.Dense(output_size, activation='sigmoid'))
-        elif task_type == 'regression':
-            # linear
-            layers.append(K.layers.Dense(output_size, activation='linear'))
-        else:
-            raise ValueError(task_type)
-        model = K.models.Sequential(layers)
-        
-        return model
+    def __init__(self, input_size, output_size, task_type, init_path, hidden_size, t):
+        super(Feedforward, self).__init__(input_size=input_size, init_path=init_path, t=t)
+        self.output_size = output_size
+        self.task_type = task_type
+        self.hidden_size = hidden_size
+        self.build()
 
-class cnn(model):
+    def define_layers(self):
+        if type(self.input_size) == int:
+            # no flatten required if input is a vector
+            self.add(Dense(self.hidden_size, input_dim=self.input_size, activation='relu'))
+        else:
+            self.add(Flatten(input_shape=self.input_size))
+            self.add(Dense(self.hidden_size, activation='relu'))
+        # shared piece
+        self.add(Dropout(rate=0.2))
+        # output-size-dependent piece
+        if self.task_type == 'classification':
+            activation = 'softmax'
+        elif self.task_type == 'binary':
+            activation = 'sigmoid'
+        elif self.task_type == 'regression':
+            activation = 'linear'
+        else:
+            raise ValueError(self.task_type)
+        self.add(Dense(self.output_size, activation=activation))
+
+
+class CNN(Model):
     """
     Trying to replicate the cuda-convnet model referenced in the Hardt paper
     "three convolutional layers each followed by a pooling operation"
     no dropout
     no mention of any other HPs in that paper from what I can tell
     """
-    def define_model(self, input_size=(32, 32, 3), output_size=10, task_type='classification', hidden_size=512):
+    def __init__(self, input_size, output_size, task_type, init_path, hidden_size, t):
+        super(CNN, self).__init__(input_size=input_size, init_path=init_path, t=t)
+        self.output_size = output_size
+        self.task_type = task_type
+        self.hidden_size = hidden_size
+
         # input validation
-        if len(input_size) < 1:
+        if len(self.input_size) < 1:
             print('ERROR: CNN is not designed to take flat inputs!')
-            raise ValueError(input_size)
-        elif len(input_size) == 2:
-            print('WARNING: Assuming a single channel provided') # e.g. for non-flat MNIST, if I do that
-            input_size = (input_size[0], input_size[1], 1)
-        elif len(input_size) == 3:
+            raise ValueError(self.input_size)
+        elif len(self.input_size) == 2:
+            print('WARNING: Assuming a single channel provided')
+            self.input_size = (self.input_size[0], self.input_size[1], 1)
+        elif len(self.input_size) == 3:
             pass
         else:
-            raise ValueError(input_size)
-        layers = [K.layers.Conv2D(8, (3, 3), padding='same', input_shape=input_size, activation='relu'),
-                K.layers.MaxPooling2D(pool_size=(2, 2)),
-                K.layers.Conv2D(8, (2, 2), activation='relu'),
-                K.layers.MaxPooling2D(pool_size=(2, 2)),
-                K.layers.Conv2D(8, (2, 2), padding='same', activation='relu'),
-                K.layers.MaxPooling2D(pool_size=(2, 2)),
-                K.layers.Flatten(),
-                K.layers.Dense(hidden_size, activation='relu')]
-        if task_type == 'classification':
-            layers.append(K.layers.Dense(output_size, activation='softmax'))
-        elif task_type == 'binary':
-            # sigmoid
-            layers.append(K.layers.Dense(output_size, activation='sigmoid'))
-        elif task_type == 'regression':
-            # linear
-            layers.append(K.layers.Dense(output_size, activation='linear'))
-        else:
-            raise ValueError(task_type)
-        model = K.models.Sequential(layers)
-        
-        return model
+            raise ValueError(self.input_size)
+        self.build()
 
-def prep_for_training(model_object, seed, optimizer_settings, task_type):
-    """
-    """
-    tf.random.set_seed(seed)         # not sure this one is actually necesary
+    def define_layers(self):
+        self.add(Conv2D(filters=8, kernel_size=3, padding='same',
+                        input_shape=self.input_size, activation='relu'))
+        self.add(MaxPooling2D(pool_size=(2, 2)))
+        self.add(Conv2D(filters=8, kernel_size=(2, 2), activation='relu'))
+        self.add(MaxPooling2D(pool_size=(2, 2)))
+        self.add(Conv2D(filters=8, kernel_size=(2, 2), padding='same', activation='relu'))
+        self.add(MaxPooling2D(pool_size=(2, 2)))
+        self.add(Flatten())
+        self.add(Dense(self.hidden_size, activation='relu'))
+        if self.task_type == 'classification':
+            activation = 'softmax'
+        elif self.task_type == 'binary':
+            activation = 'sigmoid'
+        elif self.task_type == 'regression':
+            activation = 'linear'
+        else:
+            raise ValueError(self.task_type)
+        self.add(Dense(self.output_size, activation=activation))
+
+
+def prep_for_training(model: 'Model', seed: int, optimizer_settings: dict, task_type: str) -> None:
+    # set seeds
+    tf.random.set_seed(seed)
     np.random.seed(seed)
-    #sgd = K.optimizers.SGD(lr=lr, decay=1e-6, momentum=0.9, nesterov=True)
+    # set up the optimizer
     if optimizer_settings['name'] == 'SGD':
         lr = optimizer_settings['learning_rate']
         sgd = K.optimizers.SGD(lr=lr, decay=0, momentum=0, nesterov=False)
-        # note: the tutorial I took the model from uses Adam, but SGD + momentum works okay too
     else:
-        print('Only SGD is implemented currently')
-        raise NotImplementedError
+        raise NotImplementedError('Only SGD is implemented currently')
+    # set up the loss
     if task_type == 'classification':
         loss = 'sparse_categorical_crossentropy'
-        metrics = ['ce', 'accuracy']
+        metric_names = ['ce', 'accuracy']
     elif task_type == 'regression':
         loss = 'mse'
-        metrics = ['mse']
+        metric_names = ['mse']
     elif task_type == 'binary':
         loss = 'binary_crossentropy'
-        metrics = ['binary_crossentropy', 'binary_accuracy']
-    model_object.model.compile(optimizer=sgd,
-        loss=loss,
-        metrics=metrics)
-    # moving metrics to my part
-#    model_object.define_metrics(metrics)
-    if model_object.init_path is None:
+        metric_names = ['binary_crossentropy', 'binary_accuracy']
+    else:
+        raise ValueError(task_type)
+    model.compile(optimizer=sgd,
+                  loss=loss)
+    model.metric_names = metric_names
+
+    if model.init_path is None:
         print('Not saving weights as no init path given')
     else:
-        if os.path.exists(model_object.init_path):
+        if os.path.exists(model.init_path):
             print('Not saving weights as path already exists')
         else:
-            model_object.save_weights(path=model_object.init_path)
-            print('Saved weights to', model_object.init_path)
-    #K.backend.get_session().run(tf.global_variables_initializer())
-    return True
+            model.save_weights(path=model.init_path)
+            print(f'Saved weights to {model.init_path}')
+    return
 
-def train_model(model_object, training_cfg, logging_cfg, 
-        x_train, y_train, x_vali, y_vali, experiment_identifier):
-    # the inspector records things for us
-    inspector = Inspector(model_object, x_train, y_train, 
-            experiment_identifier=experiment_identifier, 
-            cadence=logging_cfg['cadence'],
-            n_minibatches=logging_cfg['n_gradients'])
 
-    n_epochs = training_cfg['n_epochs']
-    batch_size = training_cfg['batch_size']
-    # breaking out of the fit method, back to old skool
-    N = x_train.shape[0]
-    if not N % batch_size == 0:
-        print('[model utils] WARNING: Training set size is not multiple of batch size - some data will be missed every epoch!')
-    n_batches = N // batch_size
+def train_model(model: 'Model', training_cfg: dict, logging_cfg: dict,
+                x_train: np.ndarray, y_train: np.ndarray,
+                x_vali: np.ndarray, y_vali: np.ndarray,
+                experiment_identifier: str) -> None:
 
-    inspector.initialise_files()
-    for e in range(n_epochs):
-        if e % 100 == 0:
-            print('epoch:', e)
-        shuf = np.random.permutation(N)
-        x_train = x_train[shuf]
-        y_train = y_train[shuf]
-        # at the very beginning!
-        inspector.on_batch_end(x_vali, y_vali)
-        for batch_idx in range(n_batches):
-            x_batch = x_train[batch_idx*batch_size:(batch_idx+1)*batch_size]
-            y_batch = y_train[batch_idx*batch_size:(batch_idx+1)*batch_size]
-            _ = model_object.model.train_on_batch(x_batch, y_batch)
-            inspector.on_batch_end(x_vali, y_vali)
-        # at the end of the epoch, test on everything
-        inspector.on_epoch_end()
-    K.backend.clear_session()
-    #tf.reset_default_graph()
-    return True
+    experiment_logger = logger(model, experiment_identifier,
+                               cadence=logging_cfg['cadence'],
+                               X_train=x_train, y_train=y_train,
+                               X_vali=x_vali, y_vali=y_vali)
 
-def add_gaussian_noise(weights, sigma):
-    n_weights = len(weights)
-    noise = np.random.normal(loc=0, scale=sigma, size=n_weights)
-    assert noise.shape == weights.shape
-    noised_weights = weights + noise
-    return noised_weights
-
-### --- VESTIGIAL --- ###
-def estimate_sensitivity(weights_with_different_data, reference_idx=0, return_all=False, identifiers=None):
-    """
-    """
-    n_runs = weights_with_different_data.shape[0]
-    print('Estimating sensitivity over', n_runs, 'different datasets')
-    print('Comparing to reference, indexed at', reference_idx)
-   
-    norms = np.zeros(n_runs)
-    for i in range(n_runs):
-        if i == reference_idx:
-            distance = np.nan
-        elif (identifiers is not None) and (identifiers[i] == identifiers[reference_idx]):
-            distance = np.nan
-        else:
-            distance = np.linalg.norm(weights_with_different_data[i] - weights_with_different_data[reference_idx])
-            if np.abs(distance) < 1e-5:
-                if identifiers is None:
-                    print('WARNING: two identical sets of weights? ... run', i, 'and', reference_idx)
-                else:
-                    print('WARNING: two identical sets of weights? ... models', identifiers[i], 'and', identifiers[reference_idx])
-        norms[i] = distance
-    norms = norms[~np.isnan(norms)]
-    if return_all:
-        return norms
-    else:
-        sensitivity = np.max(norms)
-        return sensitivity
+    model.fit(x_train=x_train, y_train=y_train,
+              batch_size=training_cfg['batch_size'],
+              epochs=training_cfg['n_epochs'],
+              logger=experiment_logger)
+    return

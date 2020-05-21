@@ -72,7 +72,8 @@ parser.add_argument('--replace_index', type=int, help='Which training example to
 args = parser.parse_args()
 if '.yaml' in args.cfg:
     args.cfg = args.cfg.rstrip('.yaml')
-cfg = yaml.safe_load(open(os.path.join('cfgs', args.cfg + '.yaml')))
+#cfg = yaml.safe_load(open(os.path.join('cfgs', args.cfg + '.yaml')))
+cfg = yaml.load(open(os.path.join('cfgs', args.cfg + '.yaml')))
 cfg['cfg_name'] = args.cfg
 check_cfg_for_consistency(cfg)
 run_experiment(cfg, args.seed, args.replace_index)

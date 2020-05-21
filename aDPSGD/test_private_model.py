@@ -110,7 +110,6 @@ def test_model_with_noise(dataset, model, replace_index, seed, t, epsilon=None, 
         model_utils.prep_for_training(model_object, seed=0, lr=0, task_type=task)                                      # literally so i can evaluate it later
         weights = model_object.get_weights(flat=True)
         noise = noise_options[setting]
-        #noisy_weights = model_utils.add_gaussian_noise(weights, noise)
         noisy_weights = weights + standard_noise * noise
         unflattened_noisy_weights = model_object.unflatten_weights(noisy_weights)
         model_object.set_weights(unflattened_noisy_weights)

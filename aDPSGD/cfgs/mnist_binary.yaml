@@ -8,11 +8,11 @@ model:
     architecture: logistic
     diffinit: true
     task_type: binary
-    input_size: 100
+    input_size: 50
     output_size: 1
     hidden_size: 10      # doesnt make sense for logistic
 training:
-    n_epochs: 20
+    n_epochs: 2            # should be 20
     batch_size: 32
     optimization_algorithm:
         name: SGD

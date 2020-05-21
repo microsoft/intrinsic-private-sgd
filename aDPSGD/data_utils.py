@@ -44,7 +44,7 @@ def load_data(options, replace_index):
     data_type = options['name']
     data_privacy = 'all'
     print('WARNING: Data privacy is fixed to all right now')
-    
+
     if data_type == 'mnist':
         flatten = options['flatten']
         binary = options['binary']
@@ -53,18 +53,23 @@ def load_data(options, replace_index):
             enforce_max_norm = True
         else:
             enforce_max_norm = False
-        if options['preprocessing'] == 'PCA':
-            project = True
-            pca = True
-            crop = False
-        elif options['preprocessing'] == 'GRP':
-            project = True
+        if 'preprocessing' in options:
+            if options['preprocessing'] == 'PCA':
+                project = True
+                pca = True
+                crop = False
+            elif options['preprocessing'] == 'GRP':
+                project = True
+                pca = False
+                crop = False
+            elif options['preprocessing'] == 'crop':
+                project= False
+                pca = False
+                crop = True
+        else:
+            project = False
             pca = False
             crop = False
-        elif options['preprocessing'] == 'crop':
-            project= False
-            pca = False
-            crop = True
         x_train, y_train, x_test, y_test = load_mnist(binary=binary, 
                 enforce_max_norm=enforce_max_norm, 
                 flatten=flatten,

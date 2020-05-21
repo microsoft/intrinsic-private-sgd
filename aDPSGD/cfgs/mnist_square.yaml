@@ -1,13 +1,13 @@
 ---
 data:
-    name: cifar10
+    name: mnist
     binary: false
     flatten: false
 model:
     architecture: cnn
     diffinit: true
     task_type: classification
-    input_size: (28, 28)
+    input_size: !!python/tuple [28, 28]
     output_size: 10
     hidden_size: 10     # not sure this makes sense for cnn
 training:
