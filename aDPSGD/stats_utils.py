@@ -4,22 +4,26 @@
 import numpy as np
 from scipy.stats import kstest, laplace, shapiro, anderson
 
+
 def fit_alpha_stable(X):
     """
     """
     N = X.shape[0]
     # copied from umut
+
     for i in range(1, 1 + int(np.sqrt(N))):
         if N % i == 0:
             m = i
     alpha = alpha_estimator(m, X)
     # dont' know how to estimate goodness of fit for this distribution yet
     goodness_of_fit = np.nan
+
     return alpha, goodness_of_fit
+
 
 def alpha_estimator(m, X):
     """
-    this is taken from 
+    this is taken from
     https://github.com/umutsimsekli/sgd_tail_index/blob/master/utils.py
     and modified to remove torchiness
     # Corollary 2.4 in Mohammadi 2014
@@ -35,7 +39,9 @@ def alpha_estimator(m, X):
     Y_log_norm = (np.log(np.linalg.norm(Y, axis=1) + eps)).mean()
     X_log_norm = (np.log(np.linalg.norm(X, axis=1) + eps)).mean()
     diff = (Y_log_norm - X_log_norm) / np.log(m)
+
     return 1.0 / diff
+
 
 def fit_normal(X):
     if X.shape[0] > 5000:
@@ -48,7 +54,9 @@ def fit_normal(X):
     std = np.std(X_sub)
     # shapiro-wilk test against gaussian
     Dval_gauss, pval_gauss = shapiro((X_sub - mean)/std)
+
     return mean, std, Dval_gauss, pval_gauss
+
 
 def fit_laplace(X):
     loc = np.median(X)
@@ -57,7 +65,9 @@ def fit_laplace(X):
     # 1000000 iid laplace RVs
     # need to find a better test
     Dval_lap, pval_lap = kstest(X, laplace(loc=loc, scale=scale).cdf)
+
     return loc, scale, Dval_lap, pval_lap
+
 
 def fit_logistic(X):
     if X.shape[0] > 5000:
@@ -70,12 +80,15 @@ def fit_logistic(X):
     s = np.sqrt(3)*np.std(X_sub)/np.pi
     Dval_log, critical_values, significance_level = anderson(X_sub.reshape(-1), dist='logistic')
     pval_log = np.nan
+
     return mean, s, Dval_log, pval_log
+
 
 def test_alpha_estimator(N=100, d=1):
     """
     Estimate ~sensitivity and specificity of the estimator
     """
+
     for i in range(1, 1+int(np.sqrt(N))):
         if N % i == 0:
             m = i
