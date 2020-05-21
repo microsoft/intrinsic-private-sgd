@@ -1,0 +1,25 @@
+---
+data:
+    name: cifar10
+    binary: true
+    flatten: true
+model:
+    architecture: mlp
+    diffinit: true
+    task_type: binary
+    input_size: 50
+    output_size: 1
+    hidden_size: 10
+training:
+    n_epochs: 25
+    batch_size: 32
+    optimization_algorithm:
+        name: SGD
+        learning_rate: 0.5
+logging:
+    cadence: 50
+    save_weights: true
+    save_gradients: true
+    sample_minibatch_gradients: false
+    n_gradients: 0
+...

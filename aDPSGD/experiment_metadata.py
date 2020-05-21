@@ -1,6 +1,31 @@
 #!/usr/bin/env ipython
 # Define experimenta metadata
 
+dataset_colours = {'cifar10_binary': '#A6373F',
+        'mnist_binary_pca': '#552B72',
+        #        'adult': '#AAA839',
+        'adult': '#db9302',
+        'forest': '#3C8D2f'}
+
+dataset_names = {'cifar10_binary': 'CIFAR2',
+        'mnist_binary_pca': 'MNIST-binary',
+        'adult': 'Adult',
+        'forest': 'Forest',
+        'forest': 'Forest',
+        'mnist_square': 'MNIST'}
+model_names = {'logistic': 'logistic regression',
+                'mlp': 'neural network',
+                        'cnn': 'CNN'}
+lr_convergence_points = {'cifar10_binary': 2000,
+    'mnist_binary_pca': 1850,
+    'adult': 3400,
+    'forest': 8400}
+nn_convergence_points = {'cifar10_binary': 2500,
+                'mnist_binary_pca': 4750,
+                'adult': 1850,
+                'forest': 3500}
+
+
 def get_experiment_details(dataset, model, verbose=False, data_privacy='all'):
     if dataset == 'housing_binary':
         task = 'binary'
@@ -44,8 +69,10 @@ def get_experiment_details(dataset, model, verbose=False, data_privacy='all'):
         task = 'binary'
         batch_size = 50
         lr = 1.0
-        assert model == 'logistic'
-        n_weights = 50
+        if model == 'logistic':
+            n_weights = 50
+        else:
+            n_weights = 511
         N = 378783
     elif 'adult' in dataset:
         task = 'binary'

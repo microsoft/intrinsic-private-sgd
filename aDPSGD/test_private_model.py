@@ -20,7 +20,7 @@ def get_target_noise_for_model(dataset, model, t, epsilon, delta, sensitivity, v
         print('[test] Target noise:', target_noise)
 
     # without different initiaisation
-    intrinsic_noise = derived_results.estimate_variability(dataset, model, t, by_parameter=False, diffinit=False)
+    intrinsic_noise = derived_results.estimate_variability(dataset, model, t, multivariate=False, diffinit=False)
     if intrinsic_noise < target_noise:
         noise_to_add = compute_additional_noise(target_noise, intrinsic_noise)
     else:
@@ -30,7 +30,7 @@ def get_target_noise_for_model(dataset, model, t, epsilon, delta, sensitivity, v
         print('[augment_sgd] Hurray! Essentially no noise required!')
 
     # noise using different initialisation
-    intrinsic_noise_diffinit = derived_results.estimate_variability(dataset, model, t, by_parameter=False, diffinit=True)
+    intrinsic_noise_diffinit = derived_results.estimate_variability(dataset, model, t, multivariate=False, diffinit=True)
     if intrinsic_noise_diffinit < target_noise:
         noise_to_add_diffinit = compute_additional_noise(target_noise, intrinsic_noise_diffinit)
     else:
@@ -58,7 +58,7 @@ def test_model_with_noise(dataset, model, replace_index, seed, t, epsilon=None, 
     if epsilon is None:
         epsilon = 1.0
     if delta is None:
-        delta = 1.0/N
+        delta = 1.0/(N**2)
     if verbose:
         print('Adding noise for epsilon, delta = ', epsilon, delta)
 

@@ -206,6 +206,7 @@ def fit_pval_histogram(what, dataset, model, t, n_experiments=3, diffinit=False,
     """
     histogram of p-values (across parameters-?) for a given model etc.
     """
+    assert what in ['weights', 'gradients']
     # set some stuff up
     iter_range = (t, t +1)
     fig, axarr = plt.subplots(nrows=1, ncols=1, figsize=(3.5, 2.1))
@@ -225,8 +226,6 @@ def fit_pval_histogram(what, dataset, model, t, n_experiments=3, diffinit=False,
         elif what == 'weights':
             df = results_utils.get_posterior_samples(dataset, iter_range=iter_range, model=model, replace_index=replace_index, params=None, seeds='all')
             second_col = df.columns[1]
-        else:
-            raise ValueError(what)
         params = df.columns[2:]
         n_params = len(params)
         print(n_params)

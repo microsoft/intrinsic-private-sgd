@@ -18,17 +18,19 @@ import stats_utils
 import experiment_metadata
 
 
-def calculate_epsilon(dataset, model, t, use_bound=False, diffinit=True, num_deltas='max'):
+def calculate_epsilon(dataset, model, t, use_bound=False, diffinit=True, num_deltas='max', multivariate=False):
     """
     just get the intrinsic epsilon
     """
     task, batch_size, lr, n_weights, N = test_private_model.get_experiment_details(dataset, model)
-    delta = 1.0/N
+    delta = 1.0/(N**2)
+    variability = test_private_model.estimate_variability(dataset, model, t, multivariate=False, diffinit=diffinit, multivariate=multivariate)
     if use_bound:
         sensitivity = test_private_model.compute_wu_bound(lipschitz_constant=np.sqrt(2), t=t, N=N, batch_size=batch_size, eta=lr)
+        if multivariate:
+            sensitivity = np.array([sensitivity]*len(variability))
     else:
-        sensitivity = test_private_model.estimate_sensitivity_empirically(dataset, model, t, num_deltas=num_deltas, diffinit=diffinit)
-    variability = test_private_model.estimate_variability(dataset, model, t, by_parameter=False, diffinit=diffinit)
+        sensitivity = test_private_model.estimate_sensitivity_empirically(dataset, model, t, num_deltas=num_deltas, diffinit=diffinit, multivariate=multivariate)
     print('sensitivity:', sensitivity)
     print('variability:', variability)
     print('delta:', delta)
@@ -37,7 +39,7 @@ def calculate_epsilon(dataset, model, t, use_bound=False, diffinit=True, num_del
     return epsilon
 
 
-def accuracy_at_eps(dataset, model, t, use_bound=False, num_experiments=50, num_deltas='max', epsilon=1, do_test=False):
+def accuracy_at_eps(dataset, model, t, use_bound=False, num_experiments=500, num_deltas='max', epsilon=1, do_test=False):
     """
     """
     path = './fig_data/utility.' + str(dataset) + '.' + str(model) + '.t' + str(t) + '.nd_' + str(num_deltas) + '.ne_' + str(num_experiments) + '.csv'
@@ -118,12 +120,11 @@ def generate_amortised_data(dataset, model, num_pairs, num_experiments, t, metri
     return True
 
 
-def generate_delta_histogram(dataset, model, num_deltas='max', t=500, include_bounds=False, xlim=None, ylim=None, data_privacy='all'):
+def generate_delta_histogram(dataset, model, num_deltas='max', t=500, include_bounds=False, xlim=None, ylim=None, data_privacy='all', multivariate=False):
     """
     num_deltas is the number of examples we're using to estimate the histograms
     """
-    path_string = './fig_data/delta_histogram.' + str(dataset) + '.' + data_privacy + '.' + str(model) + '.nd_' + str(num_deltas) + '.t_' + str(t) + '.npy'
-    try:
+    path_string = './fig_data/delta_histogram.' + str(dataset) + '.' + data_privacy + '.' + str(model) + '.nd_' + str(num_deltas) + '.t_' + str(t) + 'MULTIVAR'*multivariate + '.npy'
         plot_data = np.load(path_string).item()
         vary_both = plot_data['vary_both']
         vary_S = plot_data['vary_S']
@@ -132,11 +133,11 @@ def generate_delta_histogram(dataset, model, num_deltas='max', t=500, include_bo
     except FileNotFoundError:
         print('Couldn\'t find', path_string)
         # vary-both
-        vary_both, identifiers_both = get_deltas(dataset, iter_range=(t, t+1), model=model, vary_seed=True, vary_data=True, num_deltas=num_deltas, diffinit=False, data_privacy=data_privacy)
+        vary_both, identifiers_both = get_deltas(dataset, iter_range=(t, t+1), model=model, vary_seed=True, vary_data=True, num_deltas=num_deltas, diffinit=False, data_privacy=data_privacy, multivariate=multivariate)
         # vary-S
-        vary_S, identifiers_S = get_deltas(dataset, iter_range=(t, t+1), model=model, vary_seed=False, vary_data=True, num_deltas=num_deltas, diffinit=False, data_privacy=data_privacy)
+        vary_S, identifiers_S = get_deltas(dataset, iter_range=(t, t+1), model=model, vary_seed=False, vary_data=True, num_deltas=num_deltas, diffinit=False, data_privacy=data_privacy, multivariate=multivariate)
         # vary-r
-        vary_r, identifiers_r = get_deltas(dataset, iter_range=(t, t+1), model=model, vary_seed=True, vary_data=False, num_deltas=num_deltas, diffinit=False, data_privacy=data_privacy)
+        vary_r, identifiers_r = get_deltas(dataset, iter_range=(t, t+1), model=model, vary_seed=True, vary_data=False, num_deltas=num_deltas, diffinit=False, data_privacy=data_privacy, multivariate=multivariate)
 
         # save plot data
         plot_data = {'vary_both': vary_both, 
@@ -148,7 +149,7 @@ def generate_delta_histogram(dataset, model, num_deltas='max', t=500, include_bo
         np.save(path_string, plot_data)
         print('Saved to file:', path_string)
 
-    path_string_diffinit = './fig_data/delta_histogram.' + str(dataset) + '.' + data_privacy + '.' + str(model) + '.nd_' + str(num_deltas) + '.t_' + str(t) + '.DIFFINIT.npy'
+    path_string_diffinit = './fig_data/delta_histogram.' + str(dataset) + '.' + data_privacy + '.' + str(model) + '.nd_' + str(num_deltas) + '.t_' + str(t) + '.DIFFINIT' + 'MULTIVAR'*multivariate + '.npy'
     try:
         plot_data_diffinit = np.load(path_string_diffinit).item()
         vary_both_diffinit = plot_data_diffinit['vary_both']
@@ -157,11 +158,11 @@ def generate_delta_histogram(dataset, model, num_deltas='max', t=500, include_bo
         print('Loaded from file:', path_string_diffinit)
     except FileNotFoundError:
         # vary-both
-        vary_both_diffinit, identifiers_both_diffinit = get_deltas(dataset, iter_range=(t, t+1), model=model, vary_seed=True, vary_data=True, num_deltas=num_deltas, diffinit=True, data_privacy=data_privacy)
+        vary_both_diffinit, identifiers_both_diffinit = get_deltas(dataset, iter_range=(t, t+1), model=model, vary_seed=True, vary_data=True, num_deltas=num_deltas, diffinit=True, data_privacy=data_privacy, multivariate=multivariate)
         # vary-S
-        vary_S_diffinit, identifiers_S_diffinit = get_deltas(dataset, iter_range=(t, t+1), model=model, vary_seed=False, vary_data=True, num_deltas=num_deltas, diffinit=True, data_privacy=data_privacy)
+        vary_S_diffinit, identifiers_S_diffinit = get_deltas(dataset, iter_range=(t, t+1), model=model, vary_seed=False, vary_data=True, num_deltas=num_deltas, diffinit=True, data_privacy=data_privacy, multivariate=multivariate)
         # vary-r
-        vary_r_diffinit, identifiers_r_diffinit = get_deltas(dataset, iter_range=(t, t+1), model=model, vary_seed=True, vary_data=False, num_deltas=num_deltas, diffinit=True, data_privacy=data_privacy)
+        vary_r_diffinit, identifiers_r_diffinit = get_deltas(dataset, iter_range=(t, t+1), model=model, vary_seed=True, vary_data=False, num_deltas=num_deltas, diffinit=True, data_privacy=data_privacy, multivariate=multivariate)
 
         # save plot data
         plot_data_diffinit = {'vary_both': vary_both_diffinit, 
@@ -190,16 +191,16 @@ def generate_epsilon_distribution(dataset, model, t, delta, n_pairs,
         print('Loaded from file', path)
     except FileNotFoundError:
         print('Couldn\'t load sens and var values from', path, '- computing')
-        df = get_sens_and_var_distribution(dataset, model, t, n_pairs=n_pairs, by_parameter=False, diffinit=False)
+        df = get_sens_and_var_distribution(dataset, model, t, n_pairs=n_pairs, multivariate=False, diffinit=False)
         df.to_csv(path, header=True, index=False)
     try:
         df_diffinit = pd.read_csv(path_diffinit)
         print('Loaded from file', path_diffinit)
     except FileNotFoundError:
         print('Couldn\'t load sens and var values from', path_diffinit, '- computing')
-        df_diffinit = get_sens_and_var_distribution(dataset, model, t, n_pairs=n_pairs, by_parameter=False, diffinit=True)
+        df_diffinit = get_sens_and_var_distribution(dataset, model, t, n_pairs=n_pairs, multivariate=False, diffinit=True)
         df_diffinit.to_csv(path_diffinit, header=True, index=False)
-    return True
+    return df, df_diffinit
 
 
 def generate_utility_curve(dataset, model, delta, t, metric_to_report='binary_accuracy', verbose=True, num_deltas='max', 
@@ -259,7 +260,8 @@ def generate_utility_curve(dataset, model, delta, t, metric_to_report='binary_ac
     return True
 
 
-def sens_and_var_over_time(dataset, model, num_deltas=500, iter_range=(0, 1000), data_privacy='all', metric='binary_crossentropy'):
+def sens_and_var_over_time(dataset, model, num_deltas=500, iter_range=(0, 1000), 
+        data_privacy='all', metric='binary_crossentropy', cadence=200):
     """
     Estimate the empirical (and theoretical I guess) sensitivity and variability v. "convergence point" (time)
     The objective is to create a CSV with columns:
@@ -282,7 +284,7 @@ def sens_and_var_over_time(dataset, model, num_deltas=500, iter_range=(0, 1000),
             _, batch_size, lr, _, N = experiment_metadata.get_experiment_details(dataset, model, data_privacy=data_privacy)
             L = np.sqrt(2)
         assert None not in iter_range
-        t_range = np.arange(iter_range[0], iter_range[1], 200)
+        t_range = np.arange(iter_range[0], iter_range[1], cadence)
         n_T = len(t_range)
         theoretical_sensitivity_list = [np.nan]*n_T
         empirical_sensitivity_list = [np.nan]*n_T
@@ -302,8 +304,8 @@ def sens_and_var_over_time(dataset, model, num_deltas=500, iter_range=(0, 1000),
                 empirical_sensitivity = estimate_sensitivity_empirically(dataset, model, t, num_deltas=num_deltas, diffinit=True, data_privacy=data_privacy)
                 assert empirical_sensitivity is not False
             # variability
-            variability_fixinit = estimate_variability(dataset, model, t, by_parameter=False, diffinit=False, data_privacy=data_privacy)
-            variability_diffinit = estimate_variability(dataset, model, t, by_parameter=False, diffinit=True, data_privacy=data_privacy)
+            variability_fixinit = estimate_variability(dataset, model, t, multivariate=False, diffinit=False, data_privacy=data_privacy)
+            variability_diffinit = estimate_variability(dataset, model, t, multivariate=False, diffinit=True, data_privacy=data_privacy)
             # record everything
             theoretical_sensitivity_list[i] = theoretical_sensitivity
             empirical_sensitivity_list[i] = empirical_sensitivity
@@ -365,23 +367,24 @@ def estimate_empirical_lipschitz(dataset, model, diffinit, iter_range, n_samples
     return min_norm, ave_norm, max_norm
 
 
-def estimate_sensitivity_empirically(dataset, model, t, num_deltas, diffinit=False, data_privacy='all'):
+def estimate_sensitivity_empirically(dataset, model, t, num_deltas, diffinit=False, data_privacy='all', multivariate=False):
     """ pull up the histogram
     """
-    path_string = './fig_data/delta_histogram.' + str(dataset) + '.' + data_privacy + '.' + str(model) + '.nd_' + str(num_deltas) + '.t_' + str(t) + '.DIFFINIT'*diffinit + '.npy'
+    path_string = './fig_data/delta_histogram.' + str(dataset) + '.' + data_privacy + '.' + str(model) + '.nd_' + str(num_deltas) + '.t_' + str(t) + '.DIFFINIT'*diffinit + 'MULTIVAR'*multivariate + '.npy'
     try:
         plot_data = np.load(path_string).item()
     except FileNotFoundError:
         print('[estimate_sensitivty_empirically] ERROR: Run delta_histogram for this setting first:', path_string)
         return False
     vary_data_deltas = plot_data['vary_S']
-    sensitivity = np.nanmax(vary_data_deltas)
+    sensitivity = np.nanmax(vary_data_deltas, axis=0)
     return sensitivity
 
 
 def get_deltas(dataset, iter_range, model, 
         vary_seed=True, vary_data=True, params=None, num_deltas=100,
-        include_identifiers=False, diffinit=False, data_privacy='all'):
+        include_identifiers=False, diffinit=False, data_privacy='all',
+        multivariate=False, verbose=False):
     """
     collect samples of weights from experiments on dataset+model, varying:
     - seed (vary_seed)
@@ -470,7 +473,10 @@ def get_deltas(dataset, iter_range, model,
         else:
             print('WARNING: Missing data for (seed, replace) = (', seed_p, replace_index_p, ')')
             wp_weights = np.array([np.nan])
-        delta = np.linalg.norm(w_weights - wp_weights)
+        if multivariate:
+            delta = np.abs(w_weights - wp_weights)
+        else:
+            delta = np.linalg.norm(w_weights - wp_weights)
         deltas[i] = delta
     w_identifiers = list(zip(w['replace'], w['seed']))
     wp_identifiers = list(zip(wp['replace'], wp['seed']))
@@ -571,7 +577,7 @@ def estimate_statistics_through_training(what, dataset, model, replace_index, se
     return df_fits
 
 
-def get_sens_and_var_distribution(dataset, model, t, n_pairs=None, by_parameter=False, diffinit=False):
+def get_sens_and_var_distribution(dataset, model, t, n_pairs=None, multivariate=False, diffinit=False):
     """
     TODO: amortise, save
     """
@@ -596,7 +602,7 @@ def get_sens_and_var_distribution(dataset, model, t, n_pairs=None, by_parameter=
         pairs_array = [pairs_array[i] for i in pair_picks]
     print('Computing "local" epsilon for', len(pairs_array), 'pairs of datasets!')
     for di, dj in pairs_array: 
-        pair_sensitivity, pair_variability, n_seeds = compute_pairwise_sens_and_var(dataset, model, t, replace_indices=[di, dj], by_parameter=by_parameter, verbose=False, diffinit=diffinit)
+        pair_sensitivity, pair_variability, n_seeds = compute_pairwise_sens_and_var(dataset, model, t, replace_indices=[di, dj], multivariate=multivariate, verbose=False, diffinit=diffinit)
         sens_array.append(pair_sensitivity)
         var_array.append(pair_variability)
         overlap_array.append(n_seeds)
@@ -604,7 +610,7 @@ def get_sens_and_var_distribution(dataset, model, t, n_pairs=None, by_parameter=
     return df
 
 
-def compute_pairwise_sens_and_var(dataset, model, t, replace_indices, by_parameter=False, verbose=True, diffinit=False):
+def compute_pairwise_sens_and_var(dataset, model, t, replace_indices, multivariate=False, verbose=True, diffinit=False):
     """
     for a pair of experiments...
     estimate sensitivity (distance between means)
@@ -613,10 +619,10 @@ def compute_pairwise_sens_and_var(dataset, model, t, replace_indices, by_paramet
     return this epsilon!
     optionally, by parameter (returns an array!)
     """
-    if by_parameter:
+    if multivariate:
         raise NotImplementedError
-    samples_1 = results_utils.get_posterior_samples(dataset, (t, t+1), model, replace_index=replace_indices[0], params=None, seeds='all', verbose=False, diffinit=diffinit)
-    samples_2 = results_utils.get_posterior_samples(dataset, (t, t+1), model, replace_index=replace_indices[1], params=None, seeds='all', verbose=False, diffinit=diffinit)
+    samples_1 = results_utils.get_posterior_samples(dataset, (t, t+1), model, replace_index=replace_indices[0], params=None, seeds='all', verbose=verbose, diffinit=diffinit)
+    samples_2 = results_utils.get_posterior_samples(dataset, (t, t+1), model, replace_index=replace_indices[1], params=None, seeds='all', verbose=verbose, diffinit=diffinit)
     try:
         samples_1.set_index('seed', inplace=True)
         samples_2.set_index('seed', inplace=True)
@@ -654,33 +660,41 @@ def compute_pairwise_sens_and_var(dataset, model, t, replace_indices, by_paramet
     return sensitivity, variability, n_seeds
 
 
-def estimate_variability(dataset, model, t, by_parameter, replaces=None, diffinit=False, data_privacy='all'):
+def estimate_variability(dataset, model, t, multivariate, diffinit=False, 
+        data_privacy='all', n_replaces='max', n_seeds='max', ephemeral=False, verbose=True):
     """
     As for estimating the sensitivity, we want to grab a bunch of posteriors and estimate the variability
     """
-    data_path = './fig_data/sigmas.' + dataset + '.' + data_privacy + '.' + model + '.t' + str(t) + '_byparameter'*by_parameter + '.DIFFINIT'*diffinit + '.npy'
+    if ephemeral:
+        # this is a hack sorry
+        data_path = './fig_data/a_file_that_doesnt_exist.npy'
+        verbose=False
+    else:
+        data_path = './fig_data/sigmas.' + dataset + '.' + data_privacy + '.' + model + '.t' + str(t) + '.DIFFINIT'*diffinit + 'MULTIVAR'*multivariate + '.npy'
     try:
         data = np.load(data_path).item()
         sigmas = data['sigmas']
         replaces = data['replaces']
-        print('Loaded sigmas from file', data_path)
+        if verbose:
+            print('Loaded sigmas from file', data_path)
     except FileNotFoundError:
         print('[estimate_variability] Failed to load', data_path)
-        if replaces is None:
-            df = results_utils.get_available_results(dataset, model, data_privacy=data_privacy)
-            replace_counts = df['replace'].value_counts()
-            replaces = replace_counts[replace_counts > 2].index.values
-        else:
-            assert type(replaces) == list
-        n_replaces = len(replaces)
-        print('Estimating variability across', n_replaces, 'datasets!')
-        print('Warning: this can be slow...')
+        df = results_utils.get_available_results(dataset, model, data_privacy=data_privacy)
+        replace_counts = df['replace'].value_counts()
+        replaces = replace_counts[replace_counts > 2].index.values
+        if verbose:
+            print(f'Estimating variability across {len(replaces)} datasets!')
+            print('Warning: this can be slow...')
         sigmas = []
+        if ephemeral:
+            replaces = np.random.choice(replaces, n_replaces, replace=False)
         for replace_index in replaces:
-            samples = results_utils.get_posterior_samples(dataset, (t, t+1), model, replace_index=replace_index, params=None, seeds='all', verbose=False, diffinit=diffinit, data_privacy=data_privacy)
+            if verbose:
+                print('replace index:', replace_index)
+            samples = results_utils.get_posterior_samples(dataset, (t, t+1), model, replace_index=replace_index, params=None, seeds='all', verbose=verbose, diffinit=diffinit, data_privacy=data_privacy, n_seeds=n_seeds)
             try:
                 params = samples.columns[2:]
-                if by_parameter:
+                if multivariate:
                     this_sigma = samples.std(axis=0)
                     this_sigma = this_sigma[params]
                 else:
@@ -696,8 +710,22 @@ def estimate_variability(dataset, model, t, by_parameter, replaces=None, diffini
             sigmas.append(this_sigma)
         sigmas = np.array(sigmas)
         data = {'sigmas': sigmas, 'replaces': replaces}
-        np.save(data_path, data)
-    estimated_variability = np.nanmedian(sigmas, axis=0)
+        if not ephemeral:
+            np.save(data_path, data)
+    if n_replaces == 'max':
+        sigmas = sigmas
+    else:
+        assert type(n_replaces) == int
+        if n_replaces > len(sigmas):
+            print(f'WARNING: Can\'t select {n_replaces} sigmas, falling back to max ({len(sigmas)})')
+            sigmas = sigmas
+        else:
+            if verbose:
+                print(f'Sampling {n_replaces} random sigmas')
+            sigmas = np.random.choice(sigmas, n_replaces, replace=False)
+    if verbose:
+        print('Estimated variability using', len(sigmas[~np.isnan(sigmas)]), 'replaces') 
+    estimated_variability = np.nanmin(sigmas, axis=0)
     return estimated_variability
 
 
