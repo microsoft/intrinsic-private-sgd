@@ -94,8 +94,8 @@ def weight_evolution(dataset, model, n_seeds=50, replace_indices=None,
     axarr[-1].set_xlabel('training steps')
     vis_utils.beautify_axes(np.array([axarr]))
     plt.tight_layout()
-    plt.savefig('./plots/analyses/weight_trajectory.' + str(dataset) + '.' + str(model) + '.png')
-    plt.savefig('./plots/analyses/weight_trajectory.' + str(dataset) + '.' + str(model) + '.pdf')
+    plt.savefig(f'./plots/analyses/weight_trajectory_{dataset}.{model}.png')
+    plt.savefig(f'./plots/analyses/weight_trajectory_{dataset}.{model}.pdf')
 
     return True
 
@@ -120,7 +120,7 @@ def weight_posterior(dataset, model, replace_indices=None, t=500, param='#0', ov
     df_2 = results_utils.get_posterior_samples(dataset, iter_range, model,
                                                replace_index=replace_indices[1],
                                                params=[param], seeds='all')
-    print('Loaded', df_1.shape[0], 'and', df_2.shape[0], 'samples respectively')
+    print(f'Loaded {df_1.shape[0]} and {df_2.shape[0]} samples respectively')
     fig, axarr = plt.subplots(nrows=1, ncols=1)
     n_bins = 25
     sns.distplot(df_1[param], ax=axarr, label='D - ' + str(replace_indices[0]),
@@ -143,8 +143,8 @@ def weight_posterior(dataset, model, replace_indices=None, t=500, param='#0', ov
     axarr.legend()
     axarr.set_ylabel('# runs')
     vis_utils.beautify_axes(np.array([axarr]))
-    plt.savefig('./plots/analyses/weight_posterior.' + str(dataset) + '.' + str(model) + '.' + param + '.png')
-    plt.savefig('./plots/analyses/weight_posterior.' + str(dataset) + '.' + str(model) + '.' + param + '.pdf')
+    plt.savefig(f'./plots/analyses/weight_posterior.{dataset}.{model}.{param}.png')
+    plt.savefig(f'./plots/analyses/weight_posterior.{dataset}.{model}.{param}.pdf')
 
     return True
 

@@ -427,8 +427,8 @@ def estimate_empirical_lipschitz(dataset, model, diffinit, iter_range, n_samples
     for row, exp in experiments.iterrows():
         replace = exp['replace']
         seed = exp['seed']
-        gradients = results_utils.load_gradients(dataset, model, replace_index=replace,
-                                                 seed=seed, iter_range=iter_range, diffinit=diffinit)
+        experiment = results_utils.ExperimentIdentifier(dataset, model, replace, seed, diffinit)
+        gradients = experiment.load_gradients(iter_range=iter_range)
         grad_norm = np.linalg.norm(gradients.iloc[:, 2:], axis=1)
         cumulative += np.sum(grad_norm)
         cum_count += grad_norm.shape[0]
@@ -556,26 +556,19 @@ def get_deltas(dataset, iter_range, model,
         replace_index = w.iloc[i]['replace']
         seed = w.iloc[i]['seed']
 
-        if results_utils.check_if_experiment_exists(dataset, model, replace_index, seed,
-                                                    diffinit, data_privacy=data_privacy):
-            w_weights = results_utils.load_weights(dataset, model, replace_index=replace_index,
-                                                   seed=seed, iter_range=iter_range,
-                                                   params=params, verbose=False,
-                                                   diffinit=diffinit,
-                                                   data_privacy=data_privacy).values[:, 1:]
+        exp = results_utils.ExperimentIdentifier(dataset, model, replace_index, seed, diffinit, data_privacy)
+        if exp.exists():
+            w_weights = exp.load_weights(iter_range=iter_range, params=params, verbose=False).values[:, 1:]
             # the first column is the time-step
         else:
             print('WARNING: Missing data for (seed, replace) = (', seed, replace_index, ')')
             w_weights = np.array([np.nan])
         replace_index_p = wp.iloc[i]['replace']
         seed_p = wp.iloc[i]['seed']
-
-        if results_utils.check_if_experiment_exists(dataset, model, replace_index_p, seed_p,
-                                                    diffinit, data_privacy=data_privacy):
-            wp_weights = results_utils.load_weights(dataset, model, replace_index=replace_index_p,
-                                                    seed=seed_p, iter_range=iter_range,
-                                                    params=params, verbose=False,
-                                                    diffinit=diffinit, data_privacy=data_privacy).values[:, 1:]
+    
+        exp_p = results_utils.ExperimentIdentifier(dataset, model, replace_index_p, seed_p, diffinit, data_privacy)
+        if exp_p.exists():
+            wp_weights = exp_p.load_weights(iter_range=iter_range, params=params, verbose=False).values[:, 1:]
         else:
             print('WARNING: Missing data for (seed, replace) = (', seed_p, replace_index_p, ')')
             wp_weights = np.array([np.nan])
@@ -606,9 +599,10 @@ def aggregated_loss(dataset, model, iter_range=(None, None), diffinit=False, dat
         vali_list = []
 
         for i, row in df.iterrows():
-            loss = results_utils.load_loss(dataset, model, replace_index=row['replace'],
-                                           seed=row['seed'], iter_range=iter_range,
-                                           diffinit=diffinit, verbose=False, data_privacy=data_privacy)
+            experiment = results_utils.ExperimentIdentifier(dataset, model, replace_index=row['replace'],
+                                                            seed=row['seed'], diffinit=diffinit,
+                                                            data_privacy=data_privacy)
+            loss = experiment.load_loss(iter_range=iter_range, verbose=False)
             loss_train = loss.loc[loss['minibatch_id'] == 'ALL', :].set_index('t')
             loss_vali = loss.loc[loss['minibatch_id'] == 'VALI', :].set_index('t')
             train_list.append(loss_train)
@@ -641,10 +635,10 @@ def estimate_statistics_through_training(what, dataset, model, replace_index, se
     """
     assert what in ['gradients', 'weights']
 
+    experiment = results_utils.ExperimentIdentifier(dataset, model, replace_index, seed, diffinit)
     if df is None:
         if what == 'gradients':
-            df = results_utils.load_gradients(dataset, model, replace_index, seed,
-                                              noise=True, params=params, iter_range=iter_range)
+            df = experiment.load_gradients(noise=True, params=params, iter_range=iter_range)
         else:
             print('Getting posterior for weights, seed is irrelevant')
             df = results_utils.get_posterior_samples(dataset, model=model, replace_index=replace_index,
@@ -934,9 +928,9 @@ def find_convergence_point_for_single_experiment(dataset, model, replace_index,
                                                  metric='ce', verbose=False,
                                                  data_privacy='all'):
     # load the trace
-    loss = results_utils.load_loss(dataset, model, replace_index, seed,
-                                   iter_range=(None, None), diffinit=diffinit,
-                                   data_privacy=data_privacy)
+    experiment = results_utils.ExperimentIdentifier(dataset, model, replace_index,
+                                                    seed, diffinit=diffinit, data_privacy=data_privacy)
+    loss = experiment.load_loss(iter_range=(None, None))
     try:
         assert metric in loss.columns
     except AssertionError:
