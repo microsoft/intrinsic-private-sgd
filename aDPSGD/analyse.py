@@ -785,9 +785,9 @@ def compare_mnist_variants():
     plt.clf()
     plt.close()
     # ------- compare the traces ----- #
-    pca_loss = dr.aggregated_loss('mnist_binary_pca', 'logistic', diffinit=True)
-    grp_loss = dr.aggregated_loss('mnist_binary', 'logistic', diffinit=True)
-    cropped_loss = dr.aggregated_loss('mnist_binary_cropped', 'logistic', diffinit=True)
+    pca_loss = dr.AggregatedLoss('mnist_binary_pca', 'logistic').load(diffinit=True)
+    grp_loss = dr.AggregatedLoss('mnist_binary', 'logistic').load(diffinit=True)
+    cropped_loss = dr.AggregatedLoss('mnist_binary_cropped', 'logistic').load(diffinit=True)
     fig, axarr = plt.subplots(nrows=2, ncols=1, sharex=True, figsize=(3.5, 3.5))
     size = 6
     # first row is crossnetropy

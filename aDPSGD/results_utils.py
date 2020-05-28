@@ -37,7 +37,7 @@ class ExperimentIdentifier(object):
     def path_stub(self):
         path_stub = self.traces_dir / self.dataset / self.data_privacy / self.model
 
-        identifier = 'model'
+        identifier = self.model
 
         if self.diffinit:
             identifier = f'{identifier}_DIFFINIT'
@@ -55,6 +55,11 @@ class ExperimentIdentifier(object):
         path_stub = path_stub / identifier
 
         return path_stub
+
+    def derived_path_stub(self):
+        """ This is where derived results go """
+        derived_path = self.path_stub().parent / 'derived'
+        return derived_path
 
     def exists(self, log_missing=False):
         path = self.path_stub().with_suffix('.weights.csv')
@@ -187,7 +192,7 @@ def get_available_results(dataset: str, model: str, replace_index: int = None, s
 
 
 def get_posterior_samples(dataset, iter_range, model='linear', replace_index=None,
-                          params=None, seeds='all', n_seeds=None, verbose=True,
+                          params=None, seeds='all', num_seeds=None, verbose=True,
                           diffinit=False, data_privacy='all'):
     """
     grab the values of the weights of [params] at [at_time] for all the available seeds from identifier_stub
@@ -202,8 +207,8 @@ def get_posterior_samples(dataset, iter_range, model='linear', replace_index=Non
         assert type(seeds) == list
         available_seeds = seeds
 
-    if n_seeds is not None:
-        available_seeds = np.random.choice(available_seeds, n_seeds, replace=False)
+    if num_seeds is not None:
+        available_seeds = np.random.choice(available_seeds, num_seeds, replace=False)
 
     if verbose:
         print(f'Loading samples from seeds: {available_seeds} in range {iter_range}')

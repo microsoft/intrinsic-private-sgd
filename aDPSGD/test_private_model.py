@@ -57,7 +57,7 @@ def test_model_with_noise(dataset, model, replace_index, seed, t,
                           sensitivity_from_bound=True,
                           metric_to_report='binary_accuracy',
                           verbose=False, num_deltas=1000,
-                          diffinit=False, data_privacy='all'):
+                          data_privacy='all'):
     """
     test the model on the test set of the respective dataset
     """
@@ -99,7 +99,7 @@ def test_model_with_noise(dataset, model, replace_index, seed, t,
                                                                                    epsilon, delta,
                                                                                    sensitivity, verbose)
 
-    weights_path = results_utils.trace_path_stub(dataset, model, replace_index, seed, diffinit=diffinit) + '.weights.csv'
+    weights_path = results_utils.trace_path_stub(dataset, model, replace_index, seed, diffinit=True) + '.weights.csv'
     print('Evaluating model from', weights_path)
 
     model_object = model_utils.build_model(model_type=model, data_type=dataset, init_path=weights_path, t=t)
