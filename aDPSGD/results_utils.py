@@ -8,8 +8,8 @@ from pathlib import Path
 
 
 class ExperimentIdentifier(object):
-    def __init__(self, dataset, model, replace_index=None, seed=None,
-                 diffinit=False, data_privacy='all', traces_dir='/bigdata/traces'):
+    def __init__(self, dataset=None, model=None, replace_index=None, seed=None,
+                 diffinit=False, data_privacy='all', traces_dir='/bigdata/traces_aDPSGD'):
         self.dataset = dataset
         self.model = model
         self.replace_index = replace_index
@@ -17,6 +17,22 @@ class ExperimentIdentifier(object):
         self.diffinit = diffinit
         self.data_privacy = data_privacy
         self.traces_dir = Path(traces_dir)
+
+    def init_from_cfg(self, cfg):
+        self.dataset = cfg['data']['name']
+        self.model = cfg['model']['architecture']
+        self.diffinit = cfg['model']['diffinit']
+
+    def ensure_directory_exists(self, verbose=True):
+        path_stub = self.path_stub()
+        folder = path_stub.parent
+        if folder.exists():
+            if verbose:
+                print(f'Path {folder} already exists')
+        else:
+            folder.mkdir(parents=True)
+            if verbose:
+                print(f'Created {folder}')
 
     def path_stub(self):
         path_stub = self.traces_dir / self.dataset / self.data_privacy / self.model
@@ -26,10 +42,14 @@ class ExperimentIdentifier(object):
         if self.diffinit:
             identifier = f'{identifier}_DIFFINIT'
 
-        if self.replace_index is not None:
+        if self.replace_index is None:
+            identifier = f'{identifier}.replace_NA'
+        else:
             identifier = f'{identifier}.replace_{self.replace_index}'
 
-        if self.seed is not None:
+        if self.seed is None:
+            identifier = f'{identifier}.seed_NA'
+        else:
             identifier = f'{identifier}.seed_{self.seed}'
 
         path_stub = path_stub / identifier

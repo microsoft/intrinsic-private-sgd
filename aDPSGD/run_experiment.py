@@ -11,6 +11,7 @@ import ipdb
 
 import model_utils
 from data_utils import load_data
+from results_utils import ExperimentIdentifier
 
 
 def check_cfg_for_consistency(cfg):
@@ -42,21 +43,14 @@ def get_model_init_path(cfg):
     return init_path
 
 
-def get_experiment_identifier(cfg, seed, replace_index):
-    identifier_pieces = [cfg['cfg_name'],
-                         cfg['model']['architecture'],
-                         'diffinit'*cfg['model']['diffinit'],
-                         'replace' + str(replace_index),
-                         'seed' + str(seed)]
-    experiment_identifier = '_'.join(identifier_pieces)
-
-    return experiment_identifier
-
-
 def run_experiment(cfg, seed, replace_index):
     t0 = time()
-    experiment_identifier = get_experiment_identifier(cfg, seed, replace_index)
-    print('Running experiment with identifier', experiment_identifier)
+    # how we convert the cfg into a path and such is defined in ExperimentIdentifier
+    exp = ExperimentIdentifier(seed=seed, replace_index=replace_index)
+    exp.init_from_cfg(cfg)
+    exp.ensure_directory_exists(verbose=True)
+    path_stub = exp.path_stub()
+    print('Running experiment with path', path_stub)
     # load data
     x_train, y_train, x_vali, y_vali, x_test, y_test = load_data(options=cfg['data'], replace_index=replace_index)
     # define model
@@ -69,7 +63,7 @@ def run_experiment(cfg, seed, replace_index):
     # now train
     model_utils.train_model(model, cfg['training'], cfg['logging'],
                             x_train, y_train, x_vali, y_vali,
-                            experiment_identifier=experiment_identifier)
+                            path_stub=path_stub)
     # clean up
     del model
     print('Finished after', time() - t0, 'seconds')
