@@ -158,31 +158,17 @@ def plot_delta_histogram(dataset, model, num_deltas='max', t=500,
 
     if multivariate:
         raise NotImplementedError('Multivariate plotting is not implemented')
-    plt.clf()
-    plt.close()
-    path_string = './fig_data/delta_histogram.' + str(dataset) + '.' + data_privacy + '.' + str(model) + '.nd_' + str(num_deltas) + '.t_' + str(t) + '.npy'
-    try:
-        plot_data = np.load(path_string).item()
-        vary_both = plot_data['vary_both']
-        vary_S = plot_data['vary_S']
-        vary_r = plot_data['vary_r']
-        print('Loaded from file:', path_string)
-    except FileNotFoundError:
-        print('Couldn\'t find', path_string)
+    delta_histogram = dr.DeltaHistogram(dataset, model, num_deltas, t, data_privacy, multivariate)
+    plot_data = delta_histogram.load(diffinit=False)
+    plot_data_diffinit = delta_histogram.load(diffinit=True)
 
-        return False
+    vary_both = plot_data['vary_both']
+    vary_S = plot_data['vary_S']
+    vary_r = plot_data['vary_r']
 
-    path_string_diffinit = './fig_data/delta_histogram.' + str(dataset) + '.' + data_privacy + '.' + str(model) + '.nd_' + str(num_deltas) + '.t_' + str(t) + '.DIFFINIT.npy'
-    try:
-        plot_data_diffinit = np.load(path_string_diffinit).item()
-        vary_both_diffinit = plot_data_diffinit['vary_both']
-        vary_S_diffinit = plot_data_diffinit['vary_S']
-        vary_r_diffinit = plot_data_diffinit['vary_r']
-        print('Loaded from file:', path_string_diffinit)
-    except FileNotFoundError:
-        print('Couldn\'t find', path_string_diffinit)
-
-        return False
+    vary_both_diffinit = plot_data_diffinit['vary_both']
+    vary_S_diffinit = plot_data_diffinit['vary_S']
+    vary_r_diffinit = plot_data_diffinit['vary_r']
 
     # remove NANs
     vary_both = vary_both[~np.isnan(vary_both)]
@@ -193,7 +179,10 @@ def plot_delta_histogram(dataset, model, num_deltas='max', t=500,
     vary_r_diffinit = vary_r_diffinit[~np.isnan(vary_r_diffinit)]
     # merge vary_S for the different initialisations
     vary_S = np.concatenate([vary_S, vary_S_diffinit])
+    
     # plot
+    plt.clf()
+    plt.close()
     fig, axarr = plt.subplots(nrows=1, ncols=1, figsize=(4, 2.1))
     print('Plotting varying S... number of deltas:', vary_S.shape[0])
     sns.distplot(vary_S, ax=axarr, color=bolton_colour, label=r'$\Delta_S$', kde=True, norm_hist=True)
@@ -243,7 +232,7 @@ def plot_delta_histogram(dataset, model, num_deltas='max', t=500,
     return True
 
 
-def plot_epsilon_distribution(dataset, model, t, delta, n_pairs,
+def plot_epsilon_distribution(dataset, model, t, delta, num_pairs,
                               which='both',
                               sensitivity_from='local', sharex=False,
                               variability_from='empirical', xlim=None, ylim=None,
@@ -252,18 +241,10 @@ def plot_epsilon_distribution(dataset, model, t, delta, n_pairs,
     overlay epsilon dist with and without diffinit
     which  takes values both, vary, fix
     """
-    path = './fig_data/sens_var_dist.' + dataset + '.' + data_privacy + '.' + model + '.t' + str(t) + '.np' + str(n_pairs) + '.csv'
-    path_diffinit = './fig_data/sens_var_dist.' + dataset + '.' + data_privacy + '.' + model + '.t' + str(t) + '.np' + str(n_pairs) + '.DIFFINIT.csv'
-    try:
-        df = pd.read_csv(path)
-        print('Loaded from file', path)
-    except FileNotFoundError:
-        print('Couldn\'t load sens and var values from', path)
-    try:
-        df_diffinit = pd.read_csv(path_diffinit)
-        print('Loaded from file', path_diffinit)
-    except FileNotFoundError:
-        print('Couldn\'t load sens and var values from', path_diffinit)
+    sens_var = dr.SensVar(dataset, model, data_privacy, t, num_pairs)
+    df = sens_var.load(diffinit=False)
+    df_diffinit = sens_var.load(diffinit=True)
+
     # now set it all up
     _, batch_size, eta, _, N = em.get_experiment_details(dataset, model)
 
@@ -271,13 +252,13 @@ def plot_epsilon_distribution(dataset, model, t, delta, n_pairs,
         delta = 1.0/(N**2)
         print('Delta:', delta)
 
-    if n_pairs is not None:
-        if df.shape[0] > n_pairs:
-            pick_rows = np.random.choice(df.shape[0], n_pairs, replace=False)
+    if num_pairs is not None:
+        if df.shape[0] > num_pairs:
+            pick_rows = np.random.choice(df.shape[0], num_pairs, replace=False)
             df = df.iloc[pick_rows, :]
 
-        if df_diffinit.shape[0] > n_pairs:
-            pick_rows = np.random.choice(df_diffinit.shape[0], n_pairs, replace=False)
+        if df_diffinit.shape[0] > num_pairs:
+            pick_rows = np.random.choice(df_diffinit.shape[0], num_pairs, replace=False)
             df_diffinit = df_diffinit.iloc[pick_rows, :]
 
     if sensitivity_from == 'wu_bound':
@@ -572,13 +553,12 @@ def plot_sens_and_var_over_time(dataset, model, num_deltas=500, iter_range=(0, 1
 
 
 def find_different_datasets(dataset, model, num_deltas, t):
-    path_string = './fig_data/delta_histogram.' + str(dataset) + '.' + str(model) + '.nd_' + str(num_deltas) + '.t_' + str(t) + '.npy'
-    try:
-        plot_data = np.load(path_string).item()
-    except FileNotFoundError:
+    delta_histogram = dr.DeltaHistogram(dataset, model, num_deltas, t)
+    plot_data = delta_histogram.load()
+    if plot_data is None:
         print('[find_different_datasets] ERROR: Run delta_histogram for this setting first')
 
-        return False
+        return None, None
     vary_data_deltas = plot_data['vary_S']
     vary_data_identifiers = plot_data['S_identifiers']
     # just get the top 10 biggest
@@ -592,16 +572,9 @@ def find_different_datasets(dataset, model, num_deltas, t):
 def plot_stability_of_estimated_values(dataset, model, t):
     """
     """
-    path = './fig_data/stability_' + dataset + '_' + model + '_' + str(t) + '.npy'
-    try:
-        stability_dict = np.load(path, allow_pickle=True).item()
-    except FileNotFoundError:
-        print('Couldn\'t find stability data in', path, ' - running again')
-        sigma_df = compute_sigma_v_n_seeds(dataset, model, t)
-        sens_df = compute_sens_v_n_deltas(dataset, model, t)
-        stability_dict = {'sigma': sigma_df,
-                          'sens': sens_df}
-        np.save(path, stability_dict)
+    stability = dr.Stability(dataset, model, t)
+    stability_dict = stability.load()
+
     # lets just do 3 separate plots
     figsize = (3.5, 2.8)
     size = 6
@@ -666,7 +639,7 @@ def plot_sigmas_distribution(model, datasets=None, ylim=None):
     for ds in datasets:
         t = convergence_points[ds]
         # now just the sigmas distribution
-        all_sigmas = np.load('./fig_data/sigmas.' + ds + '.all.' + model +'.t' + str(t) + '.DIFFINIT.nsmax.npy', allow_pickle=True).item()['sigmas']
+        all_sigmas = dr.Sigmas(ds, model, t).load(diffinit=True)['sigmas']
         # lose the nans
         all_sigmas = all_sigmas[~np.isnan(all_sigmas)]
         min_sigma = np.nanmin(all_sigmas)
@@ -785,9 +758,9 @@ def compare_mnist_variants():
     plt.clf()
     plt.close()
     # ------- compare the traces ----- #
-    pca_loss = dr.aggregated_loss('mnist_binary_pca', 'logistic', diffinit=True)
-    grp_loss = dr.aggregated_loss('mnist_binary', 'logistic', diffinit=True)
-    cropped_loss = dr.aggregated_loss('mnist_binary_cropped', 'logistic', diffinit=True)
+    pca_loss = dr.AggregatedLoss('mnist_binary_pca', 'logistic').load(diffinit=True)
+    grp_loss = dr.AggregatedLoss('mnist_binary', 'logistic').load(diffinit=True)
+    cropped_loss = dr.AggregatedLoss('mnist_binary_cropped', 'logistic').load(diffinit=True)
     fig, axarr = plt.subplots(nrows=2, ncols=1, sharex=True, figsize=(3.5, 3.5))
     size = 6
     # first row is crossnetropy
@@ -936,7 +909,7 @@ def overlay_eps_plot(model='logistic', datasets=None, xlim=None, ylim=None, titl
 
     for ds in datasets:
         _, eps_diffinit = dr.epsilon_distribution(ds, model, t=convergence_points[ds],
-                                                  delta=None, n_pairs=None, which='vary',
+                                                  delta=None, num_pairs=None, which='vary',
                                                   sensitivity_from='local', sharex=True,
                                                   variability_from='empirical',
                                                   xlim=None, ylim=None,
