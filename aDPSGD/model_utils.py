@@ -7,40 +7,15 @@ import pandas as pd
 import tensorflow as tf
 from tensorflow import keras as K
 from tensorflow.keras.layers import Dense, Flatten, Dropout, Conv2D, MaxPooling2D
-from pathlib import Path
 
 
-ROOT_DIR = Path('/bigdata/')
-TRACES_DIR = ROOT_DIR / 'traces_aDPSGD'
-
-
-def build_model(architecture: str, input_size: int, output_size: int,
-                task_type: str, hidden_size: int, init_path, t=None, **kwargs) -> 'Model':
-    """
-    Wrapper around defining the model architecture
-    """
-    if architecture == 'mlp':
-        model = Feedforward(input_size, output_size, task_type, init_path, hidden_size, t)
-    elif architecture == 'linear':
-        model = Linear(input_size, init_path, t)
-    elif architecture == 'logistic':
-        model = Logistic(input_size, init_path, t)
-    elif architecture == 'cnn':
-        model = CNN(input_size=input_size, output_size=output_size,
-                    task_type=task_type, init_path=init_path,
-                    hidden_size=hidden_size, t=t)
-    else:
-        raise ValueError(architecture)
-    return model
-
-
-class logger(object):
+class Logger(object):
     """
     """
-    def __init__(self, model: 'Model', experiment_identifier: str, cadence: int,
+    def __init__(self, model: 'Model', path_stub: str, cadence: int,
                  X_train: np.ndarray, y_train: np.ndarray, X_vali: np.ndarray, y_vali: np.ndarray) -> None:
         self.model = model
-        self.experiment_identifier = experiment_identifier
+        self.path_stub = path_stub
         self.logging_cadence = cadence
         self.logging_counter = tf.Variable(initial_value=0, name='logging_counter', trainable=False, dtype=tf.int32)
         self.X_train = X_train
@@ -77,10 +52,10 @@ class logger(object):
 
     def initialise_log_files(self) -> None:
         # define paths (we will need this for tensorflow's print function later)
-        self.weights_file_path = TRACES_DIR / f'{self.experiment_identifier}.weights.csv'
-        self.grads_file_path = TRACES_DIR / f'{self.experiment_identifier}.grads.csv'
-        self.loss_file_path = TRACES_DIR / f'{self.experiment_identifier}.loss.csv'
-        print(f'[logging] Saving information with identifier {self.experiment_identifier} to directory {TRACES_DIR}')
+        self.weights_file_path = f'{self.path_stub}.weights.csv'
+        self.grads_file_path = f'{self.path_stub}.grads.csv'
+        self.loss_file_path = f'{self.path_stub}.loss.csv'
+        print(f'[logging] Saving information with identifier {self.path_stub}')
         # open them up
         self.weights_file = open(self.weights_file_path, 'w')
         self.grads_file = open(self.grads_file_path, 'w')
@@ -164,6 +139,26 @@ class logger(object):
         print('[logging] Log files finalised')
 
 
+def build_model(architecture: str, input_size: int, output_size: int,
+                task_type: str, hidden_size: int, init_path, t=None, **kwargs) -> 'Model':
+    """
+    Wrapper around defining the model architecture
+    """
+    if architecture == 'mlp':
+        model = Feedforward(input_size, output_size, task_type, init_path, hidden_size, t)
+    elif architecture == 'linear':
+        model = Linear(input_size, init_path, t)
+    elif architecture == 'logistic':
+        model = Logistic(input_size, init_path, t)
+    elif architecture == 'cnn':
+        model = CNN(input_size=input_size, output_size=output_size,
+                    task_type=task_type, init_path=init_path,
+                    hidden_size=hidden_size, t=t)
+    else:
+        raise ValueError(architecture)
+    return model
+
+
 class Model(K.Sequential):
     """
     """
@@ -190,7 +185,7 @@ class Model(K.Sequential):
         pass
 
     def fit(self, x_train: np.ndarray, y_train: np.ndarray, batch_size: int,
-            epochs: int, logger: 'logger' = None) -> None:
+            epochs: int, logger: 'Logger' = None) -> None:
         N = x_train.shape[0]
         if not N % batch_size == 0:
             print('WARNING: Training set size is not multiple of batch size - some data will be missed every epoch!')
@@ -440,9 +435,9 @@ def prep_for_training(model: 'Model', seed: int, optimizer_settings: dict, task_
 def train_model(model: 'Model', training_cfg: dict, logging_cfg: dict,
                 x_train: np.ndarray, y_train: np.ndarray,
                 x_vali: np.ndarray, y_vali: np.ndarray,
-                experiment_identifier: str) -> None:
+                path_stub: str) -> None:
 
-    experiment_logger = logger(model, experiment_identifier,
+    experiment_logger = Logger(model, path_stub,
                                cadence=logging_cfg['cadence'],
                                X_train=x_train, y_train=y_train,
                                X_vali=x_vali, y_vali=y_vali)
