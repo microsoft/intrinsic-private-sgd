@@ -542,6 +542,36 @@ class VersusTime(DerivedResult):
         return sens_df
 
 
+class Stability(DerivedResult):
+    def __init__(self, dataset, model, t, data_privacy='all'):
+        super(Stability, self).__init__(dataset, model, data_privacy)
+        self.t = t
+
+    def identifier(self):
+        identifier = f'stability_t{self.t}'
+        return identifier
+
+    def generate(self):
+        identifier = self.identifier()
+        path_string = (self.derived_directory / identifier).with_suffix('.npy')
+        if path_string.exists():
+            print(f'[Stability] File {path_string} already exists, not computing again!')
+            return
+
+        sigma_df = compute_sigma_v_n_seeds(self.dataset, self.model, self.t)
+        sens_df = compute_sens_v_n_deltas(self.dataset, self.model, self.t)
+        stability_dict = {'sigma': sigma_df,
+                          'sens': sens_df}
+        print(f'[Stability] Saved to {path_string}')
+        np.save(path_string, stability_dict)
+
+    def load(self):
+        identifier = self.identifier()
+        path_string = (self.derived_directory / identifier).with_suffix('.npy')
+        stability_dict = np.load(path_string).item()
+        return stability_dict
+
+
 def calculate_epsilon(dataset, model, t, use_bound=False, diffinit=True,
                       num_deltas='max', multivariate=False):
     """
@@ -1041,3 +1071,65 @@ def estimate_variability(dataset, model, t, multivariate, diffinit=False,
     estimated_variability = np.nanmin(sigmas, axis=0)
 
     return estimated_variability
+
+
+def compute_sigma_v_n_seeds(dataset, model, t) -> pd.DataFrame:
+    """
+    """
+    n_seeds_array = []
+    n_replaces_array = []
+    sigma_array = []
+
+    for n_seeds in [2, 5, 10]*5 + [20, 30]*3 + [40, 50]*2 + [60, 70, 80, 90, 100, 200]:
+        for n_replaces in [25]:
+            # [50]:      # this is what it is for mnist (MLP)
+                        # [75]: # this is what it is for adult and forest )LR)
+            #        [100]: # this is what it is for the others (LR)
+            # setting ephemeral = True will make this very slow but I think it's worth it for my sanity
+            # otherwise I need to do even more refactoring
+            sigma = dr.estimate_variability(dataset, model, t=t,
+                                            n_seeds=n_seeds, n_replaces=n_replaces,
+                                            ephemeral=True, diffinit=True)
+            n_seeds_array.append(n_seeds)
+            n_replaces_array.append(n_replaces)
+            sigma_array.append(sigma)
+            print(f'{n_replaces} replaces, {n_seeds} seeds')
+            print(f'\tsigma: {sigma}')
+
+    stability_sigma = pd.DataFrame({'n_seeds': n_seeds_array,
+                                    'n_replaces': n_replaces_array,
+                                    'sigma': sigma_array})
+
+    return stability_sigma
+
+
+def compute_sens_v_n_deltas(dataset, model, t):
+    """
+    compute empirical
+    - sens
+    - variability
+    - epsilon
+    with differing numbers of experiments, to test stability of estimates
+    """
+    num_deltas_array = []
+    sens_array = []
+
+    for n_deltas in [5, 10, 25, 50, 75, 100, 125, 250, 500, 1000, 1500, 2000, 2500, 3000, 4000, 5000]:
+        vary_S, _ = dr.get_deltas(dataset, iter_range=(t, t+1),
+                                  model=model, vary_seed=False, vary_data=True,
+                                  num_deltas=n_deltas, diffinit=True,
+                                  data_privacy='all', multivariate=False)
+
+        if vary_S is False:
+            sens = None
+        else:
+            print('should have', n_deltas, 'deltas, actually have:', len(vary_S[~np.isnan(vary_S)]))
+            sens = np.nanmax(vary_S)
+        print(f'{n_deltas} deltas')
+        print(f'\tsens: {sens}')
+        num_deltas_array.append(n_deltas)
+        sens_array.append(sens)
+    stability_sens = pd.DataFrame({'n_deltas': num_deltas_array,
+                                   'sens': sens_array})
+
+    return stability_sens
