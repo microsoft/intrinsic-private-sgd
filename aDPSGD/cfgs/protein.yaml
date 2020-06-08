@@ -4,7 +4,6 @@ data:
     binary: true
 model:
     architecture: logistic
-    diffinit: true
     task_type: binary
     input_size: 74
     output_size: 1

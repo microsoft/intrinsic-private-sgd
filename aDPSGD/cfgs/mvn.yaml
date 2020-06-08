@@ -4,7 +4,6 @@ data:
     binary: false
 model:
     architecture: linear
-    diffinit: true
     task_type: regression
     input_size: 25
     output_size: 1

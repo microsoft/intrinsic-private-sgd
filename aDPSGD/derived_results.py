@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import ttest_rel
 
+import ipdb
 import test_private_model
 import results_utils
 import stats_utils
@@ -22,6 +23,7 @@ class DerivedResult(object):
         sample_experiment = results_utils.ExperimentIdentifier(dataset=dataset, model=model,
                                                                data_privacy=data_privacy)
         self.derived_directory = sample_experiment.derived_path_stub()
+        self.suffix = None
 
     @abc.abstractmethod
     def identifier(self, diffinit: bool) -> str:
@@ -31,9 +33,27 @@ class DerivedResult(object):
     def generate(self) -> None:
         pass
 
-    @abc.abstractmethod
+    def path_string(self, diffinit: bool = False):
+        identifier = self.identifier(diffinit)
+        path_string = (self.derived_directory / identifier).with_suffix(self.suffix)
+        return path_string
+
     def load(self, diffinit: bool):
-        pass
+        path_string = self.path_string
+
+        try:
+            if self.suffix == '.npy':
+                data = np.load(path_string, allow_pickle=True).item()
+                print(f'Loaded derived data from {path_string}')
+            elif self.suffix == '.csv':
+                data = pd.read_csv(path_string)
+            else:
+                raise ValueError(f'Unknown suffix {self.suffix}')
+        except FileNotFoundError:
+            print(f'ERROR: {path_string} not found!')
+            data = None
+
+        return data
 
 
 class DeltaHistogram(DerivedResult):
@@ -45,6 +65,7 @@ class DeltaHistogram(DerivedResult):
         self.num_deltas = num_deltas
         self.t = t
         self.multivariate = multivariate
+        self.suffix = '.npy'
 
     def identifier(self, diffinit: bool) -> str:
         identifier = f'delta_histogram_nd{self.num_deltas}_t{self.t}{"_diffinit"*diffinit}{"_multivar"*self.multivariate}'
@@ -53,13 +74,14 @@ class DeltaHistogram(DerivedResult):
 
     def generate(self) -> None:
         for diffinit in False, True:
-            identifier = self.identifier(diffinit)
-            path_string = (self.derived_directory / identifier).with_suffix('.npy')
+            path_string = self.path_string(diffinit)
 
             if path_string.exists():
                 print(f'WARNING: Delta histogram has already been generated, file {path_string} exists!')
 
                 return
+            else:
+                path_string.parent.mkdir(exist_ok=True)
         #    path_string = './fig_data/delta_histogram.' + str(dataset) + '.' + data_privacy + '.'
         #+ str(model) + '.nd_' + str(num_deltas) + '.t_' + str(t) + 'MULTIVAR'*multivariate + '.npy'
             print('Couldn\'t find', path_string)
@@ -92,19 +114,6 @@ class DeltaHistogram(DerivedResult):
             np.save(path_string, delta_histogram_data)
             print(f'[DeltaHistogram] Saved to {path_string}')
 
-    def load(self, diffinit) -> dict:
-        identifier = self.identifier(diffinit)
-        path_string = (self.derived_directory / identifier).with_suffix('.npy')
-
-        try:
-            delta_histogram_data = np.load(path_string).item()
-            print(f'[DeltaHistogram] Loaded delta histogram data from {path_string}')
-        except FileNotFoundError:
-            print(f'[DeltaHistogram] ERROR: {path_string} not found!')
-            delta_histogram_data = None
-
-        return delta_histogram_data
-
 
 class UtilityCurve(DerivedResult):
     def __init__(self, dataset, model, num_deltas, t, data_privacy='all', metric_to_report='binary_accuracy',
@@ -114,6 +123,7 @@ class UtilityCurve(DerivedResult):
         self.num_experiments = num_experiments
         self.t = t
         self.metric_to_report = metric_to_report
+        self.suffix = '.csv'
 
     def identifier(self, diffinit: bool) -> str:
         identifier = f'utility_nd{self.num_deltas}_t{self.t}_ne{self.num_experiments}'
@@ -121,8 +131,7 @@ class UtilityCurve(DerivedResult):
         return identifier
 
     def generate(self, diffinit) -> None:
-        identifier = self.identifier(diffinit)
-        path_string = (self.derived_directory / identifier).with_suffix('.csv')
+        path_string = self.path_string(diffinit)
 
         if path_string.exists():
             print(f'WARNING: Utility curve has already been generated, file {path_string} exists!')
@@ -181,18 +190,6 @@ class UtilityCurve(DerivedResult):
         utility_data.to_csv(path_string, header=True, index=False, mode='a')
         print(f'[UtilityCurve] Saved to {path_string}')
 
-    def load(self):
-        identifier = self.identifier()
-        path_string = (self.derived_directory / identifier).with_suffix('.csv')
-        try:
-            utility_data = pd.read_csv(path_string)
-            print(f'[UtilityCurve] Loaded from {path_string}')
-        except FileNotFoundError:
-            print(f'[UtilityCurve]  ERROR: Couldn\'t load {path_string}')
-            utility_data = None
-
-        return utility_data
-
 
 class AggregatedLoss(DerivedResult):
     """
@@ -201,6 +198,7 @@ class AggregatedLoss(DerivedResult):
     def __init__(self, dataset, model, data_privacy='all', iter_range=(None, None)):
         super(AggregatedLoss, self).__init__(dataset, model, data_privacy)
         self.iter_range = iter_range
+        self.suffix = '.csv'
 
     def identifier(self, diffinit: bool) -> str:
         identifier = f'aggregated_loss{"_diffinit"*diffinit}'
@@ -208,10 +206,11 @@ class AggregatedLoss(DerivedResult):
         return identifier
 
     def generate(self, diffinit):
-        identifier = self.identifier(diffinit)
-        path_string = (self.derived_directory / identifier).with_suffix('.csv')
+        path_string = self.path_string(diffinit)
+
         if path_string.exists():
             print(f'[AggregatedLoss] {path_string} already exists, not recomputing!')
+
             return
 
         df = results_utils.get_available_results(self.dataset, self.model)
@@ -241,30 +240,26 @@ class AggregatedLoss(DerivedResult):
         vali = vali_mean.join(vali_std, rsuffix='_std', lsuffix='_mean')
         df = train.join(vali, lsuffix='_train', rsuffix='_vali')
 
+        self.suffix = '.csv'
         df.to_csv(path_string, header=True, index=True)
         print(f'[AggregatedLoss] Saved to {path_string}')
+
         return
 
     def load(self, diffinit: bool) -> pd.DataFrame:
-        identifier = self.identifier()
-        path_string = (self.derived_directory / identifier).with_suffix('.csv')
-        try:
-            loss_data = pd.read_csv(path_string)
-            loss_data.set_index('t', inplace=True)
-            print(f'[AggregatedLoss] Loaded from {path_string}')
-        except FileNotFoundError:
-            print(f'[AggregatedLoss]  ERROR: Couldn\'t load {path_string}')
-            loss_data = None
+        data = super(AggregatedLoss, self).load(diffinit)
+        data.set_index('t', inplace=True)
 
-        return loss_data
+        return data
 
 
 class SensVar(DerivedResult):
     """"""
-    def __init__(self, dataset, model, data_privacy, t, num_pairs):
+    def __init__(self, dataset, model,  t, num_pairs='max', data_privacy='all'):
         super(SensVar, self).__init__(dataset, model, data_privacy)
         self.t = t
         self.num_pairs = num_pairs
+        self.suffix = '.csv'
 
     def identifier(self, diffinit: bool) -> str:
         # path = './fig_data/sens_var_dist.' + dataset + '.' + data_privacy + '.' + model + '.t' + str(t) + '.np' + str(num_pairs) + '.csv'
@@ -274,8 +269,7 @@ class SensVar(DerivedResult):
 
     def generate(self) -> None:
         for diffinit in [False, True]:
-            identifier = self.identifier(diffinit)
-            path_string = (self.derived_directory / identifier).with_suffix('.csv')
+            path_string = self.path_string(diffinit)
 
             if path_string.exists():
                 print(f'[SensVar] File {path_string} already exists - not recomputing!')
@@ -299,7 +293,7 @@ class SensVar(DerivedResult):
                     dj = replaces[j]
                     pairs_array.append((di, dj))
 
-            if self.num_pairs is not None:
+            if not self.num_pairs == 'max':
                 total_pairs = len(pairs_array)
                 print(total_pairs)
                 pair_picks = np.random.choice(total_pairs, self.num_pairs, replace=False)
@@ -307,14 +301,14 @@ class SensVar(DerivedResult):
             print('Computing "local" epsilon for', len(pairs_array), 'pairs of datasets!')
 
             for di, dj in pairs_array:
-                pair_sens, pair_var, n_seeds = compute_pairwise_sens_and_var(self.dataset, self.models,
+                pair_sens, pair_var, num_seeds = compute_pairwise_sens_and_var(self.dataset, self.model,
                                                                              self.t, replace_indices=[di, dj],
                                                                              multivariate=False,
                                                                              verbose=False,
                                                                              diffinit=diffinit)
                 sens_array.append(pair_sens)
                 var_array.append(pair_var)
-                overlap_array.append(n_seeds)
+                overlap_array.append(num_seeds)
             df = pd.DataFrame({'pair': pairs_array,
                                'sensitivity': sens_array,
                                'variability': var_array,
@@ -323,19 +317,6 @@ class SensVar(DerivedResult):
             df.to_csv(path_string, header=True, index=False)
 
         return
-
-    def load(self, diffinit) -> pd.DataFrame:
-        identifier = self.identifier(diffinit)
-        path_string = (self.derived_directory / identifier).with_suffix('.csv')
-
-        try:
-            sens_df = pd.read_csv(path_string)
-            print(f'[SensVar] Loaded from {path_string}')
-        except FileNotFoundError:
-            print(f'[SensVar]  ERROR: Couldn\'t load {path_string}')
-            sens_df = None
-
-        return sens_df
 
 
 class Sigmas(DerivedResult):
@@ -349,6 +330,7 @@ class Sigmas(DerivedResult):
         self.num_seeds = num_seeds
         self.t = t
         self.multivariate = multivariate
+        self.suffix = '.npy'
 
     def identifier(self, diffinit: bool) -> str:
         identifier = f'sigmas_t{self.t}_ns{self.num_seeds}{"_diffinit"*diffinit}{"_multivar"*self.multivariate}'
@@ -359,9 +341,7 @@ class Sigmas(DerivedResult):
         """ ephemeral allows us generate it and return without saving """
 
         if not ephemeral:
-            # check if the file already exists
-            identifier = self.identifier(diffinit)
-            path_string = (self.derived_directory / identifier).with_suffix('.csv')
+            path_string = self.path_string(diffinit)
 
             if path_string.exists():
                 print(f'[Sigmas] File {path_string} already exists, not computing again!')
@@ -379,7 +359,7 @@ class Sigmas(DerivedResult):
             print('Warning: this can be slow...')
         sigmas = []
 
-        if not self.num_replaces == 'max':
+        if not self.num_replaces == 'max' and self.num_replaces < len(replaces):
             replaces = np.random.choice(replaces, self.num_replaces, replace=False)
 
         for replace_index in replaces:
@@ -417,18 +397,6 @@ class Sigmas(DerivedResult):
         else:
             return sigmas_data
 
-    def load(self, diffinit):
-        identifier = self.identifier(diffinit)
-        path_string = (self.derived_directory / identifier).with_suffix('.csv')
-        try:
-            sigmas_data = pd.read_csv(path_string)
-            print(f'[Sigmas] Loaded from {path_string}')
-        except FileNotFoundError:
-            print(f'[Sigmas]  ERROR: Couldn\'t load {path_string}')
-            sigmas_data = None
-
-        return sigmas_data
-
 
 class VersusTime(DerivedResult):
     """
@@ -442,21 +410,22 @@ class VersusTime(DerivedResult):
     - variability w/out diffinit
     - variability with diffinit
     """
-    def __init__(self, dataset, model, data_privacy, iter_range, num_deltas=500, cadence=200):
+    def __init__(self, dataset, model, data_privacy='all', iter_range=(0, 1000), num_deltas='max', cadence=200):
         super(VersusTime, self).__init__(dataset, model, data_privacy)
         self.iter_range = iter_range
         self.num_deltas = num_deltas
         assert None not in self.iter_range
         self.cadence = cadence
+        self.suffix = '.npy'
 
-    def identifier(self) -> str:
+    def identifier(self, diffinit: bool = False) -> str:
+        """ yes I know the diffinit input is never used """
         identifier = f'versus_time_nd{self.num_deltas}'
 
         return identifier
 
     def generate(self) -> None:
-        identifier = self.identifier()
-        path_string = (self.derived_directory / identifier).with_suffix('.csv')
+        path_string = self.path_string()
 
         if path_string.exists():
             print(f'[VersusTime] WARNING: Versus time has already been generated, file {path_string} exists!')
@@ -523,53 +492,66 @@ class VersusTime(DerivedResult):
                                 data_privacy=self.data_privacy).load(diffinit=True)
         df = df.join(losses)
         ###
+        self.suffix = '.csv'
         df.to_csv(path_string)
         print(f'[VersusTime] Saved to {path_string}')
 
         return
-
-    def load(self) -> pd.DataFrame:
-        identifier = self.identifier()
-        path_string = (self.derived_directory / identifier).with_suffix('.csv')
-
-        try:
-            sens_df = pd.read_csv(path_string)
-            print(f'[VersusTime] Loaded from {path_string}')
-        except FileNotFoundError:
-            print(f'[VersusTime]  ERROR: Couldn\'t load {path_string}')
-            sens_df = None
-
-        return sens_df
 
 
 class Stability(DerivedResult):
     def __init__(self, dataset, model, t, data_privacy='all'):
         super(Stability, self).__init__(dataset, model, data_privacy)
         self.t = t
+        self.suffix = '.npy'
 
-    def identifier(self):
+    def identifier(self, diffinit: bool = False) -> str:
         identifier = f'stability_t{self.t}'
+
         return identifier
 
-    def generate(self):
-        identifier = self.identifier()
-        path_string = (self.derived_directory / identifier).with_suffix('.npy')
+    def generate(self) -> None:
+        path_string = self.path_string()
+
         if path_string.exists():
             print(f'[Stability] File {path_string} already exists, not computing again!')
+
             return
 
-        sigma_df = compute_sigma_v_n_seeds(self.dataset, self.model, self.t)
-        sens_df = compute_sens_v_n_deltas(self.dataset, self.model, self.t)
+        sigma_df = compute_sigma_v_num_seeds(self.dataset, self.model, self.t)
+        sens_df = compute_sens_v_num_deltas(self.dataset, self.model, self.t)
         stability_dict = {'sigma': sigma_df,
                           'sens': sens_df}
         print(f'[Stability] Saved to {path_string}')
         np.save(path_string, stability_dict)
 
-    def load(self):
-        identifier = self.identifier()
-        path_string = (self.derived_directory / identifier).with_suffix('.npy')
-        stability_dict = np.load(path_string).item()
-        return stability_dict
+        return
+
+
+def generate_derived_results(dataset: str, model: str = 'logistic', t: int = None) -> None:
+    """
+    Helper function
+    """
+    if t is None:
+        t, valid_frac = find_convergence_point(dataset, model, diffinit=True, 
+                                               tolerance=3, metric='binary_accuracy', data_privacy='all')
+        if valid_frac < 0.5:
+            raise ValueError(f'Convergence point not good, valid fraction: {valid_frac}')
+        else:
+            print(f'Selecting t as convergence point {t}, valid fraction {valid_frac}')
+
+    DeltaHistogram(dataset, model, t=t).generate()
+    # utility curve not implemented yet TODO
+    # UtilityCurve(dataset, model, num_deltas='max', t=t).generate(diffinit=True)
+    AggregatedLoss(dataset, model).generate(diffinit=True)
+    AggregatedLoss(dataset, model).generate(diffinit=False)
+    SensVar(dataset, model, t=t).generate()
+    Sigmas(dataset, model, t=t).generate(diffinit=True)
+    # versus time not implemented properly yet TODO
+    #VersusTime(dataset, model).generate()
+    Stability(dataset, model, t=t).generate()
+
+    return
 
 
 def calculate_epsilon(dataset, model, t, use_bound=False, diffinit=True,
@@ -747,7 +729,7 @@ def get_deltas(dataset, iter_range, model,
     if df.shape[0] < 2*num_deltas:
         print('ERROR: Run more experiments, or set num_deltas to be at most', int(df.shape[0]/2))
 
-        return False
+        return None, None
     w_rows = np.random.choice(df.shape[0], num_deltas, replace=False)
     remaining_rows = [x for x in range(df.shape[0]) if x not in w_rows]
     df_remaining = df.iloc[remaining_rows]
@@ -756,13 +738,13 @@ def get_deltas(dataset, iter_range, model,
     if len(seed_options) < 2:
         print('ERROR: Insufficient seeds!')
 
-        return False
+        return None, None
     data_options = df_remaining['replace'].unique()
 
     if len(data_options) == 1:
         print('ERROR: Insufficient data!')
 
-        return False
+        return None, None
 
     w = df.iloc[w_rows]
     w.reset_index(inplace=True)
@@ -1006,12 +988,12 @@ def compute_pairwise_sens_and_var(dataset, model, t, replace_indices,
     samples_2 = samples_2[params]
     # get intersection of seeds
     intersection = list(set(samples_1.index).intersection(set(samples_2.index)))
-    n_seeds = len(intersection)
+    num_seeds = len(intersection)
 
-    if len(intersection) < 30:
-        print('WARNING: Experiments with replace indices', replace_indices, 'only have', n_seeds, 'overlapping seeds:', intersection)
+    if len(intersection) < 10:
+        print('WARNING: Experiments with replace indices', replace_indices, 'only have', num_seeds, 'overlapping seeds:', intersection)
 
-        return np.nan, np.nan, n_seeds
+        return np.nan, np.nan, num_seeds
     samples_1_intersection = samples_1.loc[intersection, :]
     samples_2_intersection = samples_2.loc[intersection, :]
     # compute the distances on the same seed
@@ -1035,10 +1017,10 @@ def compute_pairwise_sens_and_var(dataset, model, t, replace_indices,
     if verbose:
         print('Variability:', variability)
 
-    return sensitivity, variability, n_seeds
+    return sensitivity, variability, num_seeds
 
 
-def estimate_variability(dataset, model, t, multivariate, diffinit=False,
+def estimate_variability(dataset, model, t, multivariate=False, diffinit=False,
                          data_privacy='all', num_replaces='max', num_seeds='max',
                          ephemeral=False, verbose=True):
     """
@@ -1073,37 +1055,37 @@ def estimate_variability(dataset, model, t, multivariate, diffinit=False,
     return estimated_variability
 
 
-def compute_sigma_v_n_seeds(dataset, model, t) -> pd.DataFrame:
+def compute_sigma_v_num_seeds(dataset, model, t) -> pd.DataFrame:
     """
     """
-    n_seeds_array = []
-    n_replaces_array = []
+    num_seeds_array = []
+    num_replaces_array = []
     sigma_array = []
 
-    for n_seeds in [2, 5, 10]*5 + [20, 30]*3 + [40, 50]*2 + [60, 70, 80, 90, 100, 200]:
-        for n_replaces in [25]:
+    for num_seeds in [2, 5, 10]*5 + [20, 30]*3 + [40, 50]*2 + [60, 70, 80, 90, 100, 200]:
+        for num_replaces in [25]:
             # [50]:      # this is what it is for mnist (MLP)
                         # [75]: # this is what it is for adult and forest )LR)
             #        [100]: # this is what it is for the others (LR)
             # setting ephemeral = True will make this very slow but I think it's worth it for my sanity
             # otherwise I need to do even more refactoring
-            sigma = dr.estimate_variability(dataset, model, t=t,
-                                            n_seeds=n_seeds, n_replaces=n_replaces,
-                                            ephemeral=True, diffinit=True)
-            n_seeds_array.append(n_seeds)
-            n_replaces_array.append(n_replaces)
+            sigma = estimate_variability(dataset, model, t=t,
+                                         num_seeds=num_seeds, num_replaces=num_replaces,
+                                         ephemeral=True, diffinit=True)
+            num_seeds_array.append(num_seeds)
+            num_replaces_array.append(num_replaces)
             sigma_array.append(sigma)
-            print(f'{n_replaces} replaces, {n_seeds} seeds')
+            print(f'{num_replaces} replaces, {num_seeds} seeds')
             print(f'\tsigma: {sigma}')
 
-    stability_sigma = pd.DataFrame({'n_seeds': n_seeds_array,
-                                    'n_replaces': n_replaces_array,
+    stability_sigma = pd.DataFrame({'num_seeds': num_seeds_array,
+                                    'num_replaces': num_replaces_array,
                                     'sigma': sigma_array})
 
     return stability_sigma
 
 
-def compute_sens_v_n_deltas(dataset, model, t):
+def compute_sens_v_num_deltas(dataset, model, t):
     """
     compute empirical
     - sens
@@ -1114,22 +1096,22 @@ def compute_sens_v_n_deltas(dataset, model, t):
     num_deltas_array = []
     sens_array = []
 
-    for n_deltas in [5, 10, 25, 50, 75, 100, 125, 250, 500, 1000, 1500, 2000, 2500, 3000, 4000, 5000]:
-        vary_S, _ = dr.get_deltas(dataset, iter_range=(t, t+1),
+    for num_deltas in [5, 10, 25, 50, 75, 100, 125, 250, 500, 1000, 1500, 2000, 2500, 3000, 4000, 5000]:
+        vary_S, _ = get_deltas(dataset, iter_range=(t, t+1),
                                   model=model, vary_seed=False, vary_data=True,
-                                  num_deltas=n_deltas, diffinit=True,
+                                  num_deltas=num_deltas, diffinit=True,
                                   data_privacy='all', multivariate=False)
 
-        if vary_S is False:
+        if vary_S is None:
             sens = None
         else:
-            print('should have', n_deltas, 'deltas, actually have:', len(vary_S[~np.isnan(vary_S)]))
+            print('should have', num_deltas, 'deltas, actually have:', len(vary_S[~np.isnan(vary_S)]))
             sens = np.nanmax(vary_S)
-        print(f'{n_deltas} deltas')
+        print(f'{num_deltas} deltas')
         print(f'\tsens: {sens}')
-        num_deltas_array.append(n_deltas)
+        num_deltas_array.append(num_deltas)
         sens_array.append(sens)
-    stability_sens = pd.DataFrame({'n_deltas': num_deltas_array,
+    stability_sens = pd.DataFrame({'num_deltas': num_deltas_array,
                                    'sens': sens_array})
 
     return stability_sens

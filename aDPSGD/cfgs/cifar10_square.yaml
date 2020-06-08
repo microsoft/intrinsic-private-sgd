@@ -5,7 +5,6 @@ data:
     flatten: false
 model:
     architecture: cnn
-    diffinit: true
     task_type: classification
     input_size: (32, 32, 3)
     output_size: 10

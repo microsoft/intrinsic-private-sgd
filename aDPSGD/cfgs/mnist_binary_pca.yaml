@@ -6,7 +6,6 @@ data:
     preprocessing: PCA
 model:
     architecture: logistic
-    diffinit: true
     task_type: binary
     input_size: 100
     output_size: 1

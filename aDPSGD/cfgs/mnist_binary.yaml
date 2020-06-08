@@ -6,7 +6,6 @@ data:
     preprocessing: GRP
 model:
     architecture: logistic
-    diffinit: true
     task_type: binary
     input_size: 50
     output_size: 1

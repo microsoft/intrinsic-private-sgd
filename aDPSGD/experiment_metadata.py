@@ -12,6 +12,12 @@ dataset_names = {'cifar10_binary': 'CIFAR2',
                  'forest': 'Forest',
                  'mnist_square': 'MNIST'}
 
+dataset_sizes = {'cifar10_binary': 'CIFAR2',
+                 'mnist_binary_pca': 'MNIST-binary',
+                 'adult': 'Adult',
+                 'forest': 'Forest',
+                 'mnist_square': 'MNIST'}
+
 model_names = {'logistic': 'logistic regression',
                'mlp': 'neural network',
                'cnn': 'CNN'}
@@ -25,6 +31,18 @@ nn_convergence_points = {'cifar10_binary': 2500,
                          'mnist_binary_pca': 4750,
                          'adult': 1850,
                          'forest': 3500}
+
+
+def get_dataset_size(data_cfg):
+    name = data_cfg['name']
+    if name == 'mnist':
+        if data_cfg['binary']:
+            N = 10397
+        else:
+            N = 54000
+    else:
+        raise NotImplementedError
+    return N
 
 
 def get_experiment_details(dataset, model, verbose=False, data_privacy='all'):

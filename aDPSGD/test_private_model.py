@@ -52,9 +52,9 @@ def get_target_noise_for_model(dataset, model, t, epsilon, delta, sensitivity, v
     return target_noise, noise_to_add, noise_to_add_diffinit
 
 
-def test_model_with_noise(dataset, model, replace_index, seed, t,
+def test_model_with_noise(data_options, model, replace_index, seed, t,
                           epsilon=None, delta=None,
-                          sensitivity_from_bound=True,
+                          sens_from_bound=True,
                           metric_to_report='binary_accuracy',
                           verbose=False, num_deltas=1000,
                           data_privacy='all'):
@@ -63,7 +63,8 @@ def test_model_with_noise(dataset, model, replace_index, seed, t,
     """
     task, batch_size, lr, _, N = experiment_metadata.get_experiment_details(dataset, model, data_privacy)
     # load the test set
-    _, _, _, _, x_test, y_test = data_utils.load_data(data_type=dataset, replace_index=replace_index)
+    # TODO this is a hack, fix it
+    _, _, _, _, x_test, y_test = data_utils.load_data(data_options, replace_index=replace_index)
 
     if epsilon is None:
         epsilon = 1.0
@@ -74,7 +75,7 @@ def test_model_with_noise(dataset, model, replace_index, seed, t,
     if verbose:
         print('Adding noise for epsilon, delta = ', epsilon, delta)
 
-    if sensitivity_from_bound:
+    if sens_from_bound:
         if model == 'logistic':
             lipschitz_constant = np.sqrt(2)
         else:

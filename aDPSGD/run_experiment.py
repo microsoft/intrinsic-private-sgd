@@ -7,8 +7,6 @@ import os
 from pathlib import Path
 from time import time
 
-import ipdb
-
 import model_utils
 from data_utils import load_data
 from results_utils import ExperimentIdentifier
@@ -31,8 +29,8 @@ def check_cfg_for_consistency(cfg):
     print('cfg passed checks')
 
 
-def get_model_init_path(cfg):
-    if cfg['model']['diffinit'] is True:
+def get_model_init_path(cfg, diffinit):
+    if diffinit:
         init_path = None
     else:
         architecture = cfg['model']['architecture']
@@ -43,10 +41,10 @@ def get_model_init_path(cfg):
     return init_path
 
 
-def run_experiment(cfg, seed, replace_index):
+def run_experiment(cfg, diffinit, seed, replace_index):
     t0 = time()
     # how we convert the cfg into a path and such is defined in ExperimentIdentifier
-    exp = ExperimentIdentifier(seed=seed, replace_index=replace_index)
+    exp = ExperimentIdentifier(seed=seed, replace_index=replace_index, diffinit=diffinit)
     exp.init_from_cfg(cfg)
     exp.ensure_directory_exists(verbose=True)
     path_stub = exp.path_stub()
@@ -54,7 +52,7 @@ def run_experiment(cfg, seed, replace_index):
     # load data
     x_train, y_train, x_vali, y_vali, x_test, y_test = load_data(options=cfg['data'], replace_index=replace_index)
     # define model
-    init_path = get_model_init_path(cfg)
+    init_path = get_model_init_path(cfg, diffinit)
     model = model_utils.build_model(**cfg['model'], init_path=init_path)
     # prep model for training
     model_utils.prep_for_training(model, seed=seed,
@@ -69,16 +67,25 @@ def run_experiment(cfg, seed, replace_index):
     print('Finished after', time() - t0, 'seconds')
 
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--cfg', type=str, help='Name of yaml cfg of experiment')
-parser.add_argument('--seed', type=int, help='Random seed used for SGD', default=1)
-parser.add_argument('--replace_index', type=int, help='Which training example to replace with x0', default=None)
-args = parser.parse_args()
+def load_cfg(cfg_identifier):
+    if '.yaml' in cfg_identifier:
+        cfg_name = cfg_identifier.rstrip('.yaml')
+    else:
+        cfg_name = cfg_identifier
+    # cfg = yaml.safe_load(open(os.path.join('cfgs', args.cfg + '.yaml')))
+    cfg = yaml.load(open(os.path.join('cfgs', cfg_identifier + '.yaml')))
+    cfg['cfg_name'] = cfg_name
+    check_cfg_for_consistency(cfg)
+    return cfg
 
-if '.yaml' in args.cfg:
-    args.cfg = args.cfg.rstrip('.yaml')
-# cfg = yaml.safe_load(open(os.path.join('cfgs', args.cfg + '.yaml')))
-cfg = yaml.load(open(os.path.join('cfgs', args.cfg + '.yaml')))
-cfg['cfg_name'] = args.cfg
-check_cfg_for_consistency(cfg)
-run_experiment(cfg, args.seed, args.replace_index)
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--cfg', type=str, help='Name of yaml cfg of experiment')
+    parser.add_argument('--diffinit', type=bool, help='Allow initialisation to vary with seed?', default=True)
+    parser.add_argument('--seed', type=int, help='Random seed used for SGD', default=1)
+    parser.add_argument('--replace_index', type=int, help='Which training example to replace with x0', default=None)
+    args = parser.parse_args()
+    cfg = load_cfg(args.cfg)
+
+    run_experiment(cfg, args.diffinit, args.seed, args.replace_index)

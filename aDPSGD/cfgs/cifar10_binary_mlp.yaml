@@ -5,7 +5,6 @@ data:
     flatten: true
 model:
     architecture: mlp
-    diffinit: true
     task_type: binary
     input_size: 50
     output_size: 1

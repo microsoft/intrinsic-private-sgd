@@ -96,14 +96,14 @@ class Logger(object):
                   save_weights: bool = False, save_gradients: bool = False) -> None:
         # --- metrics --- #
         metric_results = self.model.compute_metrics(X, y, metric_functions=self.metric_functions)
-        tf.print(self.logging_counter, output_stream='file:///' + self.loss_file_path.as_posix(), end=',')
-        tf.print(minibatch_id, output_stream='file:///' + self.loss_file_path.as_posix(), end=',')
-        tf.print(metric_results, output_stream='file:///' + self.loss_file_path.as_posix(), summarize=-1, end='\n')
+        tf.print(self.logging_counter, output_stream='file:///' + self.loss_file_path, end=',')
+        tf.print(minibatch_id, output_stream='file:///' + self.loss_file_path, end=',')
+        tf.print(metric_results, output_stream='file:///' + self.loss_file_path, summarize=-1, end='\n')
         # --- weights --- #
         if save_weights:
             weights = self.model.get_weights(flat=True)
-            tf.print(self.logging_counter, output_stream='file:///' + self.weights_file_path.as_posix(), end=',')
-            tf.print(weights, output_stream='file:///' + self.weights_file_path.as_posix(), summarize=-1, end='\n')
+            tf.print(self.logging_counter, output_stream='file:///' + self.weights_file_path, end=',')
+            tf.print(weights, output_stream='file:///' + self.weights_file_path, summarize=-1, end='\n')
         # --- gradients --- #
         if save_gradients:
             # TODO
@@ -212,18 +212,21 @@ class Model(K.Sequential):
 
     def load_weights(self, path: str, t: int = None) -> None:
         print(f'Loading weights from {path}')
-        if '.csv' in path:
+        if not path.exists():
+            print(f'WARNING: Weights path  {path} does not exist, can\'t load weights!')
+            return
+        if path.suffix == '.csv':
             if t is None:
                 t = 0
             self.load_and_set_weights_from_flat(path, t)
         else:
-            assert '.h5' in path
+            assert path.suffix == '.h5'
             assert t is None
-            super(Model, self).load_weights(path)
+            super(Model, self).load_weights(path.as_posix())
 
     def save_weights(self, path: str) -> None:
         print(f'Saving weights to {path}')
-        super(Model, self).save_weights(path)
+        super(Model, self).save_weights(path.as_posix())
 
     @tf.function
     def get_weights(self, flat: bool = False) -> tf.Tensor:
@@ -424,7 +427,7 @@ def prep_for_training(model: 'Model', seed: int, optimizer_settings: dict, task_
     if model.init_path is None:
         print('Not saving weights as no init path given')
     else:
-        if os.path.exists(model.init_path):
+        if model.init_path.exists():
             print('Not saving weights as path already exists')
         else:
             model.save_weights(path=model.init_path)

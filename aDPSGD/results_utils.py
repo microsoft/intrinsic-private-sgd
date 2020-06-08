@@ -9,7 +9,7 @@ from pathlib import Path
 
 class ExperimentIdentifier(object):
     def __init__(self, dataset=None, model=None, replace_index=None, seed=None,
-                 diffinit=False, data_privacy='all', traces_dir='/bigdata/traces_aDPSGD'):
+                 diffinit=True, data_privacy='all', traces_dir='/bigdata/traces_aDPSGD'):
         self.dataset = dataset
         self.model = model
         self.replace_index = replace_index
@@ -20,8 +20,10 @@ class ExperimentIdentifier(object):
 
     def init_from_cfg(self, cfg):
         self.dataset = cfg['data']['name']
+        # may do other things differently here too
+        if cfg['data']['binary']:
+            self.dataset = f'{self.dataset}_binary'
         self.model = cfg['model']['architecture']
-        self.diffinit = cfg['model']['diffinit']
 
     def ensure_directory_exists(self, verbose=True):
         path_stub = self.path_stub()
@@ -62,7 +64,7 @@ class ExperimentIdentifier(object):
         return derived_path
 
     def exists(self, log_missing=False):
-        path = self.path_stub().with_suffix('.weights.csv')
+        path = self.path_stub().with_name(self.path_stub().name + '.weights.csv')
         results_exist = path.exists()
 
         if log_missing and not results_exist:
@@ -79,8 +81,7 @@ class ExperimentIdentifier(object):
         return results_exist
 
     def load_gradients(self, noise=False, iter_range=(None, None), params=None, verbose=False) -> pd.DataFrame:
-        path_stub = self.path_stub()
-        path = path_stub.with_suffix('.all_gradients.csv')
+        path = self.path_stub().with_name(self.path_stub().name + '.all_gradients.csv')
 
         if params is not None:
             assert type(params) == list
@@ -92,7 +93,7 @@ class ExperimentIdentifier(object):
             if verbose:
                 print('WARNING: Loading all columns can be slow!')
             usecols = None
-        df = pd.read_csv(path, skiprows=1, usecols=usecols, dtype={'t': np.int64, 'minibatch_id': str})
+        df = pd.read_csv(path, usecols=usecols, dtype={'t': np.int64, 'minibatch_id': str})
 
         # remove validation data by default
         df = df.loc[~(df['minibatch_id'] == 'VALI'), :]
@@ -118,8 +119,7 @@ class ExperimentIdentifier(object):
         return df
 
     def load_weights(self, iter_range=(None, None), params=None, verbose=True) -> pd.DataFrame:
-        path_stub = self.path_stub()
-        path = path_stub.with_suffix('.weights.csv')
+        path = self.path_stub().with_name(self.path_stub().name + '.weights.csv')
 
         if params is not None:
             assert type(params) == list
@@ -129,7 +129,7 @@ class ExperimentIdentifier(object):
                 print('WARNING: Loading all columns can be slow!')
             usecols = None
 
-        df = pd.read_csv(path, skiprows=1, usecols=usecols)
+        df = pd.read_csv(path, usecols=usecols)
 
         if iter_range[0] is not None:
             df = df.loc[df['t'] >= iter_range[0], :]
@@ -143,10 +143,9 @@ class ExperimentIdentifier(object):
         return df
 
     def load_loss(self, iter_range=(None, None), verbose=False):
-        path_stub = self.path_stub()
-        path = path_stub.with_suffix('.loss.csv')
+        path = self.path_stub().with_name(self.path_stub().name + '.loss.csv')
 
-        df = pd.read_csv(path, skiprows=1)
+        df = pd.read_csv(path)
 
         if iter_range[0] is not None:
             df = df.loc[df['t'] >= iter_range[0], :]
@@ -163,15 +162,13 @@ def get_available_results(dataset: str, model: str, replace_index: int = None, s
     sample_experiment = ExperimentIdentifier(dataset=dataset, model=model, replace_index=1,
                                              seed=1, data_privacy=data_privacy, diffinit=diffinit)
     directory_path = Path(sample_experiment.path_stub()).parent
-    print(directory_path)
     files_in_directory = directory_path.glob('*.weights.csv')
     replaces = []
     seeds = []
 
     for f in files_in_directory:
-        print(f.name)
-        split_name = f.split('.')
-        assert split_name[0] == model, 'Inconsistency detected in file path'
+        split_name = f.name.split('.')
+        assert model in split_name[0], 'Inconsistency detected in file path'
 
         # which replace index?
         replace_piece = split_name[1]
@@ -207,7 +204,7 @@ def get_posterior_samples(dataset, iter_range, model='linear', replace_index=Non
         assert type(seeds) == list
         available_seeds = seeds
 
-    if num_seeds is not None:
+    if not num_seeds == 'max' and num_seeds < len(available_seeds):
         available_seeds = np.random.choice(available_seeds, num_seeds, replace=False)
 
     if verbose:
