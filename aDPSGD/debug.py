@@ -6,6 +6,8 @@ import glob
 import ipdb
 
 import eval_utils
+import derived_results
+from results_utils import ExperimentIdentifier
 
 def run_checks(dataset, model, diffinit, data_privacy='all'):
     """
@@ -19,7 +21,7 @@ def run_checks(dataset, model, diffinit, data_privacy='all'):
     else:
         metric = 'binary_crossentropy'
     print('Computing convergence point...')
-    convergence_point, _ = eval_utils.find_convergence_point(dataset, model, diffinit, tolerance=3, metric=metric, data_privacy=data_privacy)
+    convergence_point, _ = derived_results.find_convergence_point(dataset, model, diffinit, tolerance=3, metric=metric, data_privacy=data_privacy)
     print('convergence point:', convergence_point)
     print('Checking for incomplete experiments...')
     incomp = check_for_incomplete_experiments(dataset, model, t=convergence_point, diffinit=diffinit, data_privacy=data_privacy)
@@ -49,29 +51,17 @@ def check_for_incomplete_experiments(dataset, model, t=5, diffinit=True, data_pr
     find experiments where data does not reach time t
     if t is None, we're just looking for experiments where the file is empty
     """
-    exp_df = eval_utils.get_available_results(dataset, model, diffinit=diffinit, data_privacy=data_privacy)
+    exp_df = derived_results.get_available_results(dataset, model, diffinit=diffinit, data_privacy=data_privacy)
     print('Found', exp_df.shape[0], 'experiments!')
     empty = []
-    unsure = []
-    incomplete = []
     for i, row in exp_df.iterrows():
         drop_index = 'NA'
         replace_index = row['replace']
         seed = row['seed']
-        try:
-            loss = eval_utils.load_loss(dataset, model, drop_index, replace_index, seed, iter_range=(None, None), diffinit=diffinit, verbose=False, data_privacy=data_privacy)
-            if np.nanmax(loss['t']) < t:
-                incomplete.append((replace_index, seed))
-        except:
-            print('issue with', row)
-            path = eval_utils.trace_path_stub(dataset, model, drop_index, replace_index, seed, diffinit=diffinit, data_privacy=data_privacy)
-            ll = open(path + '.weights.csv').readlines()
-            if len(ll) <= 3:
-                empty.append((replace_index, seed))
-            else:
-                print('Cant load loss but file is not empty?...')
-                unsure.append((replace_index, seed))
-    if len(empty) == 0 and len(unsure) == 0 and len(incomplete) == 0:
+        loss = ExperimentIdentifier(dataset, model, drop_index=drop_index, seed=seed, diffinit=diffinit, data_privacy=data_privacy).load_loss()
+        if np.nanmax(loss['t']) < t:
+            incomplete.append((replace_index, seed))
+    if len(empty) == 0:
         print('Found no issues')
         return True
     else:
@@ -84,15 +74,15 @@ def find_mismatch_loss_test(dataset, model, diffinit=False, t=2000, metric='accu
     """
     find models where the apparent performance disagrees with what the trace file says...
     """
-    exp_df = eval_utils.get_available_results(dataset, model, diffinit=diffinit)
+    exp_df = derived_results.get_available_results(dataset, model, diffinit=diffinit)
     print('Found', exp_df.shape[0], 'experiments to test...!')
     good_settings = []
     for i, row in exp_df.iterrows():
         replace = row['replace']
         seed = row['seed']
-        performance = eval_utils.debug_just_test(dataset, model, drop_index='NA', replace_index=replace, seed=seed, t=t, diffinit=diffinit, use_vali=True)
+        performance = test_private_model.debug_just_test(dataset, model, drop_index='NA', replace_index=replace, seed=seed, t=t, diffinit=diffinit, use_vali=True)
         retest_performance = performance[metric]
-        loss = eval_utils.load_loss(dataset, model, drop_index='NA', replace_index=replace, seed=seed, iter_range=(t, t+1), diffinit=diffinit)
+        loss = ExperimentIdentifier(dataset, model, replace_index=replace_index, seed=seed, diffinit=diffinit).load_loss(iter_range=(t, t+1))
         orig_performance = loss.loc[loss['minibatch_id'] == 'VALI', metric].values[0]
         discrepancy = np.abs(retest_performance - orig_performance)
         print('\t\t\t',discrepancy)

@@ -32,6 +32,12 @@ nn_convergence_points = {'cifar10_binary': 2500,
                          'adult': 1850,
                          'forest': 3500}
 
+dp_colours = {'augment': '#14894e',
+              'both': 'black',
+              'augment_diffinit': '#441e85',
+              'both_diffinit': 'black',
+              'bolton': '#c3871c'}
+
 
 def get_dataset_size(data_cfg):
     name = data_cfg['name']

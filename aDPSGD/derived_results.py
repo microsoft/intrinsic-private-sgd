@@ -8,7 +8,6 @@ import numpy as np
 import pandas as pd
 from scipy.stats import ttest_rel
 
-import ipdb
 import test_private_model
 import results_utils
 import stats_utils
@@ -36,6 +35,7 @@ class DerivedResult(object):
     def path_string(self, diffinit: bool = False):
         identifier = self.identifier(diffinit)
         path_string = (self.derived_directory / identifier).with_suffix(self.suffix)
+
         return path_string
 
     def load(self, diffinit: bool):
@@ -82,8 +82,6 @@ class DeltaHistogram(DerivedResult):
                 return
             else:
                 path_string.parent.mkdir(exist_ok=True)
-        #    path_string = './fig_data/delta_histogram.' + str(dataset) + '.' + data_privacy + '.'
-        #+ str(model) + '.nd_' + str(num_deltas) + '.t_' + str(t) + 'MULTIVAR'*multivariate + '.npy'
             print('Couldn\'t find', path_string)
             # vary-both
             vary_both, identifiers_both = get_deltas(self.dataset, iter_range=(self.t, self.t+1),
@@ -127,7 +125,6 @@ class UtilityCurve(DerivedResult):
 
     def identifier(self, diffinit: bool) -> str:
         identifier = f'utility_nd{self.num_deltas}_t{self.t}_ne{self.num_experiments}'
-#        path = './fig_data/utility.' + str(dataset) + '.' + str(model) + '.t' + str(t) + '.nd_' + str(num_deltas) + '.ne_' + str(num_experiments) + '.csv'
         return identifier
 
     def generate(self, diffinit) -> None:
@@ -262,7 +259,6 @@ class SensVar(DerivedResult):
         self.suffix = '.csv'
 
     def identifier(self, diffinit: bool) -> str:
-        # path = './fig_data/sens_var_dist.' + dataset + '.' + data_privacy + '.' + model + '.t' + str(t) + '.np' + str(num_pairs) + '.csv'
         identifier = f'sens_var_dist_np{self.num_pairs}_t{self.t}{"_diffinit"*diffinit}'
 
         return identifier
@@ -302,10 +298,10 @@ class SensVar(DerivedResult):
 
             for di, dj in pairs_array:
                 pair_sens, pair_var, num_seeds = compute_pairwise_sens_and_var(self.dataset, self.model,
-                                                                             self.t, replace_indices=[di, dj],
-                                                                             multivariate=False,
-                                                                             verbose=False,
-                                                                             diffinit=diffinit)
+                                                                               self.t, replace_indices=[di, dj],
+                                                                               multivariate=False,
+                                                                               verbose=False,
+                                                                               diffinit=diffinit)
                 sens_array.append(pair_sens)
                 var_array.append(pair_var)
                 overlap_array.append(num_seeds)
@@ -532,9 +528,11 @@ def generate_derived_results(dataset: str, model: str = 'logistic', t: int = Non
     """
     Helper function
     """
+
     if t is None:
-        t, valid_frac = find_convergence_point(dataset, model, diffinit=True, 
+        t, valid_frac = find_convergence_point(dataset, model, diffinit=True,
                                                tolerance=3, metric='binary_accuracy', data_privacy='all')
+
         if valid_frac < 0.5:
             raise ValueError(f'Convergence point not good, valid fraction: {valid_frac}')
         else:
@@ -588,7 +586,6 @@ def accuracy_at_eps(dataset, model, t, use_bound=False, num_experiments=500,
                     num_deltas='max', epsilon=1, do_test=False) -> dict:
     """
     """
-#    path = './fig_data/utility.' + str(dataset) + '.' + str(model) + '.t' + str(t) + '.nd_' + str(num_deltas) + '.ne_' + str(num_experiments) + '.csv'
     utility_data = UtilityCurve(dataset, model, num_deltas, t, num_experients=num_experiments).load()
 
     if utility_data is None:
@@ -991,7 +988,7 @@ def compute_pairwise_sens_and_var(dataset, model, t, replace_indices,
     num_seeds = len(intersection)
 
     if len(intersection) < 10:
-        print('WARNING: Experiments with replace indices', replace_indices, 'only have', num_seeds, 'overlapping seeds:', intersection)
+        print(f'WARNING: Experiments with replace indices {replace_indices} only have {num_seeds} overlapping seeds: {intersection}')
 
         return np.nan, np.nan, num_seeds
     samples_1_intersection = samples_1.loc[intersection, :]
@@ -1002,7 +999,7 @@ def compute_pairwise_sens_and_var(dataset, model, t, replace_indices,
 
     if verbose:
         print('Max sensitivity from same seed diff data:', sensitivity)
-    #### compute distance by getting average value and comparing
+    # compute distance by getting average value and comparing
     mean_1 = samples_1.mean(axis=0)
     mean_2 = samples_2.mean(axis=0)
     sensitivity_bymean = np.linalg.norm(mean_1 - mean_2)
@@ -1065,7 +1062,7 @@ def compute_sigma_v_num_seeds(dataset, model, t) -> pd.DataFrame:
     for num_seeds in [2, 5, 10]*5 + [20, 30]*3 + [40, 50]*2 + [60, 70, 80, 90, 100, 200]:
         for num_replaces in [25]:
             # [50]:      # this is what it is for mnist (MLP)
-                        # [75]: # this is what it is for adult and forest )LR)
+            # [75]: # this is what it is for adult and forest )LR)
             #        [100]: # this is what it is for the others (LR)
             # setting ephemeral = True will make this very slow but I think it's worth it for my sanity
             # otherwise I need to do even more refactoring
@@ -1098,9 +1095,9 @@ def compute_sens_v_num_deltas(dataset, model, t):
 
     for num_deltas in [5, 10, 25, 50, 75, 100, 125, 250, 500, 1000, 1500, 2000, 2500, 3000, 4000, 5000]:
         vary_S, _ = get_deltas(dataset, iter_range=(t, t+1),
-                                  model=model, vary_seed=False, vary_data=True,
-                                  num_deltas=num_deltas, diffinit=True,
-                                  data_privacy='all', multivariate=False)
+                               model=model, vary_seed=False, vary_data=True,
+                               num_deltas=num_deltas, diffinit=True,
+                               data_privacy='all', multivariate=False)
 
         if vary_S is None:
             sens = None

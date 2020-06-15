@@ -11,11 +11,15 @@ aDPSGD
 |-- cfgs
 |-- data
 |-- models
+|-- figures
+|-- visualisations
 ```
 
 - `cfgs` contains experiment configs (explained below).
 - `data` contains training/test data
 - `models` contains the _fixed initialisations_ for each model class on each dataset
+- `figures` contains figures for e.g. a paper
+- `visualisations` contains visualisations that are more throw-away (not for a paper)
 
 Results from experiments are saved to a `traces_dir` which should be specified in the code - by default it's `/bigdata/traces_aDPSGD`. This is separated from the codebase folder structure because this folder is expected to become very large (e.g. hundreds of GB), but you could make it a subfolder if you want.
 
