@@ -226,7 +226,8 @@ def compute_wu_bound(lipschitz_constant, t, N, batch_size, eta, verbose=True):
     n_epochs = t / batches_per_epoch
 
     if n_epochs < 1:
-        print('WARNING: <1 pass competed')
+        if verbose:
+            print('WARNING: <1 pass competed')
         # TODO: make sure we can treat k like this
     l2_sensitivity = 2 * n_epochs * lipschitz_constant * eta / batch_size
 

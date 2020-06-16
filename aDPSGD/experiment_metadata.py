@@ -3,17 +3,13 @@
 
 dataset_colours = {'cifar10_binary': '#A6373F',
                    'mnist_binary_pca': '#552B72',
+                   'mnist_binary': '#552B72',       # TODO update
                    'adult': '#db9302',
                    'forest': '#3C8D2f'}
 
 dataset_names = {'cifar10_binary': 'CIFAR2',
                  'mnist_binary_pca': 'MNIST-binary',
-                 'adult': 'Adult',
-                 'forest': 'Forest',
-                 'mnist_square': 'MNIST'}
-
-dataset_sizes = {'cifar10_binary': 'CIFAR2',
-                 'mnist_binary_pca': 'MNIST-binary',
+                 'mnist_binary': 'MNIST-binary',
                  'adult': 'Adult',
                  'forest': 'Forest',
                  'mnist_square': 'MNIST'}
@@ -24,6 +20,7 @@ model_names = {'logistic': 'logistic regression',
 
 lr_convergence_points = {'cifar10_binary': 2000,
                          'mnist_binary_pca': 1850,
+                         'mnist_binary': 1850,       # TODO fix update
                          'adult': 3400,
                          'forest': 8400}
 

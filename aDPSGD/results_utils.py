@@ -188,7 +188,7 @@ def get_available_results(cfg_name: str, model: str, replace_index: int = None, 
 
 
 def get_posterior_samples(cfg_name, iter_range, model='linear', replace_index=None,
-                          params=None, seeds='all', num_seeds=None, verbose=True,
+                          params=None, seeds='all', num_seeds='max', verbose=True,
                           diffinit=False, data_privacy='all'):
     """
     grab the values of the weights of [params] at [at_time] for all the available seeds from identifier_stub

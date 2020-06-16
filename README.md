@@ -95,10 +95,30 @@ In total then, it will run 25 * 30 *2 = 1500 experiments in serial.
 This will compute the suite of derived results (see [Derived Results](#derived-results)) at `2000` training steps (where the derived result requires this input). If `t` is not provided, it will first attempt to compute the convergence point of the setting to use as `t`.
 
 
-## Visualise and report
+## Visualise
 
-TODO Stephanie update once `analyse` and `vis_utils` are tidied up.
+To generate the figures corresponding to the `mnist_binary` experiment:
 
+```python wrapper.py figures --cfg mnist_binary --t 2000```
+
+This calls `generate_plots` from `produce_figures.py`, which visualises:
+- the delta histogram
+- the distribution of epsilon values
+- the sensitivity and variability over time
+- the stability of estimated values
+
+## Report
+
+To compute specific (non-figure) values, such as the performance of the trained model:
+
+```python wrapper.py report --cfg mnist_binary --t 2000```
+
+This calls `generate_reports` from `produce_figures.py`, which reports:
+- empirical and theoretical sensitivity
+- empirical intrinsic sigma for fixed and variable initialisation
+- delta
+- intrinsic epsilon using theoretical and empirical sensitivity
+- performance at epsilon = 1 and 0.5 for private models
 
 # Derived Results 
 
