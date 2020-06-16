@@ -83,8 +83,6 @@ class DeltaHistogram(DerivedResult):
 
             if path_string.exists():
                 print(f'WARNING: Delta histogram has already been generated, file {path_string} exists!')
-
-                return
             else:
                 path_string.parent.mkdir(exist_ok=True)
             print('Couldn\'t find', path_string)
@@ -275,47 +273,46 @@ class SensVar(DerivedResult):
             if path_string.exists():
                 print(f'[SensVar] File {path_string} already exists - not recomputing!')
 
-                return
+            else:
+                # TODO check if we need to do both
+                df = results_utils.get_available_results(self.cfg_name, self.model, diffinit=diffinit)
+                replace_counts = df['replace'].value_counts()
+                replaces = replace_counts[replace_counts > 10].index.values
+                print('Found', len(replaces), 'datasets with at least 10 seeds')
+                # For each pair of drops...
+                num_replaces = len(replaces)
+                sens_array = []
+                var_array = []
+                overlap_array = []
+                pairs_array = []
 
-            # TODO check if we need to do both
-            df = results_utils.get_available_results(self.cfg_name, self.model, diffinit=diffinit)
-            replace_counts = df['replace'].value_counts()
-            replaces = replace_counts[replace_counts > 10].index.values
-            print('Found', len(replaces), 'datasets with at least 10 seeds')
-            # for ecah pair of drops...
-            num_replaces = len(replaces)
-            sens_array = []
-            var_array = []
-            overlap_array = []
-            pairs_array = []
+                for i, di in enumerate(replaces):
+                    for j in range(i + 1, num_replaces):
+                        dj = replaces[j]
+                        pairs_array.append((di, dj))
 
-            for i, di in enumerate(replaces):
-                for j in range(i + 1, num_replaces):
-                    dj = replaces[j]
-                    pairs_array.append((di, dj))
+                if not self.num_pairs == 'max':
+                    total_pairs = len(pairs_array)
+                    print(total_pairs)
+                    pair_picks = np.random.choice(total_pairs, self.num_pairs, replace=False)
+                    pairs_array = [pairs_array[i] for i in pair_picks]
+                print('Computing "local" epsilon for', len(pairs_array), 'pairs of datasets!')
 
-            if not self.num_pairs == 'max':
-                total_pairs = len(pairs_array)
-                print(total_pairs)
-                pair_picks = np.random.choice(total_pairs, self.num_pairs, replace=False)
-                pairs_array = [pairs_array[i] for i in pair_picks]
-            print('Computing "local" epsilon for', len(pairs_array), 'pairs of datasets!')
-
-            for di, dj in pairs_array:
-                pair_sens, pair_var, num_seeds = compute_pairwise_sens_and_var(self.cfg_name, self.model,
-                                                                               self.t, replace_indices=[di, dj],
-                                                                               multivariate=False,
-                                                                               verbose=False,
-                                                                               diffinit=diffinit)
-                sens_array.append(pair_sens)
-                var_array.append(pair_var)
-                overlap_array.append(num_seeds)
-            df = pd.DataFrame({'pair': pairs_array,
-                               'sensitivity': sens_array,
-                               'variability': var_array,
-                               'overlapping_seeds': overlap_array})
-            print(f'[SensVar] Saved to {path_string}')
-            df.to_csv(path_string, header=True, index=False)
+                for di, dj in pairs_array:
+                    pair_sens, pair_var, num_seeds = compute_pairwise_sens_and_var(self.cfg_name, self.model,
+                                                                                   self.t, replace_indices=[di, dj],
+                                                                                   multivariate=False,
+                                                                                   verbose=False,
+                                                                                   diffinit=diffinit)
+                    sens_array.append(pair_sens)
+                    var_array.append(pair_var)
+                    overlap_array.append(num_seeds)
+                df = pd.DataFrame({'pair': pairs_array,
+                                   'sensitivity': sens_array,
+                                   'variability': var_array,
+                                   'overlapping_seeds': overlap_array})
+                print(f'[SensVar] Saved to {path_string}')
+                df.to_csv(path_string, header=True, index=False)
 
         return
 

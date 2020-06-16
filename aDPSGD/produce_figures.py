@@ -19,6 +19,7 @@ from matplotlib import cm
 from matplotlib.colors import to_rgba
 from pathlib import Path
 import seaborn as sns
+import yaml
 
 
 plt.switch_backend('Agg')
@@ -30,9 +31,36 @@ plt.rcParams.update(params)
 FIGS_DIR = Path('./figures/')
 
 
+def generate_plots(cfg_name: str, model: str, t=None):
+    """
+    Wrapper to generate plots
+    """
+    # Load plot options from a yaml file (to make it easier to rerun)
+    try:
+        plot_options = yaml.load(open(FIGS_DIR / 'plot_options.yaml'))
+        plot_options = plot_options[cfg_name]
+        if t is None:
+            t = plot_options['convergence_point']
+        delta_histogram_xlim = plot_options['delta_histogram']['xlim']
+        delta_histogram_ylim = plot_options['delta_histogram']['ylim']
+        epsilon_distribution_xlim = plot_options['epsilon_distribution']['xlim']
+        epsilon_distribution_ylim = plot_options['epsilon_distribution']['ylim']
+    except FileNotFoundError:
+        assert t is not None
+        delta_histogram_xlim = None
+        delta_histogram_ylim = None
+        epsilon_distribution_xlim = None
+        epsilon_distribution_ylim = None
+
+    plot_delta_histogram(cfg_name, model, t=t, include_bounds=(model == 'logistic'),
+                         xlim=delta_histogram_xlim, ylim=delta_histogram_ylim)
+    plot_epsilon_distribution(cfg_name, model, t=t,
+                              xlim=epsilon_distribution_xlim, ylim=epsilon_distribution_ylim)
+
+
 def plot_delta_histogram(cfg_name: str, model: str, num_deltas='max', t=500,
                          include_bounds=False, xlim=None, ylim=None,
-                         data_privacy='all', plot=True, multivariate=False) -> None:
+                         data_privacy='all', multivariate=False) -> None:
     """
     num_deltas is the number of examples we're using to estimate the histograms
     """
@@ -124,16 +152,16 @@ def plot_delta_histogram(cfg_name: str, model: str, num_deltas='max', t=500,
     return
 
 
-def plot_epsilon_distribution(cfg_name, model, t, delta, num_pairs,
-                              which='both',
-                              sensitivity_from='local', sharex=False,
+def plot_epsilon_distribution(cfg_name, model, t, delta=None, num_pairs='max',
+                              which='vary',
+                              sensitivity_from='local', sharex=True,
                               variability_from='empirical', xlim=None, ylim=None,
                               data_privacy='all') -> None:
     """
     overlay epsilon dist with and without diffinit
     which  takes values both, vary, fix
     """
-    sens_var = dr.SensVar(cfg_name, model, data_privacy, t, num_pairs)
+    sens_var = dr.SensVar(cfg_name, model, data_privacy=data_privacy, t=t, num_pairs=num_pairs)
     df = sens_var.load(diffinit=False)
     df_diffinit = sens_var.load(diffinit=True)
 
@@ -144,7 +172,7 @@ def plot_epsilon_distribution(cfg_name, model, t, delta, num_pairs,
         delta = 1.0/(N**2)
         print('Delta:', delta)
 
-    if num_pairs is not None:
+    if not (num_pairs is None or num_pairs == 'max'):
         if df.shape[0] > num_pairs:
             pick_rows = np.random.choice(df.shape[0], num_pairs, replace=False)
             df = df.iloc[pick_rows, :]
