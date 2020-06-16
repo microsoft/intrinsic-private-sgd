@@ -38,7 +38,7 @@ class DerivedResult(object):
 
         return path_string
 
-    def load(self, diffinit: bool, generate_if_needed=False):
+    def load(self, diffinit: bool = True, generate_if_needed: bool = False):
         path = self.path_string(diffinit=diffinit)
 
         try:

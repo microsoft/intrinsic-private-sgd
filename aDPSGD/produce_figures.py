@@ -7,7 +7,6 @@
 # sudo apt-get install texlive-full
 
 import numpy as np
-import pandas as pd
 import re
 import test_private_model
 import derived_results as dr
@@ -31,31 +30,40 @@ plt.rcParams.update(params)
 FIGS_DIR = Path('./figures/')
 
 
-def generate_plots(cfg_name: str, model: str, t=None):
+def generate_plots(cfg_name: str, model: str, t=None) -> None:
     """
-    Wrapper to generate plots
+    Wrapper to generate plots for a specific config
+    (other plots compare across multiple configs)
     """
     # Load plot options from a yaml file (to make it easier to rerun)
     try:
         plot_options = yaml.load(open(FIGS_DIR / 'plot_options.yaml'))
         plot_options = plot_options[cfg_name]
+
         if t is None:
             t = plot_options['convergence_point']
         delta_histogram_xlim = plot_options['delta_histogram']['xlim']
         delta_histogram_ylim = plot_options['delta_histogram']['ylim']
         epsilon_distribution_xlim = plot_options['epsilon_distribution']['xlim']
         epsilon_distribution_ylim = plot_options['epsilon_distribution']['ylim']
+        versus_time_acc_lims = plot_options['versus_time']['acc_lim']
     except FileNotFoundError:
         assert t is not None
         delta_histogram_xlim = None
         delta_histogram_ylim = None
         epsilon_distribution_xlim = None
         epsilon_distribution_ylim = None
+        versus_time_acc_lims = None
 
     plot_delta_histogram(cfg_name, model, t=t, include_bounds=(model == 'logistic'),
                          xlim=delta_histogram_xlim, ylim=delta_histogram_ylim)
     plot_epsilon_distribution(cfg_name, model, t=t,
                               xlim=epsilon_distribution_xlim, ylim=epsilon_distribution_ylim)
+    plot_sens_and_var_over_time(cfg_name, model, iter_range=(0, int(t*1.2)),
+                                acc_lims=versus_time_acc_lims)
+    plot_stability_of_estimated_values(cfg_name, model, t)
+
+    return
 
 
 def plot_delta_histogram(cfg_name: str, model: str, num_deltas='max', t=500,
@@ -257,7 +265,7 @@ def plot_epsilon_distribution(cfg_name, model, t, delta=None, num_pairs='max',
     return
 
 
-def plot_sens_and_var_over_time(cfg_name, model, num_deltas=500, iter_range=(0, 1000),
+def plot_sens_and_var_over_time(cfg_name, model, num_deltas='max', iter_range=(0, 1000),
                                 data_privacy='all', metric='binary_crossentropy', acc_lims=None) -> None:
     """
     Estimate the empirical (and theoretical I guess) sensitivity and variability v. "convergence point" (time)
@@ -271,13 +279,8 @@ def plot_sens_and_var_over_time(cfg_name, model, num_deltas=500, iter_range=(0, 
     - variability with diffinit
     ... and then plot that, basically
     """
-    path = 'fig_data/v_time.' + cfg_name + '.' + data_privacy + '.' + model + '.nd_' + str(num_deltas) + '.csv'
-    try:
-        df = pd.read_csv(path)
-    except FileNotFoundError:
-        print('Didn\'t find', path)
+    df = dr.VersusTime(cfg_name, model).load()
 
-        return False
     df = df.loc[df['t'] <= iter_range[1], :]
     df = df.loc[df['t'] >= iter_range[0], :]
     fig, axarr = plt.subplots(nrows=3, ncols=1, sharex=True, figsize=(3.4, 4))
@@ -333,7 +336,9 @@ def plot_sens_and_var_over_time(cfg_name, model, num_deltas=500, iter_range=(0, 
     convergence_point = convergence_points[cfg_name]
 
     for ax in axarr:
-        ax.axvline(x=convergence_point, ls='--', color='black', alpha=0.5)
+        if convergence_point < iter_range[1]:
+            # only include the convergence point if it fits in the plot as specified
+            ax.axvline(x=convergence_point, ls='--', color='black', alpha=0.5)
         ax.legend()
     axarr[0].set_title(title)
 
@@ -343,7 +348,7 @@ def plot_sens_and_var_over_time(cfg_name, model, num_deltas=500, iter_range=(0, 
 
     # save
     plt.tight_layout()
-    figure_identifier = f'v_time_{cfg_name}_{data_privacy}_{model}_nd{num_deltas}'
+    figure_identifier = f'versus_time_{cfg_name}_{data_privacy}_{model}_nd{num_deltas}'
     plt.savefig((FIGS_DIR / figure_identifier).with_suffix('.png'))
     plt.savefig((FIGS_DIR / figure_identifier).with_suffix('.pdf'))
 
@@ -365,10 +370,10 @@ def plot_stability_of_estimated_values(cfg_name, model, t) -> None:
     # SIGMA V N SEEDS
     print('Plotting sigma v seeds')
     sigma_df = stability_dict['sigma']
-    sigma_v_seed = sigma_df[['n_seeds', 'sigma']]
-#    sigma_v_seed = sigma_df[sigma_df['n_replaces'] == sigma_df['n_replaces'].max()][['n_seeds', 'sigma']]
+    sigma_v_seed = sigma_df[['num_seeds', 'sigma']]
+#    sigma_v_seed = sigma_df[sigma_df['num_replaces'] == sigma_df['num_replaces'].max()][['num_seeds', 'sigma']]
     fig, axarr = plt.subplots(nrows=1, ncols=1, figsize=figsize)
-    axarr.scatter(sigma_v_seed['n_seeds'], sigma_v_seed['sigma'], s=size, c=em.dp_colours['augment_diffinit'])
+    axarr.scatter(sigma_v_seed['num_seeds'], sigma_v_seed['sigma'], s=size, c=em.dp_colours['augment_diffinit'])
     sigma_we_use = dr.estimate_variability(cfg_name, model, t, diffinit=True)
     axarr.axhline(y=sigma_we_use, ls='--', c=em.dp_colours['augment_diffinit'], alpha=0.4)
     axarr.set_xlabel('number of random seeds')
@@ -390,9 +395,9 @@ def plot_stability_of_estimated_values(cfg_name, model, t) -> None:
     # With fixed num_deltas, sensitivity
     print('Plotting sens v num deltas')
     sens_df = stability_dict['sens']
-    sens_v_deltas = sens_df[['n_deltas', 'sens']].drop_duplicates()
+    sens_v_deltas = sens_df[['num_deltas', 'sens']].drop_duplicates()
     fig, axarr = plt.subplots(nrows=1, ncols=1, figsize=figsize)
-    axarr.scatter(sens_v_deltas['n_deltas'], sens_v_deltas['sens'], s=size, c=em.dp_colours['bolton'])
+    axarr.scatter(sens_v_deltas['num_deltas'], sens_v_deltas['sens'], s=size, c=em.dp_colours['bolton'])
     sens_we_use = dr.estimate_sensitivity_empirically(cfg_name, model, t,
                                                       num_deltas='max', diffinit=True,
                                                       data_privacy='all')

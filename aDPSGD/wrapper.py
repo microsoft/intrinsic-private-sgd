@@ -5,6 +5,7 @@ from experiment_metadata import get_dataset_size
 from run_experiment import load_cfg, run_experiment
 from results_utils import ExperimentIdentifier
 from derived_results import generate_derived_results
+from produce_figures import generate_plots
 
 
 def run_sweep(cfg, num_seeds, num_replaces):
@@ -33,9 +34,9 @@ def run_generate_derived_results(cfg, t):
     generate_derived_results(cfg['cfg_name'], model=cfg['model']['architecture'], t=t)
 
 
-def run_produce_figures(cfg):
+def run_produce_figures(cfg, t):
     print('Producing figures!')
-    raise NotImplementedError
+    generate_plots(cfg['cfg_name'], model=cfg['model']['architecture'], t=t)
 
 
 if __name__ == '__main__':
@@ -56,4 +57,4 @@ if __name__ == '__main__':
     elif args.switch == 'derive':
         run_generate_derived_results(cfg, args.t)
     elif args.switch == 'figures':
-        run_produce_figures(cfg)
+        run_produce_figures(cfg, args.t)
