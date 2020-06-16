@@ -66,6 +66,89 @@ def generate_plots(cfg_name: str, model: str, t=None) -> None:
     return
 
 
+def generate_reports(cfg_name: str, model: str, t=None, num_experiments=50) -> None:
+    """
+    Report
+    - empirical sensitivity
+    - theoretical sensitivity (if relevant)
+    - empirical variability (fixed initialisation)
+    - empirical variability (variable initialisation)
+    - delta
+    - intrinsic epsilon (variable initialisation, theoretical sensitivity)
+    - intrinsic epislon (variable initialisation, empirical sensitivity)
+    - noiseless performance
+    - "bolton" performance at eps = 1
+    - aDPSGD performance at eps = 1 (fixed initialisation)
+    - aDPSGD performance at eps = 1 (variable initialisation)
+    - "bolton" performance at eps = 0.5
+    - aDPSGD performance at eps = 0.5 (fixed initialisation)
+    - aDPSGD performance at eps = 0.5 (variable initialisation)
+    """
+    print('\n')
+    print(f'Report for {cfg_name} with {model} at {t}')
+    print('\n')
+    empirical_sensitivity = dr.estimate_sensitivity_empirically(cfg_name, model, t,
+                                                                num_deltas='max',
+                                                                diffinit=True,
+                                                                verbose=False)
+    print(f'Empirical sensitivity: \t\t\t{empirical_sensitivity}')
+
+    _, batch_size, lr, _, N = em.get_experiment_details(cfg_name, model)
+    theoretical_sensitivity = test_private_model.compute_wu_bound(lipschitz_constant=np.sqrt(2),
+                                                                  t=t, N=N, batch_size=batch_size,
+                                                                  eta=lr, verbose=False)
+    print(f'Theoretical sensitivity from bound: \t{theoretical_sensitivity}')
+    print('')
+
+    empirical_variability = dr.estimate_variability(cfg_name, model, t=t, diffinit=False, verbose=False)
+    empirical_variability_diffinit = dr.estimate_variability(cfg_name, model, t=t, diffinit=True, verbose=False)
+    print(f'Empirical sigma (fixed init): \t\t{empirical_variability}')
+    print(f'Empirical sigma (variable init): \t{empirical_variability_diffinit}')
+    print('')
+
+    print(f'Delta: {1/(N**2)}')
+    print('')
+
+    epsilon_theoretical = dr.calculate_epsilon(cfg_name, model, t=t, use_bound=True, verbose=False)
+    epsilon_empirical = dr.calculate_epsilon(cfg_name, model, t=t, use_bound=False, verbose=False)
+    print(f'Epsilon using theoretical sensitivity: \t{epsilon_theoretical}')
+    print(f'Epsilon using empirical sensitivity: \t{epsilon_empirical}')
+    print('')
+
+    perf_theoretical_eps1 = dr.accuracy_at_eps(cfg_name, model, t, use_bound=True,
+                                               epsilon=1, num_experiments=num_experiments)
+    perf_empirical_eps1 = dr.accuracy_at_eps(cfg_name, model, t, use_bound=False,
+                                             epsilon=1, num_experiments=num_experiments)
+    perf_theoretical_eps05 = dr.accuracy_at_eps(cfg_name, model, t, use_bound=True,
+                                                epsilon=0.5, num_experiments=num_experiments)
+    perf_empirical_eps05 = dr.accuracy_at_eps(cfg_name, model, t, use_bound=False,
+                                              epsilon=0.5, num_experiments=num_experiments)
+    print(f'Noiseless performance: \t\t\t{perf_theoretical_eps1["noiseless"]}')
+    print('')
+
+    print('Performance at epsilon = 1...')
+    print('\tWith theoretical sensitivity:')
+    print(f'\t\tBolton: \t\t{perf_theoretical_eps1["bolton"]}')
+    print(f'\t\taDPSGD (fixinit): \t{perf_theoretical_eps1["acc"]}')
+    print(f'\t\taDPSGD (diffinit): \t{perf_theoretical_eps1["acc_diffinit"]}')
+    print('\tWith empirical sensitivity:')
+    print(f'\t\tBolton: \t\t{perf_empirical_eps1["bolton"]}')
+    print(f'\t\taDPSGD (fixinit): \t{perf_empirical_eps1["acc"]}')
+    print(f'\t\taDPSGD (diffinit): \t{perf_empirical_eps1["acc_diffinit"]}')
+
+    print('Performance at epsilon = 0.5...')
+    print('\tWith theoretical sensitivity:')
+    print(f'\t\tBolton: \t\t{perf_theoretical_eps05["bolton"]}')
+    print(f'\t\taDPSGD (fixinit): \t{perf_theoretical_eps05["acc"]}')
+    print(f'\t\taDPSGD (diffinit): \t{perf_theoretical_eps05["acc_diffinit"]}')
+    print('\tWith empirical sensitivity:')
+    print(f'\t\tBolton: \t\t{perf_empirical_eps05["bolton"]}')
+    print(f'\t\taDPSGD (fixinit): \t{perf_empirical_eps05["acc"]}')
+    print(f'\t\taDPSGD (diffinit): \t{perf_empirical_eps05["acc_diffinit"]}')
+
+    return
+
+
 def plot_delta_histogram(cfg_name: str, model: str, num_deltas='max', t=500,
                          include_bounds=False, xlim=None, ylim=None,
                          data_privacy='all', multivariate=False) -> None:

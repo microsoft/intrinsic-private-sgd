@@ -105,10 +105,16 @@ This calls `generate_plots` from `produce_figures.py`, which visualises:
 
 ## Report
 
-To compute specific (non-figure) values, such as the performance of the trained model...
+To compute specific (non-figure) values, such as the performance of the trained model:
 
-TODO
+```python wrapper.py report --cfg mnist_binary --t 2000```
 
+This calls `generate_reports` from `produce_figures.py`, which reports:
+- empirical and theoretical sensitivity
+- empirical intrinsic sigma for fixed and variable initialisation
+- delta
+- intrinsic epsilon using theoretical and empirical sensitivity
+- performance at epsilon = 1 and 0.5 for private models
 
 # Derived Results 
 

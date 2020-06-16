@@ -3,6 +3,7 @@
 # Some functions create "amortised" data
 ###
 
+import ipdb
 import abc
 import numpy as np
 import pandas as pd
@@ -38,13 +39,14 @@ class DerivedResult(object):
 
         return path_string
 
-    def load(self, diffinit: bool = True, generate_if_needed: bool = False):
+    def load(self, diffinit: bool = True, generate_if_needed: bool = False, verbose=True):
         path = self.path_string(diffinit=diffinit)
 
         try:
             if self.suffix == '.npy':
                 data = np.load(path, allow_pickle=True).item()
-                print(f'Loaded derived data from {path}')
+                if verbose:
+                    print(f'Loaded derived data from {path}')
             elif self.suffix == '.csv':
                 data = pd.read_csv(path)
             else:
@@ -83,8 +85,10 @@ class DeltaHistogram(DerivedResult):
 
             if path_string.exists():
                 print(f'WARNING: Delta histogram has already been generated, file {path_string} exists!')
-            else:
-                path_string.parent.mkdir(exist_ok=True)
+
+                break
+
+            path_string.parent.mkdir(exist_ok=True)
             print('Couldn\'t find', path_string)
             # vary-both
             vary_both, identifiers_both = get_deltas(self.cfg_name, iter_range=(self.t, self.t+1),
@@ -118,7 +122,7 @@ class DeltaHistogram(DerivedResult):
 
 class UtilityCurve(DerivedResult):
     def __init__(self, cfg_name, model, num_deltas, t, data_privacy='all', metric_to_report='binary_accuracy',
-                 verbose=True, diffinit=True, num_experiments=50):
+                 verbose=True, diffinit=True, num_experiments=500):
         super(UtilityCurve, self).__init__(cfg_name, model, data_privacy)
         self.num_deltas = num_deltas
         self.num_experiments = num_experiments
@@ -134,8 +138,10 @@ class UtilityCurve(DerivedResult):
     def generate(self, diffinit) -> None:
         path_string = self.path_string(diffinit)
 
+        ipdb.set_trace()
+
         if path_string.exists():
-            print(f'WARNING: Utility curve has already been generated, file {path_string} exists!')
+            print(f'[UtilityCurve] WARNING: Utility curve has already been generated, file {path_string} exists!')
 
             return
         epsilons = np.array([0.1, 0.5, 0.625, 0.75, 0.875, 1.0])
@@ -552,29 +558,27 @@ def generate_derived_results(cfg_name: str, model: str = 'logistic', t: int = No
 
 
 def calculate_epsilon(cfg_name, model, t, use_bound=False, diffinit=True,
-                      num_deltas='max', multivariate=False):
+                      num_deltas='max', multivariate=False, verbose=True):
     """
     just get the intrinsic epsilon
     """
-    task, batch_size, lr, n_weights, N = test_private_model.get_experiment_details(cfg_name, model)
+    task, batch_size, lr, n_weights, N = em.get_experiment_details(cfg_name, model)
     delta = 1.0/(N**2)
-    variability = test_private_model.estimate_variability(cfg_name, model, t, multivariate=False,
-                                                          diffinit=diffinit)
+    variability = estimate_variability(cfg_name, model, t, multivariate=False, diffinit=diffinit, verbose=verbose)
 
     if use_bound:
         sensitivity = test_private_model.compute_wu_bound(lipschitz_constant=np.sqrt(2), t=t, N=N,
-                                                          batch_size=batch_size, eta=lr)
+                                                          batch_size=batch_size, eta=lr, verbose=verbose)
 
         if multivariate:
             sensitivity = np.array([sensitivity]*len(variability))
     else:
-        sensitivity = test_private_model.estimate_sensitivity_empirically(cfg_name, model, t,
-                                                                          num_deltas=num_deltas,
-                                                                          diffinit=diffinit,
-                                                                          multivariate=multivariate)
-    print('sensitivity:', sensitivity)
-    print('variability:', variability)
-    print('delta:', delta)
+        sensitivity = estimate_sensitivity_empirically(cfg_name, model, t, num_deltas=num_deltas,
+                                                       diffinit=diffinit, multivariate=multivariate, verbose=verbose)
+    if verbose:
+        print('sensitivity:', sensitivity)
+        print('variability:', variability)
+        print('delta:', delta)
     c = np.sqrt(2 * np.log(1.25/delta))
     epsilon = c * sensitivity / variability
 
@@ -585,7 +589,7 @@ def accuracy_at_eps(cfg_name, model, t, use_bound=False, num_experiments=500,
                     num_deltas='max', epsilon=1, do_test=False) -> dict:
     """
     """
-    utility_data = UtilityCurve(cfg_name, model, num_deltas, t, num_experients=num_experiments).load()
+    utility_data = UtilityCurve(cfg_name, model, num_deltas, t, num_experiments=num_experiments).load()
 
     if utility_data is None:
         print('No utility data available, please run UtilityCurve.generate')
@@ -593,9 +597,9 @@ def accuracy_at_eps(cfg_name, model, t, use_bound=False, num_experiments=500,
         return {}
 
     if use_bound:
-        utility_data = utility_data.loc[utility_data['sensitivity_from_bound'] is True, :]
+        utility_data = utility_data.loc[utility_data['sensitivity_from_bound'] == True, :]
     else:
-        utility_data = utility_data.loc[utility_data['sensitivity_from_bound'] is False, :]
+        utility_data = utility_data.loc[utility_data['sensitivity_from_bound'] == False, :]
     df_eps = utility_data.loc[utility_data['epsilon'] == epsilon, :]
     mean_accuracy = df_eps['augment'].mean()
     std_accuracy = df_eps['augment'].std()
@@ -642,7 +646,7 @@ def accuracy_at_eps(cfg_name, model, t, use_bound=False, num_experiments=500,
     return results
 
 
-def estimate_empirical_lipschitz(cfg_name, model, diffinit, iter_range, n_samples=5000):
+def estimate_empirical_lipschitz(cfg_name, model, diffinit, iter_range, n_samples=5000, verbose=True):
     """
     get the biggest gradient during training
 
@@ -659,10 +663,12 @@ def estimate_empirical_lipschitz(cfg_name, model, diffinit, iter_range, n_sample
     n_exp = df.shape[0]
 
     if n_samples is None:
-        print('Selecting', n_exp, 'experiments')
+        if verbose:
+            print('Selecting', n_exp, 'experiments')
         experiments = df
     elif n_samples > n_exp:
-        print('WARNING: Only', n_exp, 'experiments available - selecting all')
+        if verbose:
+            print('WARNING: Only', n_exp, 'experiments available - selecting all')
         experiments = df
     else:
         row_picks = np.random.choice(n_exp, n_samples, replace=False)
@@ -690,10 +696,10 @@ def estimate_empirical_lipschitz(cfg_name, model, diffinit, iter_range, n_sample
 
 
 def estimate_sensitivity_empirically(cfg_name, model, t, num_deltas, diffinit=False,
-                                     data_privacy='all', multivariate=False):
+                                     data_privacy='all', multivariate=False, verbose=True):
     """ pull up the histogram
     """
-    delta_histogram_data = DeltaHistogram(cfg_name, model, num_deltas, t, data_privacy, multivariate).load(diffinit, generate_if_needed=True)
+    delta_histogram_data = DeltaHistogram(cfg_name, model, num_deltas, t, data_privacy, multivariate).load(diffinit, generate_if_needed=True, verbose=verbose)
     vary_data_deltas = delta_histogram_data['vary_S']
     sensitivity = np.nanmax(vary_data_deltas, axis=0)
 
@@ -1027,7 +1033,7 @@ def estimate_variability(cfg_name, model, t, multivariate=False, diffinit=False,
     if ephemeral:
         sigmas_data = sigmas_result.generate(diffinit, verbose=False, ephemeral=True)
     else:
-        sigmas_data = sigmas_result.load(diffinit, generate_if_needed=True)
+        sigmas_data = sigmas_result.load(diffinit, generate_if_needed=True, verbose=verbose)
 
     if sigmas_data is None:
         return None
@@ -1040,7 +1046,8 @@ def estimate_variability(cfg_name, model, t, multivariate=False, diffinit=False,
         assert type(num_replaces) == int
 
         if num_replaces > len(sigmas):
-            print(f'WARNING: Can\'t select {num_replaces} sigmas, falling back to max ({len(sigmas)})')
+            if verbose:
+                print(f'WARNING: Can\'t select {num_replaces} sigmas, falling back to max ({len(sigmas)})')
             sigmas = sigmas
         else:
             if verbose:
