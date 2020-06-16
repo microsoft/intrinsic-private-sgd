@@ -6,11 +6,13 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 
+TRACES_DIR = './traces/'
+
 
 class ExperimentIdentifier(object):
-    def __init__(self, dataset=None, model=None, replace_index=None, seed=None,
-                 diffinit=True, data_privacy='all', traces_dir='/bigdata/traces_aDPSGD'):
-        self.dataset = dataset
+    def __init__(self, cfg_name=None, model=None, replace_index=None, seed=None,
+                 diffinit=True, data_privacy='all', traces_dir=TRACES_DIR):
+        self.cfg_name = cfg_name
         self.model = model
         self.replace_index = replace_index
         self.seed = seed
@@ -19,10 +21,7 @@ class ExperimentIdentifier(object):
         self.traces_dir = Path(traces_dir)
 
     def init_from_cfg(self, cfg):
-        self.dataset = cfg['data']['name']
-        # may do other things differently here too
-        if cfg['data']['binary']:
-            self.dataset = f'{self.dataset}_binary'
+        self.cfg_name = cfg['cfg_name']
         self.model = cfg['model']['architecture']
 
     def ensure_directory_exists(self, verbose=True):
@@ -37,7 +36,7 @@ class ExperimentIdentifier(object):
                 print(f'Created {folder}')
 
     def path_stub(self):
-        path_stub = self.traces_dir / self.dataset / self.data_privacy / self.model
+        path_stub = self.traces_dir / self.cfg_name / self.data_privacy / self.model
 
         identifier = self.model
 
@@ -68,7 +67,7 @@ class ExperimentIdentifier(object):
         results_exist = path.exists()
 
         if log_missing and not results_exist:
-            logpath = Path(f'missing_experiments.{self.dataset}.{self.data_privacy}.{self.model}.csv')
+            logpath = Path(f'missing_experiments_{self.cfg_name}_{self.data_privacy}_{self.model}.csv')
 
             if not logpath.exists():
                 logfile = open(logpath, 'w')
@@ -156,10 +155,10 @@ class ExperimentIdentifier(object):
         return df
 
 
-def get_available_results(dataset: str, model: str, replace_index: int = None, seed: int = None,
+def get_available_results(cfg_name: str, model: str, replace_index: int = None, seed: int = None,
                           diffinit: bool = False, data_privacy: str = 'all') -> pd.DataFrame:
 
-    sample_experiment = ExperimentIdentifier(dataset=dataset, model=model, replace_index=1,
+    sample_experiment = ExperimentIdentifier(cfg_name=cfg_name, model=model, replace_index=1,
                                              seed=1, data_privacy=data_privacy, diffinit=diffinit)
     directory_path = Path(sample_experiment.path_stub()).parent
     files_in_directory = directory_path.glob('*.weights.csv')
@@ -188,7 +187,7 @@ def get_available_results(dataset: str, model: str, replace_index: int = None, s
     return df
 
 
-def get_posterior_samples(dataset, iter_range, model='linear', replace_index=None,
+def get_posterior_samples(cfg_name, iter_range, model='linear', replace_index=None,
                           params=None, seeds='all', num_seeds=None, verbose=True,
                           diffinit=False, data_privacy='all'):
     """
@@ -197,7 +196,7 @@ def get_posterior_samples(dataset, iter_range, model='linear', replace_index=Non
     """
 
     if seeds == 'all':
-        df = get_available_results(dataset, model, replace_index=replace_index,
+        df = get_available_results(cfg_name, model, replace_index=replace_index,
                                    diffinit=diffinit, data_privacy=data_privacy)
         available_seeds = df['seed'].unique().tolist()
     else:
@@ -211,7 +210,7 @@ def get_posterior_samples(dataset, iter_range, model='linear', replace_index=Non
         print(f'Loading samples from seeds: {available_seeds} in range {iter_range}')
     samples = []
 
-    base_experiment = ExperimentIdentifier(dataset, model, replace_index, diffinit=diffinit, data_privacy=data_privacy)
+    base_experiment = ExperimentIdentifier(cfg_name, model, replace_index, diffinit=diffinit, data_privacy=data_privacy)
 
     for i, s in enumerate(available_seeds):
         base_experiment.seed = s

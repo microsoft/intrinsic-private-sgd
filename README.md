@@ -10,29 +10,29 @@ Expected subfolders:
 aDPSGD
 |-- cfgs
 |-- data
-|-- models
 |-- figures
+|-- models
+|-- traces
 |-- visualisations
 ```
 
 - `cfgs` contains experiment configs (explained below).
 - `data` contains training/test data
-- `models` contains the _fixed initialisations_ for each model class on each dataset
 - `figures` contains figures for e.g. a paper
+- `models` contains the _fixed initialisations_ for each model class on each dataset
+- `traces` contains the results from the experiments. This is recommended to be a symbolic link and its contents not committed to the repository, as the folder is expected to become very large (e.g. hundreds of GB). If the path to traces needs to be overriden, change the definition of `TRACES_DIR` in `results_utils.py`
 - `visualisations` contains visualisations that are more throw-away (not for a paper)
 
-Results from experiments are saved to a `traces_dir` which should be specified in the code - by default it's `/bigdata/traces_aDPSGD`. This is separated from the codebase folder structure because this folder is expected to become very large (e.g. hundreds of GB), but you could make it a subfolder if you want.
-
-The structure of the `traces_dir` follows the format
+The structure of `traces` follows the format
 ```
-traces_dir / dataset_identifier / dataset_privacy / model_class
+traces / cfg_identifier / dataset_privacy / model_class
 ```
-- `dataset_identifier` identifies the data domain (e.g. `mnist_binary`)
+- `cfg_identifier ` identifies the experiment, usually given by the data domain/task (e.g. `mnist_binary`)
 - `dataset_privacy` is slightly vestigial, but usually `all`
 - `model_class` is something like `logistic`
 
 The contents of this folder will then be many thousand results files from models trained on variants of that dataset with different random seeds.
-For example, if `traces_dir = /bigdata/traces_aDPSGD`, the path to the saved weights of a logistic regression model trained on the MNIST binary task might look like:
+For example, if `traces` is a symbolic link to `/bigdata/traces_aDPSGD`, the path to the saved weights of a logistic regression model trained on the MNIST binary task might look like:
 ```
 /bigdata/traces_aDPSGD/mnist_binary/all/logistic/logistic_DIFFINIT.replace_10270.seed_13774.weights.csv
 ```
@@ -48,8 +48,9 @@ The typical workflow follows these steps:
 
 # Codebase components
 
+- `wrapper.py` is a wrapper for steps in the workflow, providing a CLI interface
+
 Pertaining mostly to **running a sweep**:
-- `sweep.py` is the outer loop which runs an experiment sweep. It calls on `run_experiment` repeatedly.
 - `run_experiment.py` provides the logic for reading configs, and running an experiment through loading data through `data_utils.py` and defining a model through `model_utils.py`
 - `data_utils.py` contains all logic around loading and preprocessing training datasets.
 - `model_utils.py` contains model specifications (e.g. CNN, logistic regression), including training loop and logic for saving intermediate weights
@@ -79,22 +80,15 @@ To run a single experiment with `seed = 5` and `replace_index = 10` we would use
 without specifying the seed and replace_index, it will use `1` and `None` respectively.
 
 To run a sweep of experiments using a grid of 25 seeds and 30 replace indices, we use
-```python run_sweep.py --cfg mnist_binary --num_seeds 25 --num_replaces 30```
+```python wrapper.py sweep --cfg mnist_binary --num_seeds 25 --num_replaces 30```
 This runs each seed and replace_index configuration twice - once with a fixed initialisation and once with variable.
 In total then, it will run 25 * 30 *2 = 1500 experiments in serial.
 
 ## Compute derived results
 
-(It gets less easy from here)
+```python wrapper.py derive --cfg mnist_binary --t 2000```
 
-In principle we can run `generate_derived_results` from `derived_results.py`, e.g. (I do most things in an interactive iPython session)
-
-```
-%run derived_results.py
-generate_derived_results('mnist_binary', 'logistic')
-```
-This will first attempt to compute the convergence point of the setting and then use it to compute the suite of derived results (see [Derived Results](#derived-results)).
-At present (8/6/20) not all functions here are working, so there may be issues.
+This will compute the suite of derived results (see [Derived Results](#derived-results)) at `2000` training steps (where the derived result requires this input). If `t` is not provided, it will first attempt to compute the convergence point of the setting to use as `t`.
 
 
 ## Visualise and report

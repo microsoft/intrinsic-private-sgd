@@ -15,11 +15,11 @@ import experiment_metadata as em
 
 
 class DerivedResult(object):
-    def __init__(self, dataset, model, data_privacy):
-        self.dataset = dataset
+    def __init__(self, cfg_name, model, data_privacy):
+        self.cfg_name = cfg_name
         self.model = model
         self.data_privacy = data_privacy
-        sample_experiment = results_utils.ExperimentIdentifier(dataset=dataset, model=model,
+        sample_experiment = results_utils.ExperimentIdentifier(cfg_name=cfg_name, model=model,
                                                                data_privacy=data_privacy)
         self.derived_directory = sample_experiment.derived_path_stub()
         self.suffix = None
@@ -29,7 +29,7 @@ class DerivedResult(object):
         pass
 
     @abc.abstractmethod
-    def generate(self) -> None:
+    def generate(self, diffinit: bool) -> None:
         pass
 
     def path_string(self, diffinit: bool = False):
@@ -38,20 +38,23 @@ class DerivedResult(object):
 
         return path_string
 
-    def load(self, diffinit: bool):
-        path_string = self.path_string
+    def load(self, diffinit: bool, generate_if_needed=False):
+        path = self.path_string(diffinit=diffinit)
 
         try:
             if self.suffix == '.npy':
-                data = np.load(path_string, allow_pickle=True).item()
-                print(f'Loaded derived data from {path_string}')
+                data = np.load(path, allow_pickle=True).item()
+                print(f'Loaded derived data from {path}')
             elif self.suffix == '.csv':
-                data = pd.read_csv(path_string)
+                data = pd.read_csv(path)
             else:
                 raise ValueError(f'Unknown suffix {self.suffix}')
         except FileNotFoundError:
-            print(f'ERROR: {path_string} not found!')
-            data = None
+            if generate_if_needed:
+                self.generate(diffinit=diffinit)
+                data = self.load(diffinit=diffinit, generate_if_needed=False)
+            else:
+                raise FileNotFoundError(f'{path} not found!')
 
         return data
 
@@ -60,8 +63,8 @@ class DeltaHistogram(DerivedResult):
     """
     Distribution of etc
     """
-    def __init__(self, dataset, model, num_deltas='max', t=500, data_privacy='all', multivariate=False):
-        super(DeltaHistogram, self).__init__(dataset, model, data_privacy)
+    def __init__(self, cfg_name, model, num_deltas='max', t=500, data_privacy='all', multivariate=False):
+        super(DeltaHistogram, self).__init__(cfg_name, model, data_privacy)
         self.num_deltas = num_deltas
         self.t = t
         self.multivariate = multivariate
@@ -72,7 +75,9 @@ class DeltaHistogram(DerivedResult):
 
         return identifier
 
-    def generate(self) -> None:
+    def generate(self, diffinit: bool = True) -> None:
+        """ Note that diffinit isn't actually used """
+
         for diffinit in False, True:
             path_string = self.path_string(diffinit)
 
@@ -84,19 +89,19 @@ class DeltaHistogram(DerivedResult):
                 path_string.parent.mkdir(exist_ok=True)
             print('Couldn\'t find', path_string)
             # vary-both
-            vary_both, identifiers_both = get_deltas(self.dataset, iter_range=(self.t, self.t+1),
+            vary_both, identifiers_both = get_deltas(self.cfg_name, iter_range=(self.t, self.t+1),
                                                      model=self.model,
                                                      vary_seed=True, vary_data=True,
                                                      num_deltas=self.num_deltas, diffinit=diffinit,
                                                      data_privacy=self.data_privacy, multivariate=self.multivariate)
             # vary-S
-            vary_S, identifiers_S = get_deltas(self.dataset, iter_range=(self.t, self.t+1),
+            vary_S, identifiers_S = get_deltas(self.cfg_name, iter_range=(self.t, self.t+1),
                                                model=self.model,
                                                vary_seed=False, vary_data=True,
                                                num_deltas=self.num_deltas, diffinit=diffinit,
                                                data_privacy=self.data_privacy, multivariate=self.multivariate)
             # vary-r
-            vary_r, identifiers_r = get_deltas(self.dataset, iter_range=(self.t, self.t+1),
+            vary_r, identifiers_r = get_deltas(self.cfg_name, iter_range=(self.t, self.t+1),
                                                model=self.model,
                                                vary_seed=True, vary_data=False,
                                                num_deltas=self.num_deltas, diffinit=diffinit,
@@ -114,9 +119,9 @@ class DeltaHistogram(DerivedResult):
 
 
 class UtilityCurve(DerivedResult):
-    def __init__(self, dataset, model, num_deltas, t, data_privacy='all', metric_to_report='binary_accuracy',
+    def __init__(self, cfg_name, model, num_deltas, t, data_privacy='all', metric_to_report='binary_accuracy',
                  verbose=True, diffinit=True, num_experiments=50):
-        super(UtilityCurve, self).__init__(dataset, model, data_privacy)
+        super(UtilityCurve, self).__init__(cfg_name, model, data_privacy)
         self.num_deltas = num_deltas
         self.num_experiments = num_experiments
         self.t = t
@@ -125,6 +130,7 @@ class UtilityCurve(DerivedResult):
 
     def identifier(self, diffinit: bool) -> str:
         identifier = f'utility_nd{self.num_deltas}_t{self.t}_ne{self.num_experiments}'
+
         return identifier
 
     def generate(self, diffinit) -> None:
@@ -134,8 +140,7 @@ class UtilityCurve(DerivedResult):
             print(f'WARNING: Utility curve has already been generated, file {path_string} exists!')
 
             return
-        epsilons = np.array([0.1, 0.5, 0.625, 0.75, 0.875, 1.0, 1.5, 2.0, 3.0,
-                             3.5, 4.0, 6.0, 7.5, 8.5, 10.0, 15.0, 18.0, 20.0])
+        epsilons = np.array([0.1, 0.5, 0.625, 0.75, 0.875, 1.0])
         # prepare columns of dataframe
         seed = []
         replace = []
@@ -146,7 +151,7 @@ class UtilityCurve(DerivedResult):
         augment_diffinit = []
         sens_from = []
         # select a set of experiments
-        df = results_utils.get_available_results(self.dataset, self.model, diffinit=True)
+        df = results_utils.get_available_results(self.cfg_name, self.model, diffinit=True)
         random_experiments = df.iloc[np.random.choice(df.shape[0], self.num_experiments), :]
 
         for i, exp in random_experiments.iterrows():
@@ -161,7 +166,7 @@ class UtilityCurve(DerivedResult):
                     continue
 
                 for eps in epsilons:
-                    results = test_private_model.test_model_with_noise(dataset=self.dataset, model=self.model,
+                    results = test_private_model.test_model_with_noise(cfg_name=self.cfg_name,
                                                                        replace_index=exp_replace,
                                                                        seed=exp_seed, t=self.t, epsilon=eps,
                                                                        delta=None,
@@ -192,8 +197,8 @@ class AggregatedLoss(DerivedResult):
     """
     Collect loss from multiple experiments and compute mean, std etc.
     """
-    def __init__(self, dataset, model, data_privacy='all', iter_range=(None, None)):
-        super(AggregatedLoss, self).__init__(dataset, model, data_privacy)
+    def __init__(self, cfg_name, model, data_privacy='all', iter_range=(None, None)):
+        super(AggregatedLoss, self).__init__(cfg_name, model, data_privacy)
         self.iter_range = iter_range
         self.suffix = '.csv'
 
@@ -210,12 +215,12 @@ class AggregatedLoss(DerivedResult):
 
             return
 
-        df = results_utils.get_available_results(self.dataset, self.model)
+        df = results_utils.get_available_results(self.cfg_name, self.model)
         train_list = []
         vali_list = []
 
         for i, row in df.iterrows():
-            experiment = results_utils.ExperimentIdentifier(self.dataset, self.model, replace_index=row['replace'],
+            experiment = results_utils.ExperimentIdentifier(self.cfg_name, self.model, replace_index=row['replace'],
                                                             seed=row['seed'], diffinit=diffinit,
                                                             data_privacy=self.data_privacy)
             loss = experiment.load_loss(iter_range=self.iter_range, verbose=False)
@@ -252,8 +257,8 @@ class AggregatedLoss(DerivedResult):
 
 class SensVar(DerivedResult):
     """"""
-    def __init__(self, dataset, model,  t, num_pairs='max', data_privacy='all'):
-        super(SensVar, self).__init__(dataset, model, data_privacy)
+    def __init__(self, cfg_name, model,  t, num_pairs='max', data_privacy='all'):
+        super(SensVar, self).__init__(cfg_name, model, data_privacy)
         self.t = t
         self.num_pairs = num_pairs
         self.suffix = '.csv'
@@ -263,7 +268,7 @@ class SensVar(DerivedResult):
 
         return identifier
 
-    def generate(self) -> None:
+    def generate(self, diffinit=True) -> None:
         for diffinit in [False, True]:
             path_string = self.path_string(diffinit)
 
@@ -273,7 +278,7 @@ class SensVar(DerivedResult):
                 return
 
             # TODO check if we need to do both
-            df = results_utils.get_available_results(self.dataset, self.model, diffinit=diffinit)
+            df = results_utils.get_available_results(self.cfg_name, self.model, diffinit=diffinit)
             replace_counts = df['replace'].value_counts()
             replaces = replace_counts[replace_counts > 10].index.values
             print('Found', len(replaces), 'datasets with at least 10 seeds')
@@ -297,7 +302,7 @@ class SensVar(DerivedResult):
             print('Computing "local" epsilon for', len(pairs_array), 'pairs of datasets!')
 
             for di, dj in pairs_array:
-                pair_sens, pair_var, num_seeds = compute_pairwise_sens_and_var(self.dataset, self.model,
+                pair_sens, pair_var, num_seeds = compute_pairwise_sens_and_var(self.cfg_name, self.model,
                                                                                self.t, replace_indices=[di, dj],
                                                                                multivariate=False,
                                                                                verbose=False,
@@ -319,9 +324,9 @@ class Sigmas(DerivedResult):
     """
     As for estimating the sensitivity, we want to grab a bunch of posteriors and estimate the variability
     """
-    def __init__(self, dataset, model, t, num_replaces='max', num_seeds='max',
+    def __init__(self, cfg_name, model, t, num_replaces='max', num_seeds='max',
                  data_privacy='all', multivariate=False):
-        super(Sigmas, self).__init__(dataset, model, data_privacy)
+        super(Sigmas, self).__init__(cfg_name, model, data_privacy)
         self.num_replaces = num_replaces
         self.num_seeds = num_seeds
         self.t = t
@@ -344,7 +349,7 @@ class Sigmas(DerivedResult):
 
                 return
         # now compute
-        df = results_utils.get_available_results(self.dataset, self.model,
+        df = results_utils.get_available_results(self.cfg_name, self.model,
                                                  data_privacy=self.data_privacy,
                                                  diffinit=diffinit)
         replace_counts = df['replace'].value_counts()
@@ -361,7 +366,7 @@ class Sigmas(DerivedResult):
         for replace_index in replaces:
             if verbose:
                 print('replace index:', replace_index)
-            samples = results_utils.get_posterior_samples(self.dataset, (self.t, self.t+1),
+            samples = results_utils.get_posterior_samples(self.cfg_name, (self.t, self.t+1),
                                                           self.model,
                                                           replace_index=replace_index,
                                                           params=None, seeds='all',
@@ -406,13 +411,13 @@ class VersusTime(DerivedResult):
     - variability w/out diffinit
     - variability with diffinit
     """
-    def __init__(self, dataset, model, data_privacy='all', iter_range=(0, 1000), num_deltas='max', cadence=200):
-        super(VersusTime, self).__init__(dataset, model, data_privacy)
+    def __init__(self, cfg_name, model, data_privacy='all', iter_range=(0, 1000), num_deltas='max', cadence=200):
+        super(VersusTime, self).__init__(cfg_name, model, data_privacy)
         self.iter_range = iter_range
         self.num_deltas = num_deltas
         assert None not in self.iter_range
         self.cadence = cadence
-        self.suffix = '.npy'
+        self.suffix = '.csv'
 
     def identifier(self, diffinit: bool = False) -> str:
         """ yes I know the diffinit input is never used """
@@ -420,7 +425,7 @@ class VersusTime(DerivedResult):
 
         return identifier
 
-    def generate(self) -> None:
+    def generate(self, diffinit=True) -> None:
         path_string = self.path_string()
 
         if path_string.exists():
@@ -430,7 +435,7 @@ class VersusTime(DerivedResult):
 
         if self.model == 'logistic':
             # pre-fetch lr and N for logistic models, not used otherwise
-            _, batch_size, lr, _, N = em.get_experiment_details(self.dataset, self.model,
+            _, batch_size, lr, _, N = em.get_experiment_details(self.cfg_name, self.model,
                                                                 data_privacy=self.data_privacy)
             L = np.sqrt(2)
 
@@ -452,7 +457,7 @@ class VersusTime(DerivedResult):
                 theoretical_sensitivity = np.nan
 
             # empirical sensitivity computed for all models
-            empirical_sensitivity = estimate_sensitivity_empirically(self.dataset, self.model, t,
+            empirical_sensitivity = estimate_sensitivity_empirically(self.cfg_name, self.model, t,
                                                                      num_deltas=self.num_deltas,
                                                                      diffinit=True,
                                                                      data_privacy=self.data_privacy)
@@ -460,11 +465,11 @@ class VersusTime(DerivedResult):
             assert empirical_sensitivity is not None
 
             # variability
-            variability_fixinit = estimate_variability(self.dataset, self.model, t,
+            variability_fixinit = estimate_variability(self.cfg_name, self.model, t,
                                                        multivariate=False,
                                                        diffinit=False,
                                                        data_privacy=self.data_privacy)
-            variability_diffinit = estimate_variability(self.dataset, self.model, t,
+            variability_diffinit = estimate_variability(self.cfg_name, self.model, t,
                                                         multivariate=False,
                                                         diffinit=True,
                                                         data_privacy=self.data_privacy)
@@ -484,11 +489,10 @@ class VersusTime(DerivedResult):
 
         df.set_index('t', inplace=True)
         # now join the losses...
-        losses = AggregatedLoss(self.dataset, self.model, iter_range=self.iter_range,
+        losses = AggregatedLoss(self.cfg_name, self.model, iter_range=self.iter_range,
                                 data_privacy=self.data_privacy).load(diffinit=True)
         df = df.join(losses)
         ###
-        self.suffix = '.csv'
         df.to_csv(path_string)
         print(f'[VersusTime] Saved to {path_string}')
 
@@ -496,8 +500,8 @@ class VersusTime(DerivedResult):
 
 
 class Stability(DerivedResult):
-    def __init__(self, dataset, model, t, data_privacy='all'):
-        super(Stability, self).__init__(dataset, model, data_privacy)
+    def __init__(self, cfg_name, model, t, data_privacy='all'):
+        super(Stability, self).__init__(cfg_name, model, data_privacy)
         self.t = t
         self.suffix = '.npy'
 
@@ -506,7 +510,7 @@ class Stability(DerivedResult):
 
         return identifier
 
-    def generate(self) -> None:
+    def generate(self, diffinit=True) -> None:
         path_string = self.path_string()
 
         if path_string.exists():
@@ -514,8 +518,8 @@ class Stability(DerivedResult):
 
             return
 
-        sigma_df = compute_sigma_v_num_seeds(self.dataset, self.model, self.t)
-        sens_df = compute_sens_v_num_deltas(self.dataset, self.model, self.t)
+        sigma_df = compute_sigma_v_num_seeds(self.cfg_name, self.model, self.t)
+        sens_df = compute_sens_v_num_deltas(self.cfg_name, self.model, self.t)
         stability_dict = {'sigma': sigma_df,
                           'sens': sens_df}
         print(f'[Stability] Saved to {path_string}')
@@ -524,13 +528,13 @@ class Stability(DerivedResult):
         return
 
 
-def generate_derived_results(dataset: str, model: str = 'logistic', t: int = None) -> None:
+def generate_derived_results(cfg_name: str, model: str = 'logistic', t: int = None) -> None:
     """
     Helper function
     """
 
     if t is None:
-        t, valid_frac = find_convergence_point(dataset, model, diffinit=True,
+        t, valid_frac = find_convergence_point(cfg_name, model, diffinit=True,
                                                tolerance=3, metric='binary_accuracy', data_privacy='all')
 
         if valid_frac < 0.5:
@@ -538,28 +542,26 @@ def generate_derived_results(dataset: str, model: str = 'logistic', t: int = Non
         else:
             print(f'Selecting t as convergence point {t}, valid fraction {valid_frac}')
 
-    DeltaHistogram(dataset, model, t=t).generate()
-    # utility curve not implemented yet TODO
-    # UtilityCurve(dataset, model, num_deltas='max', t=t).generate(diffinit=True)
-    AggregatedLoss(dataset, model).generate(diffinit=True)
-    AggregatedLoss(dataset, model).generate(diffinit=False)
-    SensVar(dataset, model, t=t).generate()
-    Sigmas(dataset, model, t=t).generate(diffinit=True)
-    # versus time not implemented properly yet TODO
-    #VersusTime(dataset, model).generate()
-    Stability(dataset, model, t=t).generate()
+    DeltaHistogram(cfg_name, model, t=t).generate()
+    UtilityCurve(cfg_name, model, num_deltas='max', t=t).generate(diffinit=True)
+    AggregatedLoss(cfg_name, model).generate(diffinit=True)
+    AggregatedLoss(cfg_name, model).generate(diffinit=False)
+    SensVar(cfg_name, model, t=t).generate()
+    Sigmas(cfg_name, model, t=t).generate(diffinit=True)
+    VersusTime(cfg_name, model).generate()
+    Stability(cfg_name, model, t=t).generate()
 
     return
 
 
-def calculate_epsilon(dataset, model, t, use_bound=False, diffinit=True,
+def calculate_epsilon(cfg_name, model, t, use_bound=False, diffinit=True,
                       num_deltas='max', multivariate=False):
     """
     just get the intrinsic epsilon
     """
-    task, batch_size, lr, n_weights, N = test_private_model.get_experiment_details(dataset, model)
+    task, batch_size, lr, n_weights, N = test_private_model.get_experiment_details(cfg_name, model)
     delta = 1.0/(N**2)
-    variability = test_private_model.estimate_variability(dataset, model, t, multivariate=False,
+    variability = test_private_model.estimate_variability(cfg_name, model, t, multivariate=False,
                                                           diffinit=diffinit)
 
     if use_bound:
@@ -569,7 +571,7 @@ def calculate_epsilon(dataset, model, t, use_bound=False, diffinit=True,
         if multivariate:
             sensitivity = np.array([sensitivity]*len(variability))
     else:
-        sensitivity = test_private_model.estimate_sensitivity_empirically(dataset, model, t,
+        sensitivity = test_private_model.estimate_sensitivity_empirically(cfg_name, model, t,
                                                                           num_deltas=num_deltas,
                                                                           diffinit=diffinit,
                                                                           multivariate=multivariate)
@@ -582,11 +584,11 @@ def calculate_epsilon(dataset, model, t, use_bound=False, diffinit=True,
     return epsilon
 
 
-def accuracy_at_eps(dataset, model, t, use_bound=False, num_experiments=500,
+def accuracy_at_eps(cfg_name, model, t, use_bound=False, num_experiments=500,
                     num_deltas='max', epsilon=1, do_test=False) -> dict:
     """
     """
-    utility_data = UtilityCurve(dataset, model, num_deltas, t, num_experients=num_experiments).load()
+    utility_data = UtilityCurve(cfg_name, model, num_deltas, t, num_experients=num_experiments).load()
 
     if utility_data is None:
         print('No utility data available, please run UtilityCurve.generate')
@@ -643,7 +645,7 @@ def accuracy_at_eps(dataset, model, t, use_bound=False, num_experiments=500,
     return results
 
 
-def estimate_empirical_lipschitz(dataset, model, diffinit, iter_range, n_samples=5000):
+def estimate_empirical_lipschitz(cfg_name, model, diffinit, iter_range, n_samples=5000):
     """
     get the biggest gradient during training
 
@@ -656,7 +658,7 @@ def estimate_empirical_lipschitz(dataset, model, diffinit, iter_range, n_samples
     min_norm = 50
     cumulative = 0
     cum_count = 0
-    df = results_utils.get_available_results(dataset, model, replace_index=None, diffinit=diffinit, data_privacy='all')
+    df = results_utils.get_available_results(cfg_name, model, replace_index=None, diffinit=diffinit, data_privacy='all')
     n_exp = df.shape[0]
 
     if n_samples is None:
@@ -672,7 +674,7 @@ def estimate_empirical_lipschitz(dataset, model, diffinit, iter_range, n_samples
     for row, exp in experiments.iterrows():
         replace = exp['replace']
         seed = exp['seed']
-        experiment = results_utils.ExperimentIdentifier(dataset, model, replace, seed, diffinit)
+        experiment = results_utils.ExperimentIdentifier(cfg_name, model, replace, seed, diffinit)
         gradients = experiment.load_gradients(iter_range=iter_range)
         grad_norm = np.linalg.norm(gradients.iloc[:, 2:], axis=1)
         cumulative += np.sum(grad_norm)
@@ -690,23 +692,23 @@ def estimate_empirical_lipschitz(dataset, model, diffinit, iter_range, n_samples
     return min_norm, ave_norm, max_norm
 
 
-def estimate_sensitivity_empirically(dataset, model, t, num_deltas, diffinit=False,
+def estimate_sensitivity_empirically(cfg_name, model, t, num_deltas, diffinit=False,
                                      data_privacy='all', multivariate=False):
     """ pull up the histogram
     """
-    delta_histogram_data = DeltaHistogram(dataset, model, num_deltas, t, data_privacy, multivariate).load(diffinit)
+    delta_histogram_data = DeltaHistogram(cfg_name, model, num_deltas, t, data_privacy, multivariate).load(diffinit, generate_if_needed=True)
     vary_data_deltas = delta_histogram_data['vary_S']
     sensitivity = np.nanmax(vary_data_deltas, axis=0)
 
     return sensitivity
 
 
-def get_deltas(dataset, iter_range, model,
+def get_deltas(cfg_name, iter_range, model,
                vary_seed=True, vary_data=True, params=None, num_deltas=100,
                include_identifiers=False, diffinit=False, data_privacy='all',
                multivariate=False, verbose=False):
     """
-    collect samples of weights from experiments on dataset+model, varying:
+    collect samples of weights from experiments on cfg_name+model, varying:
     - seed (vary_seed)
     - data (vary_data)
 
@@ -717,7 +719,7 @@ def get_deltas(dataset, iter_range, model,
 
     we want to get num_deltas values of delta in the end
     """
-    df = results_utils.get_available_results(dataset, model, diffinit=diffinit, data_privacy=data_privacy)
+    df = results_utils.get_available_results(cfg_name, model, diffinit=diffinit, data_privacy=data_privacy)
 
     if num_deltas == 'max':
         num_deltas = int(df.shape[0]/2)
@@ -795,7 +797,7 @@ def get_deltas(dataset, iter_range, model,
         replace_index = w.iloc[i]['replace']
         seed = w.iloc[i]['seed']
 
-        exp = results_utils.ExperimentIdentifier(dataset, model, replace_index, seed, diffinit, data_privacy)
+        exp = results_utils.ExperimentIdentifier(cfg_name, model, replace_index, seed, diffinit, data_privacy)
 
         if exp.exists():
             w_weights = exp.load_weights(iter_range=iter_range, params=params, verbose=False).values[:, 1:]
@@ -806,7 +808,7 @@ def get_deltas(dataset, iter_range, model,
         replace_index_p = wp.iloc[i]['replace']
         seed_p = wp.iloc[i]['seed']
 
-        exp_p = results_utils.ExperimentIdentifier(dataset, model, replace_index_p, seed_p, diffinit, data_privacy)
+        exp_p = results_utils.ExperimentIdentifier(cfg_name, model, replace_index_p, seed_p, diffinit, data_privacy)
 
         if exp_p.exists():
             wp_weights = exp_p.load_weights(iter_range=iter_range, params=params, verbose=False).values[:, 1:]
@@ -826,7 +828,7 @@ def get_deltas(dataset, iter_range, model,
     return deltas, identifiers
 
 
-def estimate_statistics_through_training(what, dataset, model, replace_index, seed, df=None,
+def estimate_statistics_through_training(what, cfg_name, model, replace_index, seed, df=None,
                                          params=None, iter_range=(None, None), diffinit=True):
     """
     Grab a trace file for a model, estimate the alpha value for gradient noise throughout training
@@ -836,14 +838,14 @@ def estimate_statistics_through_training(what, dataset, model, replace_index, se
     """
     assert what in ['gradients', 'weights']
 
-    experiment = results_utils.ExperimentIdentifier(dataset, model, replace_index, seed, diffinit)
+    experiment = results_utils.ExperimentIdentifier(cfg_name, model, replace_index, seed, diffinit)
 
     if df is None:
         if what == 'gradients':
             df = experiment.load_gradients(noise=True, params=params, iter_range=iter_range)
         else:
             print('Getting posterior for weights, seed is irrelevant')
-            df = results_utils.get_posterior_samples(dataset, model=model, replace_index=replace_index,
+            df = results_utils.get_posterior_samples(cfg_name, model=model, replace_index=replace_index,
                                                      iter_range=iter_range, params=params, diffinit=diffinit)
 
         if df is False:
@@ -885,12 +887,12 @@ def estimate_statistics_through_training(what, dataset, model, replace_index, se
     return df_fits
 
 
-def find_convergence_point_for_single_experiment(dataset, model, replace_index,
+def find_convergence_point_for_single_experiment(cfg_name, model, replace_index,
                                                  seed, diffinit=False, tolerance=3,
                                                  metric='ce', verbose=False,
                                                  data_privacy='all'):
     # load the trace
-    experiment = results_utils.ExperimentIdentifier(dataset, model, replace_index,
+    experiment = results_utils.ExperimentIdentifier(cfg_name, model, replace_index,
                                                     seed, diffinit=diffinit, data_privacy=data_privacy)
     loss = experiment.load_loss(iter_range=(None, None))
     try:
@@ -925,22 +927,22 @@ def find_convergence_point_for_single_experiment(dataset, model, replace_index,
     return convergence_point
 
 
-def find_convergence_point(dataset, model, diffinit, tolerance, metric, data_privacy='all'):
+def find_convergence_point(cfg_name, model, diffinit, tolerance, metric, data_privacy='all'):
     """ wrapper for the whole experiment """
-    results = results_utils.get_available_results(dataset, model, diffinit=diffinit, data_privacy=data_privacy)
+    results = results_utils.get_available_results(cfg_name, model, diffinit=diffinit, data_privacy=data_privacy)
     n_results = results.shape[0]
     points = np.zeros(n_results)
 
     for index, row in results.iterrows():
         replace_index = row['replace']
         seed = row['seed']
-        point = find_convergence_point_for_single_experiment(dataset, model, replace_index,
+        point = find_convergence_point_for_single_experiment(cfg_name, model, replace_index,
                                                              seed, diffinit=diffinit,
                                                              tolerance=tolerance,
                                                              metric=metric,
                                                              data_privacy=data_privacy)
         points[index] = point
-    print('For dataset', dataset, 'and model', model, 'with diffinit', diffinit, 'we have:')
+    print('For cfg_name', cfg_name, 'and model', model, 'with diffinit', diffinit, 'we have:')
     print('STDEV:', np.nanstd(points))
     print('MEDIAN:', np.nanmedian(points))
     print('MEAN:', np.nanmean(points))
@@ -952,7 +954,7 @@ def find_convergence_point(dataset, model, diffinit, tolerance, metric, data_pri
     return convergence_point, valid_frac
 
 
-def compute_pairwise_sens_and_var(dataset, model, t, replace_indices,
+def compute_pairwise_sens_and_var(cfg_name, model, t, replace_indices,
                                   multivariate=False, verbose=True, diffinit=False):
     """
     for a pair of experiments...
@@ -965,11 +967,11 @@ def compute_pairwise_sens_and_var(dataset, model, t, replace_indices,
 
     if multivariate:
         raise NotImplementedError
-    samples_1 = results_utils.get_posterior_samples(dataset, (t, t+1), model,
+    samples_1 = results_utils.get_posterior_samples(cfg_name, (t, t+1), model,
                                                     replace_index=replace_indices[0],
                                                     params=None, seeds='all',
                                                     verbose=verbose, diffinit=diffinit)
-    samples_2 = results_utils.get_posterior_samples(dataset, (t, t+1), model,
+    samples_2 = results_utils.get_posterior_samples(cfg_name, (t, t+1), model,
                                                     replace_index=replace_indices[1],
                                                     params=None, seeds='all',
                                                     verbose=verbose, diffinit=diffinit)
@@ -1017,18 +1019,21 @@ def compute_pairwise_sens_and_var(dataset, model, t, replace_indices,
     return sensitivity, variability, num_seeds
 
 
-def estimate_variability(dataset, model, t, multivariate=False, diffinit=False,
+def estimate_variability(cfg_name, model, t, multivariate=False, diffinit=False,
                          data_privacy='all', num_replaces='max', num_seeds='max',
                          ephemeral=False, verbose=True):
     """
     This just pulls up the Sigmas result, and potentially subsets
     """
-    sigmas_result = Sigmas(dataset, model, t, num_replaces, num_seeds, data_privacy, multivariate)
+    sigmas_result = Sigmas(cfg_name, model, t, num_replaces, num_seeds, data_privacy, multivariate)
 
     if ephemeral:
         sigmas_data = sigmas_result.generate(diffinit, verbose=False, ephemeral=True)
     else:
-        sigmas_data = sigmas_result.load(diffinit)
+        sigmas_data = sigmas_result.load(diffinit, generate_if_needed=True)
+
+    if sigmas_data is None:
+        return None
 
     sigmas = sigmas_data['sigmas']
 
@@ -1052,7 +1057,7 @@ def estimate_variability(dataset, model, t, multivariate=False, diffinit=False,
     return estimated_variability
 
 
-def compute_sigma_v_num_seeds(dataset, model, t) -> pd.DataFrame:
+def compute_sigma_v_num_seeds(cfg_name, model, t) -> pd.DataFrame:
     """
     """
     num_seeds_array = []
@@ -1066,7 +1071,7 @@ def compute_sigma_v_num_seeds(dataset, model, t) -> pd.DataFrame:
             #        [100]: # this is what it is for the others (LR)
             # setting ephemeral = True will make this very slow but I think it's worth it for my sanity
             # otherwise I need to do even more refactoring
-            sigma = estimate_variability(dataset, model, t=t,
+            sigma = estimate_variability(cfg_name, model, t=t,
                                          num_seeds=num_seeds, num_replaces=num_replaces,
                                          ephemeral=True, diffinit=True)
             num_seeds_array.append(num_seeds)
@@ -1082,7 +1087,7 @@ def compute_sigma_v_num_seeds(dataset, model, t) -> pd.DataFrame:
     return stability_sigma
 
 
-def compute_sens_v_num_deltas(dataset, model, t):
+def compute_sens_v_num_deltas(cfg_name, model, t):
     """
     compute empirical
     - sens
@@ -1094,7 +1099,7 @@ def compute_sens_v_num_deltas(dataset, model, t):
     sens_array = []
 
     for num_deltas in [5, 10, 25, 50, 75, 100, 125, 250, 500, 1000, 1500, 2000, 2500, 3000, 4000, 5000]:
-        vary_S, _ = get_deltas(dataset, iter_range=(t, t+1),
+        vary_S, _ = get_deltas(cfg_name, iter_range=(t, t+1),
                                model=model, vary_seed=False, vary_data=True,
                                num_deltas=num_deltas, diffinit=True,
                                data_privacy='all', multivariate=False)

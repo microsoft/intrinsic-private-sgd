@@ -7,21 +7,22 @@ import ipdb
 
 import data_utils
 import model_utils
-import results_utils
+from results_utils import ExperimentIdentifier
 import derived_results
-import experiment_metadata
+import experiment_metadata as em
+from run_experiment import load_cfg
 
 # --- to do with testing the model's performance --- #
 
 
-def get_target_noise_for_model(dataset, model, t, epsilon, delta, sensitivity, verbose):
+def get_target_noise_for_model(cfg_name, model, t, epsilon, delta, sensitivity, verbose):
     target_noise = compute_gaussian_noise(epsilon, delta, sensitivity)
 
     if verbose:
         print('[test] Target noise:', target_noise)
 
     # without different initiaisation
-    intrinsic_noise = derived_results.estimate_variability(dataset, model, t, multivariate=False, diffinit=False)
+    intrinsic_noise = derived_results.estimate_variability(cfg_name, model, t, multivariate=False, diffinit=False)
 
     if intrinsic_noise < target_noise:
         noise_to_add = compute_additional_noise(target_noise, intrinsic_noise)
@@ -33,14 +34,14 @@ def get_target_noise_for_model(dataset, model, t, epsilon, delta, sensitivity, v
         print('[augment_sgd] Hurray! Essentially no noise required!')
 
     # noise using different initialisation
-    intrinsic_noise_diffinit = derived_results.estimate_variability(dataset, model, t,
+    intrinsic_noise_diffinit = derived_results.estimate_variability(cfg_name, model, t,
                                                                     multivariate=False, diffinit=True)
 
     if intrinsic_noise_diffinit < target_noise:
         noise_to_add_diffinit = compute_additional_noise(target_noise, intrinsic_noise_diffinit)
     else:
         noise_to_add_diffinit = 0
-    print('[augment_sgd_diffinit] \nintrinsic noise:', intrinsic_noise_diffinit, '\nnoise to add:', noise_to_add_diffinit)
+    print(f'[augment_sgd_diffinit] \nintrinsic noise: {intrinsic_noise_diffinit}\nnoise to add {noise_to_add_diffinit}')
 
     if np.abs(noise_to_add_diffinit) < 1e-5:
         print('[augment_sgd] Hurray! Essentially no noise required!')
@@ -52,7 +53,7 @@ def get_target_noise_for_model(dataset, model, t, epsilon, delta, sensitivity, v
     return target_noise, noise_to_add, noise_to_add_diffinit
 
 
-def test_model_with_noise(data_options, model, replace_index, seed, t,
+def test_model_with_noise(cfg_name, replace_index, seed, t,
                           epsilon=None, delta=None,
                           sens_from_bound=True,
                           metric_to_report='binary_accuracy',
@@ -61,10 +62,15 @@ def test_model_with_noise(data_options, model, replace_index, seed, t,
     """
     test the model on the test set of the respective dataset
     """
-    task, batch_size, lr, _, N = experiment_metadata.get_experiment_details(dataset, model, data_privacy)
+    cfg = load_cfg(cfg_name)
+    model = cfg['model']['architecture']
+    experiment = ExperimentIdentifier(cfg_name=cfg_name, model=model,
+                                      replace_index=replace_index, seed=seed,
+                                      diffinit=True)
+    task, batch_size, lr, _, N = em.get_experiment_details(cfg_name, model, data_privacy)
     # load the test set
     # TODO this is a hack, fix it
-    _, _, _, _, x_test, y_test = data_utils.load_data(data_options, replace_index=replace_index)
+    _, _, _, _, x_test, y_test = data_utils.load_data(cfg['data'], replace_index=replace_index)
 
     if epsilon is None:
         epsilon = 1.0
@@ -85,7 +91,7 @@ def test_model_with_noise(data_options, model, replace_index, seed, t,
     else:
         # compute sensitivity empirically!
         # diffinit set to False beacuse it doesn't make a differnce
-        sensitivity = derived_results.estimate_sensitivity_empirically(dataset, model, t,
+        sensitivity = derived_results.estimate_sensitivity_empirically(cfg_name, model, t,
                                                                        num_deltas=num_deltas,
                                                                        diffinit=False,
                                                                        data_privacy=data_privacy)
@@ -96,19 +102,23 @@ def test_model_with_noise(data_options, model, replace_index, seed, t,
         return False
     print('Sensitivity:', sensitivity)
 
-    target_noise, noise_to_add, noise_to_add_diffinit = get_target_noise_for_model(dataset, model, t,
+    target_noise, noise_to_add, noise_to_add_diffinit = get_target_noise_for_model(cfg_name, model, t,
                                                                                    epsilon, delta,
                                                                                    sensitivity, verbose)
 
-    weights_path = results_utils.trace_path_stub(dataset, model, replace_index, seed, diffinit=True) + '.weights.csv'
+    weights_path = experiment.path_stub().with_name(experiment.path_stub().name + '.weights.csv')
     print('Evaluating model from', weights_path)
 
-    model_object = model_utils.build_model(model_type=model, data_type=dataset, init_path=weights_path, t=t)
-    # so i can evaluate it later
-    model_utils.prep_for_training(model_object, seed=0, lr=0, task_type=task)
+    model_object = model_utils.build_model(**cfg['model'], init_path=weights_path, t=t)
+    # this is for initialising the model etc.
+    model_utils.prep_for_training(model_object, seed=0,
+                                  optimizer_settings=cfg['training']['optimization_algorithm'],
+                                  task_type=cfg['model']['task_type'])
 
-    metrics = model_object.compute_metrics(x_test, y_test)
     metric_names = model_object.metric_names
+    metric_functions = model_utils.define_metric_functions(metric_names)
+    metrics = model_object.compute_metrics(x_test, y_test, metric_functions=metric_functions)
+    metrics = [m.numpy() for m in metrics]
 
     if verbose:
         print('PERFORMANCE (no noise):')
@@ -132,18 +142,21 @@ def test_model_with_noise(data_options, model, replace_index, seed, t,
     standard_noise = np.random.normal(size=n_weights, loc=0, scale=1)
 
     for setting in noise_options:
-        model_object = model_utils.build_model(model_type=model, data_type=dataset, init_path=weights_path, t=t)
-        model_utils.prep_for_training(model_object, seed=0, lr=0, task_type=task)
+        model_object = model_utils.build_model(**cfg['model'], init_path=weights_path, t=t)
+        model_utils.prep_for_training(model_object, seed=0,
+                                      optimizer_settings=cfg['training']['optimization_algorithm'],
+                                      task_type=cfg['model']['task_type'])
         weights = model_object.get_weights(flat=True)
         noise = noise_options[setting]
         noisy_weights = weights + standard_noise * noise
         unflattened_noisy_weights = model_object.unflatten_weights(noisy_weights)
         model_object.set_weights(unflattened_noisy_weights)
 
-        metrics = model_object.compute_metrics(x_test, y_test)
+        metrics = model_object.compute_metrics(x_test, y_test, metric_functions=metric_functions)
+        metrics = [m.numpy() for m in metrics]
 
         if verbose:
-            print('PERFORMANCE (' + setting + '):')
+            print(f'PERFORMANCE ({setting}):')
 
         for (n, v) in zip(metric_names, metrics):
             if verbose:
@@ -163,38 +176,6 @@ def test_model_with_noise(data_options, model, replace_index, seed, t,
     model_utils.K.backend.clear_session()
 
     return noiseless_performance, bolton_performance, augment_performance, augment_performance_diffinit
-
-
-def debug_just_test(dataset, model, replace_index, seed, t, diffinit=False, use_vali=False):
-    task, batch_size, lr, n_weights, N = experiment_metadata.get_experiment_details(dataset, model)
-    _, _, x_vali, y_vali, x_test, y_test = data_utils.load_data(data_type=dataset, replace_index=replace_index)
-
-    weights_path = results_utils.trace_path_stub(dataset, model, replace_index, seed, diffinit=diffinit) + '.weights.csv'
-
-    metrics = None
-    metric_names = None
-
-    # DEBUG
-    model_object = model_utils.build_model(model_type=model, data_type=dataset, init_path=weights_path, t=t)
-    model_utils.prep_for_training(model_object, seed=0, lr=0, task_type=task)
-
-    if use_vali:
-        #     print('Evaluating on validation set')
-        metrics = model_object.compute_metrics(x_vali, y_vali)
-    else:
-        metrics = model_object.compute_metrics(x_test, y_test)
-
-    metric_names = model_object.metric_names
-    results = dict(zip(metric_names, metrics))
-    # not sure if there is a memory leak or whatever
-    del model_object
-    del x_vali
-    del y_vali
-    del x_test
-    del y_test
-    model_utils.K.backend.clear_session()
-
-    return results
 
 
 def compute_gaussian_noise(epsilon, delta, sensitivity, verbose=True):
@@ -255,11 +236,11 @@ def compute_wu_bound(lipschitz_constant, t, N, batch_size, eta, verbose=True):
     return l2_sensitivity
 
 
-def discretise_theoretical_sensitivity(dataset, model, theoretical_sensitivity):
+def discretise_theoretical_sensitivity(cfg_name, model, theoretical_sensitivity):
     """
     stop treating k as a float, and turn it back into an integer!
     """
-    _, batch_size, lr, _, N = experiment_metadata.get_experiment_details(dataset, model)
+    _, batch_size, lr, _, N = em.get_experiment_details(cfg_name, model)
 
     if model == 'logistic':
         L = np.sqrt(2)

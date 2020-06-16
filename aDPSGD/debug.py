@@ -9,22 +9,22 @@ import eval_utils
 import derived_results
 from results_utils import ExperimentIdentifier
 
-def run_checks(dataset, model, diffinit, data_privacy='all'):
+def run_checks(cfg_name, model, diffinit, data_privacy='all'):
     """
 
     """
     fail = False
     # look for missing experiments
     # get the convergence point
-    if dataset in ['mnist', 'cifar10', 'mnist_square']:
+    if cfg_name in ['mnist', 'cifar10', 'mnist_square']:
         metric = 'ce'
     else:
         metric = 'binary_crossentropy'
     print('Computing convergence point...')
-    convergence_point, _ = derived_results.find_convergence_point(dataset, model, diffinit, tolerance=3, metric=metric, data_privacy=data_privacy)
+    convergence_point, _ = derived_results.find_convergence_point(cfg_name, model, diffinit, tolerance=3, metric=metric, data_privacy=data_privacy)
     print('convergence point:', convergence_point)
     print('Checking for incomplete experiments...')
-    incomp = check_for_incomplete_experiments(dataset, model, t=convergence_point, diffinit=diffinit, data_privacy=data_privacy)
+    incomp = check_for_incomplete_experiments(cfg_name, model, t=convergence_point, diffinit=diffinit, data_privacy=data_privacy)
     if incomp is True:
         print('[debug] Passed check for incomplete expeirments')
     else:
@@ -34,7 +34,7 @@ def run_checks(dataset, model, diffinit, data_privacy='all'):
         print(incomplete)
     # make sure the same seed always has the same initialisation
     print('Checking for initialisation violations...')
-    init_violations = check_for_different_initialisations_with_same_seed(dataset, model, diffinit=diffinit)
+    init_violations = check_for_different_initialisations_with_same_seed(cfg_name, model, diffinit=diffinit)
     if init_violations is True:
         print('[debug] Passed check for different initialisations')
     else:
@@ -46,19 +46,19 @@ def run_checks(dataset, model, diffinit, data_privacy='all'):
         result = 'Pass'
     return result
 
-def check_for_incomplete_experiments(dataset, model, t=5, diffinit=True, data_privacy='all'):
+def check_for_incomplete_experiments(cfg_name, model, t=5, diffinit=True, data_privacy='all'):
     """
     find experiments where data does not reach time t
     if t is None, we're just looking for experiments where the file is empty
     """
-    exp_df = derived_results.get_available_results(dataset, model, diffinit=diffinit, data_privacy=data_privacy)
+    exp_df = derived_results.get_available_results(cfg_name, model, diffinit=diffinit, data_privacy=data_privacy)
     print('Found', exp_df.shape[0], 'experiments!')
     empty = []
     for i, row in exp_df.iterrows():
         drop_index = 'NA'
         replace_index = row['replace']
         seed = row['seed']
-        loss = ExperimentIdentifier(dataset, model, drop_index=drop_index, seed=seed, diffinit=diffinit, data_privacy=data_privacy).load_loss()
+        loss = ExperimentIdentifier(cfg_name, model, drop_index=drop_index, seed=seed, diffinit=diffinit, data_privacy=data_privacy).load_loss()
         if np.nanmax(loss['t']) < t:
             incomplete.append((replace_index, seed))
     if len(empty) == 0:
@@ -70,19 +70,19 @@ def check_for_incomplete_experiments(dataset, model, t=5, diffinit=True, data_pr
         print('Found', len(incomplete), 'incomplete experiments')
         return empty, unsure, incomplete
 
-def find_mismatch_loss_test(dataset, model, diffinit=False, t=2000, metric='accuracy'):
+def find_mismatch_loss_test(cfg_name, model, diffinit=False, t=2000, metric='accuracy'):
     """
     find models where the apparent performance disagrees with what the trace file says...
     """
-    exp_df = derived_results.get_available_results(dataset, model, diffinit=diffinit)
+    exp_df = derived_results.get_available_results(cfg_name, model, diffinit=diffinit)
     print('Found', exp_df.shape[0], 'experiments to test...!')
     good_settings = []
     for i, row in exp_df.iterrows():
         replace = row['replace']
         seed = row['seed']
-        performance = test_private_model.debug_just_test(dataset, model, drop_index='NA', replace_index=replace, seed=seed, t=t, diffinit=diffinit, use_vali=True)
+        performance = test_private_model.debug_just_test(cfg_name, model, drop_index='NA', replace_index=replace, seed=seed, t=t, diffinit=diffinit, use_vali=True)
         retest_performance = performance[metric]
-        loss = ExperimentIdentifier(dataset, model, replace_index=replace_index, seed=seed, diffinit=diffinit).load_loss(iter_range=(t, t+1))
+        loss = ExperimentIdentifier(cfg_name, model, replace_index=replace_index, seed=seed, diffinit=diffinit).load_loss(iter_range=(t, t+1))
         orig_performance = loss.loc[loss['minibatch_id'] == 'VALI', metric].values[0]
         discrepancy = np.abs(retest_performance - orig_performance)
         print('\t\t\t',discrepancy)
@@ -97,11 +97,11 @@ def find_mismatch_loss_test(dataset, model, diffinit=False, t=2000, metric='accu
     print('that\'s', 100*len(good_settings)/df.shape[0], 'percent!')
     return good_settings
 
-def check_for_different_initialisations_with_same_seed(dataset, model, diffinit=True):
+def check_for_different_initialisations_with_same_seed(cfg_name, model, diffinit=True):
     """
     same seed should always imply same initialisation
     """
-    files = glob.glob('./traces/' + dataset + '/all/' + model + '/' + model + '_DIFFINIT'*diffinit + '.*.weights.csv')
+    files = glob.glob('./traces/' + cfg_name + '/all/' + model + '/' + model + '_DIFFINIT'*diffinit + '.*.weights.csv')
     files = np.random.permutation(files)
     if diffinit:
         seeds = [f.split('/')[-1].split('.')[3].split('_')[1] for f in files]

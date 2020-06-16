@@ -30,7 +30,7 @@ plt.rcParams.update(params)
 FIGS_DIR = Path('./figures/')
 
 
-def plot_delta_histogram(dataset: str, model: str, num_deltas='max', t=500,
+def plot_delta_histogram(cfg_name: str, model: str, num_deltas='max', t=500,
                          include_bounds=False, xlim=None, ylim=None,
                          data_privacy='all', plot=True, multivariate=False) -> None:
     """
@@ -39,7 +39,7 @@ def plot_delta_histogram(dataset: str, model: str, num_deltas='max', t=500,
 
     if multivariate:
         raise NotImplementedError('Multivariate plotting is not implemented')
-    delta_histogram = dr.DeltaHistogram(dataset, model, num_deltas, t, data_privacy, multivariate)
+    delta_histogram = dr.DeltaHistogram(cfg_name, model, num_deltas, t, data_privacy, multivariate)
     plot_data = delta_histogram.load(diffinit=False)
     plot_data_diffinit = delta_histogram.load(diffinit=True)
 
@@ -100,7 +100,7 @@ def plot_delta_histogram(dataset: str, model: str, num_deltas='max', t=500,
     if include_bounds:
         assert model == 'logistic'
         lipschitz_constant = np.sqrt(2.0)
-        _, batch_size, lr, _, N = em.get_experiment_details(dataset, model, verbose=True)
+        _, batch_size, lr, _, N = em.get_experiment_details(cfg_name, model, verbose=True)
         wu_bound = test_private_model.compute_wu_bound(lipschitz_constant, t=t, N=N, batch_size=batch_size, eta=lr)
         axarr.axvline(x=wu_bound, ls='--', color=em.dp_colours['bolton'], label=r'$\hat{\Delta}_S$')
 
@@ -117,14 +117,14 @@ def plot_delta_histogram(dataset: str, model: str, num_deltas='max', t=500,
     vis_utils.beautify_axes(np.array([axarr]))
     plt.tight_layout()
 
-    figure_identifier = f'delta_histogram_{dataset}_{data_privacy}_{model}_t{t}'
+    figure_identifier = f'delta_histogram_{cfg_name}_{data_privacy}_{model}_t{t}'
     plt.savefig((FIGS_DIR / figure_identifier).with_suffix('.png'))
     plt.savefig((FIGS_DIR / figure_identifier).with_suffix('.pdf'))
 
     return
 
 
-def plot_epsilon_distribution(dataset, model, t, delta, num_pairs,
+def plot_epsilon_distribution(cfg_name, model, t, delta, num_pairs,
                               which='both',
                               sensitivity_from='local', sharex=False,
                               variability_from='empirical', xlim=None, ylim=None,
@@ -133,12 +133,12 @@ def plot_epsilon_distribution(dataset, model, t, delta, num_pairs,
     overlay epsilon dist with and without diffinit
     which  takes values both, vary, fix
     """
-    sens_var = dr.SensVar(dataset, model, data_privacy, t, num_pairs)
+    sens_var = dr.SensVar(cfg_name, model, data_privacy, t, num_pairs)
     df = sens_var.load(diffinit=False)
     df_diffinit = sens_var.load(diffinit=True)
 
     # Now set it all up
-    _, batch_size, eta, _, N = em.get_experiment_details(dataset, model)
+    _, batch_size, eta, _, N = em.get_experiment_details(cfg_name, model)
 
     if delta is None:
         delta = 1.0/(N**2)
@@ -160,10 +160,10 @@ def plot_epsilon_distribution(dataset, model, t, delta, num_pairs,
         sensitivity_diffinit = sensitivity
         print('Wu sensitivity bound:', sensitivity)
     elif sensitivity_from == 'empirical':
-        sensitivity = dr.estimate_sensitivity_empirically(dataset, model,
+        sensitivity = dr.estimate_sensitivity_empirically(cfg_name, model,
                                                           t, num_deltas='max',
                                                           diffinit=False)
-        sensitivity_diffinit = dr.estimate_sensitivity_empirically(dataset, model,
+        sensitivity_diffinit = dr.estimate_sensitivity_empirically(cfg_name, model,
                                                                    t, num_deltas='max',
                                                                    diffinit=True)
     else:
@@ -175,8 +175,8 @@ def plot_epsilon_distribution(dataset, model, t, delta, num_pairs,
         variability = df['variability']
         variability_diffinit = df_diffinit['variability']
     else:
-        variability = dr.estimate_variability(dataset, model, t, multivariate=False, diffinit=False)
-        variability_diffinit = dr.estimate_variability(dataset, model, t, multivariate=False, diffinit=True)
+        variability = dr.estimate_variability(cfg_name, model, t, multivariate=False, diffinit=False)
+        variability_diffinit = dr.estimate_variability(cfg_name, model, t, multivariate=False, diffinit=True)
     print('Sens size:', sensitivity.shape)
     print('Var size:', variability.shape)
     epsilon = c * sensitivity / variability
@@ -222,14 +222,14 @@ def plot_epsilon_distribution(dataset, model, t, delta, num_pairs,
     plt.tight_layout()
     vis_utils.beautify_axes(axarr)
 
-    figure_identifier = f'epsilon_distribution_{which}_{dataset}_{data_privacy}_{model}_t{t}_{sensitivity_from}'
+    figure_identifier = f'epsilon_distribution_{which}_{cfg_name}_{data_privacy}_{model}_t{t}_{sensitivity_from}'
     plt.savefig((FIGS_DIR / figure_identifier).with_suffix('.png'))
     plt.savefig((FIGS_DIR / figure_identifier).with_suffix('.pdf'))
 
     return
 
 
-def plot_sens_and_var_over_time(dataset, model, num_deltas=500, iter_range=(0, 1000),
+def plot_sens_and_var_over_time(cfg_name, model, num_deltas=500, iter_range=(0, 1000),
                                 data_privacy='all', metric='binary_crossentropy', acc_lims=None) -> None:
     """
     Estimate the empirical (and theoretical I guess) sensitivity and variability v. "convergence point" (time)
@@ -243,7 +243,7 @@ def plot_sens_and_var_over_time(dataset, model, num_deltas=500, iter_range=(0, 1
     - variability with diffinit
     ... and then plot that, basically
     """
-    path = 'fig_data/v_time.' + dataset + '.' + data_privacy + '.' + model + '.nd_' + str(num_deltas) + '.csv'
+    path = 'fig_data/v_time.' + cfg_name + '.' + data_privacy + '.' + model + '.nd_' + str(num_deltas) + '.csv'
     try:
         df = pd.read_csv(path)
     except FileNotFoundError:
@@ -274,7 +274,7 @@ def plot_sens_and_var_over_time(dataset, model, num_deltas=500, iter_range=(0, 1
     ds = [np.nan]*df.shape[0]
 
     for i, ts in enumerate(df['theoretical_sensitivity'].values):
-        ds[i] = test_private_model.discretise_theoretical_sensitivity(dataset, model, ts)
+        ds[i] = test_private_model.discretise_theoretical_sensitivity(cfg_name, model, ts)
     axarr[1].plot(df['t'], ds, label='theoretical', alpha=0.5, c=em.dp_colours['bolton'], ls='--')
     axarr[1].scatter(df['t'], df['empirical_sensitivity'], label='_nolegend_', s=6, c=em.dp_colours['bolton'])
     axarr[1].plot(df['t'], df['empirical_sensitivity'], label='empirical', alpha=0.5, c=em.dp_colours['bolton'])
@@ -298,11 +298,11 @@ def plot_sens_and_var_over_time(dataset, model, num_deltas=500, iter_range=(0, 1
 
     if model == 'logistic':
         convergence_points = em.lr_convergence_points
-        title = em.dataset_names[dataset] + ' (logistic regression)'
+        title = em.dataset_names[cfg_name] + ' (logistic regression)'
     else:
         convergence_points = em.nn_convergence_points
-        title = em.dataset_names[dataset] + ' (neural network)'
-    convergence_point = convergence_points[dataset]
+        title = em.dataset_names[cfg_name] + ' (neural network)'
+    convergence_point = convergence_points[cfg_name]
 
     for ax in axarr:
         ax.axvline(x=convergence_point, ls='--', color='black', alpha=0.5)
@@ -315,7 +315,7 @@ def plot_sens_and_var_over_time(dataset, model, num_deltas=500, iter_range=(0, 1
 
     # save
     plt.tight_layout()
-    figure_identifier = f'v_time_{dataset}_{data_privacy}_{model}_nd{num_deltas}'
+    figure_identifier = f'v_time_{cfg_name}_{data_privacy}_{model}_nd{num_deltas}'
     plt.savefig((FIGS_DIR / figure_identifier).with_suffix('.png'))
     plt.savefig((FIGS_DIR / figure_identifier).with_suffix('.pdf'))
 
@@ -325,10 +325,10 @@ def plot_sens_and_var_over_time(dataset, model, num_deltas=500, iter_range=(0, 1
     return
 
 
-def plot_stability_of_estimated_values(dataset, model, t) -> None:
+def plot_stability_of_estimated_values(cfg_name, model, t) -> None:
     """
     """
-    stability = dr.Stability(dataset, model, t)
+    stability = dr.Stability(cfg_name, model, t)
     stability_dict = stability.load()
 
     # lets just do 3 separate plots
@@ -341,18 +341,18 @@ def plot_stability_of_estimated_values(dataset, model, t) -> None:
 #    sigma_v_seed = sigma_df[sigma_df['n_replaces'] == sigma_df['n_replaces'].max()][['n_seeds', 'sigma']]
     fig, axarr = plt.subplots(nrows=1, ncols=1, figsize=figsize)
     axarr.scatter(sigma_v_seed['n_seeds'], sigma_v_seed['sigma'], s=size, c=em.dp_colours['augment_diffinit'])
-    sigma_we_use = dr.estimate_variability(dataset, model, t, diffinit=True)
+    sigma_we_use = dr.estimate_variability(cfg_name, model, t, diffinit=True)
     axarr.axhline(y=sigma_we_use, ls='--', c=em.dp_colours['augment_diffinit'], alpha=0.4)
     axarr.set_xlabel('number of random seeds')
     axarr.set_ylabel(r'estimated $\sigma_i(\mathcal{D})$')
-    axarr.set_title(em.dataset_names[dataset] + ' (' + em.model_names[model] + ')')
+    axarr.set_title(em.dataset_names[cfg_name] + ' (' + em.model_names[model] + ')')
     upper_y = 1.05*max(np.max(sigma_v_seed['sigma']), sigma_we_use)
     lower_y = 0.95*np.min(sigma_v_seed['sigma'])
     axarr.set_ylim(lower_y, upper_y)
     vis_utils.beautify_axes(np.array([axarr]))
 
     plt.tight_layout()
-    figure_identifier = f'stability_sigma_v_seeds_{dataset}_{model}_t{t}'
+    figure_identifier = f'stability_sigma_v_seeds_{cfg_name}_{model}_t{t}'
     plt.savefig((FIGS_DIR / figure_identifier).with_suffix('.png'))
     plt.savefig((FIGS_DIR / figure_identifier).with_suffix('.pdf'))
 
@@ -365,7 +365,7 @@ def plot_stability_of_estimated_values(dataset, model, t) -> None:
     sens_v_deltas = sens_df[['n_deltas', 'sens']].drop_duplicates()
     fig, axarr = plt.subplots(nrows=1, ncols=1, figsize=figsize)
     axarr.scatter(sens_v_deltas['n_deltas'], sens_v_deltas['sens'], s=size, c=em.dp_colours['bolton'])
-    sens_we_use = dr.estimate_sensitivity_empirically(dataset, model, t,
+    sens_we_use = dr.estimate_sensitivity_empirically(cfg_name, model, t,
                                                       num_deltas='max', diffinit=True,
                                                       data_privacy='all')
     axarr.axhline(y=sens_we_use, ls='--', c=em.dp_colours['bolton'], alpha=0.4)
@@ -373,11 +373,11 @@ def plot_stability_of_estimated_values(dataset, model, t) -> None:
     axarr.set_ylabel('estimated sensitivity')
     axarr.set_ylim(0, None)
     axarr.set_xscale('log')
-    axarr.set_title(em.dataset_names[dataset] + ' (' + em.model_names[model] + ')')
+    axarr.set_title(em.dataset_names[cfg_name] + ' (' + em.model_names[model] + ')')
     vis_utils.beautify_axes(np.array([axarr]))
     plt.tight_layout()
 
-    figure_identifier = f'stability_sens_v_deltas_{dataset}_{model}_t{t}'
+    figure_identifier = f'stability_sens_v_deltas_{cfg_name}_{model}_t{t}'
     plt.savefig((FIGS_DIR / figure_identifier).with_suffix('.png'))
     plt.savefig((FIGS_DIR / figure_identifier).with_suffix('.pdf'))
 
@@ -475,7 +475,7 @@ def compare_mnist_variants() -> None:
 
 
 def overlay_pval_plot(model='logistic', xlim=None, n_experiments=50,
-                      datasets=None, ylim=None) -> None:
+                      cfg_names=None, ylim=None) -> None:
     """
     want to overlay pvals from the four datasets in one plot
     """
@@ -489,15 +489,15 @@ def overlay_pval_plot(model='logistic', xlim=None, n_experiments=50,
         convergence_points = em.nn_convergence_points
         title = 'Neural network'
 
-    if datasets is None:
-        datasets = em.dataset_colours.keys()
+    if cfg_names is None:
+        cfg_names = em.dataset_colours.keys()
         plot_label = '_'
     else:
-        plot_label = '_'.join(datasets) + '_'
+        plot_label = '_'.join(cfg_names) + '_'
     fig, axarr = plt.subplots(nrows=1, ncols=1, figsize=figsize)
     vertical_lines_we_already_have = set()
 
-    for ds in datasets:
+    for ds in cfg_names:
         print(ds)
         log_pvals, n_params = vis_utils.fit_pval_histogram(what=what, dataset=ds, model=model,
                                                            t=convergence_points[ds],
@@ -535,7 +535,7 @@ def overlay_pval_plot(model='logistic', xlim=None, n_experiments=50,
     return
 
 
-def overlay_eps_plot(model='logistic', datasets=None, xlim=None, ylim=None, title=None) -> None:
+def overlay_eps_plot(model='logistic', cfg_names=None, xlim=None, ylim=None, title=None) -> None:
     figsize = (3.7, 2.9)
     n_bins = 50
 
@@ -544,14 +544,14 @@ def overlay_eps_plot(model='logistic', datasets=None, xlim=None, ylim=None, titl
     else:
         convergence_points = em.nn_convergence_points
 
-    if datasets is None:
-        datasets = em.dataset_colours.keys()
+    if cfg_names is None:
+        cfg_names = em.dataset_colours.keys()
         plot_label = '_'
     else:
-        plot_label = '_'.join(datasets) + '_'
+        plot_label = '_'.join(cfg_names) + '_'
     fig, axarr = plt.subplots(nrows=1, ncols=1, figsize=figsize)
 
-    for ds in datasets:
+    for ds in cfg_names:
         _, eps_diffinit = dr.epsilon_distribution(ds, model, t=convergence_points[ds],
                                                   delta=None, num_pairs=None, which='vary',
                                                   sensitivity_from='local', sharex=True,

@@ -33,7 +33,7 @@ plt.rcParams.update(params)
 PLOTS_DIR = Path('./visualisations/')
 
 
-def weight_evolution(dataset, model, n_seeds=50, replace_indices=None,
+def weight_evolution(cfg_name, model, n_seeds=50, replace_indices=None,
                      iter_range=(None, None), params=['#4', '#2'],
                      diffinit=False, aggregate=False):
     """
@@ -47,7 +47,7 @@ def weight_evolution(dataset, model, n_seeds=50, replace_indices=None,
         assert n_seeds > 1
 
         for i, replace_index in enumerate(replace_indices):
-            vary_S = results_utils.get_posterior_samples(dataset, iter_range, model,
+            vary_S = results_utils.get_posterior_samples(cfg_name, iter_range, model,
                                                          replace_index=replace_index,
                                                          params=params, seeds='all',
                                                          n_seeds=n_seeds, diffinit=diffinit)
@@ -72,7 +72,7 @@ def weight_evolution(dataset, model, n_seeds=50, replace_indices=None,
         colours = cm.get_cmap('plasma')(np.linspace(0.2, 0.8, n_seeds))
         assert len(replace_indices) == 1
         replace_index = replace_indices[0]
-        vary_S = results_utils.get_posterior_samples(dataset, iter_range, model,
+        vary_S = results_utils.get_posterior_samples(cfg_name, iter_range, model,
                                                      replace_index=replace_index,
                                                      params=params, seeds='all',
                                                      n_seeds=n_seeds, diffinit=diffinit)
@@ -91,31 +91,31 @@ def weight_evolution(dataset, model, n_seeds=50, replace_indices=None,
     axarr[-1].set_xlabel('training steps')
     vis_utils.beautify_axes(np.array([axarr]))
     plt.tight_layout()
-    plot_identifier = f'weight_trajectory_{dataset}.{model}'
+    plot_identifier = f'weight_trajectory_{cfg_name}.{model}'
     plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.png'))
     plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.pdf'))
 
     return
 
 
-def weight_posterior(dataset, model, replace_indices=None, t=500, param='#0', overlay_normal=False):
+def weight_posterior(cfg_name, model, replace_indices=None, t=500, param='#0', overlay_normal=False):
     """
-    show posterior of weight for two datasets, get all the samples
+    show posterior of weight for two cfg_names, get all the samples
     """
     iter_range = (t, t+1)
 
     if replace_indices == 'random':
         print('Picking two *random* replace indices for this setting...')
-        df = results_utils.get_available_results(dataset, model)
+        df = results_utils.get_available_results(cfg_name, model)
         replace_counts = df['replace'].value_counts()
         replaces = replace_counts[replace_counts > 2].index.values
         replace_indices = np.random.choice(replaces, 2, replace=False)
     assert len(replace_indices) == 2
     # now load the data!
-    df_1 = results_utils.get_posterior_samples(dataset, iter_range, model,
+    df_1 = results_utils.get_posterior_samples(cfg_name, iter_range, model,
                                                replace_index=replace_indices[0],
                                                params=[param], seeds='all')
-    df_2 = results_utils.get_posterior_samples(dataset, iter_range, model,
+    df_2 = results_utils.get_posterior_samples(cfg_name, iter_range, model,
                                                replace_index=replace_indices[1],
                                                params=[param], seeds='all')
     print(f'Loaded {df_1.shape[0]} and {df_2.shape[0]} samples respectively')
@@ -142,14 +142,14 @@ def weight_posterior(dataset, model, replace_indices=None, t=500, param='#0', ov
     axarr.set_ylabel('# runs')
     vis_utils.beautify_axes(np.array([axarr]))
 
-    plot_identifier = f'weight_posterior_{dataset}_{model}_{param}'
+    plot_identifier = f'weight_posterior_{cfg_name}_{model}_{param}'
     plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.png'))
     plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.pdf'))
 
     return
 
 
-def plot_utility_curve(dataset, model, delta, t,
+def plot_utility_curve(cfg_name, model, delta, t,
                        metric_to_report='binary_accuracy', verbose=True,
                        num_deltas='max', diffinit=False, num_experiments=50,
                        xlim=None, ylim=None, identifier=None, include_fix=False) -> None:
@@ -164,7 +164,7 @@ def plot_utility_curve(dataset, model, delta, t,
     plt.clf()
     plt.close()
     try:
-        utility_data = dr.UtilityCurve(dataset, model, num_deltas=num_deltas, t=t).load(diffinit=diffinit)
+        utility_data = dr.UtilityCurve(cfg_name, model, num_deltas=num_deltas, t=t).load(diffinit=diffinit)
     except FileNotFoundError:
         return
 
@@ -241,14 +241,14 @@ def plot_utility_curve(dataset, model, delta, t,
     plt.tight_layout()
     print('Reminder, the identifier was', identifier)
 
-    plot_identifier = f'utility_{dataset}_{model}_{"_withfix"*include_fix}'
+    plot_identifier = f'utility_{cfg_name}_{model}_{"_withfix"*include_fix}'
     plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.png'))
     plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.pdf'))
 
     return
 
 
-def plot_sigmas_distribution(model, datasets=None, ylim=None) -> None:
+def plot_sigmas_distribution(model, cfg_names=None, ylim=None) -> None:
     if model == 'logistic':
         convergence_points = em.lr_convergence_points
         title = 'Logistic regression'
@@ -256,11 +256,11 @@ def plot_sigmas_distribution(model, datasets=None, ylim=None) -> None:
         convergence_points = em.nn_convergence_points
         title = 'Neural network'
 
-    if datasets is None:
-        datasets = convergence_points.keys()
+    if cfg_names is None:
+        cfg_names = convergence_points.keys()
     fig, axarr = plt.subplots(nrows=1, ncols=1, figsize=(3, 3))
 
-    for ds in datasets:
+    for ds in cfg_names:
         t = convergence_points[ds]
         # now just the sigmas distribution
         all_sigmas = dr.Sigmas(ds, model, t).load(diffinit=True)['sigmas']
@@ -294,7 +294,7 @@ def plot_sigmas_distribution(model, datasets=None, ylim=None) -> None:
     return
 
 
-def qq_plot(what: str, dataset: str, model: str, replace_index: int, seed: int, times=[50], params='random') -> None:
+def qq_plot(what: str, cfg_name: str, model: str, replace_index: int, seed: int, times=[50], params='random') -> None:
     """
     grab trace file, do qq plot for gradient noise at specified time-point
     """
@@ -306,13 +306,13 @@ def qq_plot(what: str, dataset: str, model: str, replace_index: int, seed: int, 
         print('Looking at weights, this means we consider all seeds!')
     colours = cm.viridis(np.linspace(0.2, 0.8, len(times)))
 
-    experiment = results_utils.ExperimentIdentifier(dataset, model, replace_index, seed)
+    experiment = results_utils.ExperimentIdentifier(cfg_name, model, replace_index, seed)
 
     if params == 'random':
         if what == 'gradients':
             df = experiment.load_gradients(noise=True, params=None, iter_range=(min(times), max(times)+1))
         else:
-            df = results_utils.get_posterior_samples(dataset, model=model,
+            df = results_utils.get_posterior_samples(cfg_name, model=model,
                                                      replace_index=replace_index,
                                                      iter_range=(min(times), max(times) + 1),
                                                      params=None)
@@ -324,7 +324,7 @@ def qq_plot(what: str, dataset: str, model: str, replace_index: int, seed: int, 
         if what == 'gradients':
             df = experiment.load_gradients(noise=True, params=params, iter_range=(min(times), max(times)+1))
         else:
-            df = results_utils.get_posterior_samples(dataset, model=model,
+            df = results_utils.get_posterior_samples(cfg_name, model=model,
                                                      replace_index=replace_index,
                                                      iter_range=(min(times), max(times) + 1),
                                                      params=params)
@@ -342,21 +342,21 @@ def qq_plot(what: str, dataset: str, model: str, replace_index: int, seed: int, 
         print('number of samples:', X.shape[0])
         sns.distplot(X, ax=axarr[0], kde=False, color=to_hex(colours[i]), label=str(t))
         sm.qqplot(X, line='45', fit=True, ax=axarr[1], c=colours[i], alpha=0.5, label=str(t))
-    plt.suptitle('dataset: ' + dataset + ', model:' + model + ',' + what)
+    plt.suptitle('cfg_name: ' + cfg_name + ', model:' + model + ',' + what)
     axarr[0].legend()
     axarr[1].legend()
     axarr[0].set_xlabel('parameter:' + '.'.join(params))
     vis_utils.beautify_axes(axarr)
     plt.tight_layout()
 
-    plot_identifier = f'qq_{what}_{dataset}_{model}_{"_".join(params)}'
+    plot_identifier = f'qq_{what}_{cfg_name}_{model}_{"_".join(params)}'
     plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.png'))
     plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.pdf'))
 
     return
 
 
-def visualise_gradient_values(dataset, identifiers, save=True,
+def visualise_gradient_values(cfg_name, identifiers, save=True,
                               iter_range=(None, None), params=None,
                               full_batch=True, include_max=False,
                               diffinit=False, what='norm') -> None:
@@ -370,7 +370,7 @@ def visualise_gradient_values(dataset, identifiers, save=True,
         model = identifier['model']
         replace_index = identifier['replace']
         seed = identifier['seed']
-        experiment = results_utils.ExperimentIdentifier(dataset, model, replace_index, seed, diffinit)
+        experiment = results_utils.ExperimentIdentifier(cfg_name, model, replace_index, seed, diffinit)
         df = experiment.load_gradients(noise=False, iter_range=iter_range, params=params)
 
         if full_batch:
@@ -392,26 +392,26 @@ def visualise_gradient_values(dataset, identifiers, save=True,
             axarr.axhline(y=max(grad_vals), ls='--', alpha=0.5, color='black')
     axarr.legend()
     vis_utils.beautify_axes(np.array([axarr]))
-    axarr.set_title(dataset + ' ' + model)
+    axarr.set_title(cfg_name + ' ' + model)
     axarr.set_ylabel('gradient ' + what)
     axarr.set_xlabel('training steps')
 
     if save:
         plot_label = '_'.join([':'.join(x) for x in identifiers])
 
-        plot_identifier = f'grad_{what}_{dataset}_{plot_label}'
+        plot_identifier = f'grad_{what}_{cfg_name}_{plot_label}'
         plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.png'))
         plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.pdf'))
 
     return
 
 
-def bivariate_gradients(dataset, model, replace_index, seed, df=None,
+def bivariate_gradients(cfg_name, model, replace_index, seed, df=None,
                         params=['#3', '#5'], iter_range=(None, None), n_times=2, save=False) -> None:
     print('Comparing gradients for parameters', params, 'at', n_times, 'random time-points')
 
     if df is None:
-        experiment = results_utils.ExperimentIdentifier(dataset, model, replace_index, seed)
+        experiment = results_utils.ExperimentIdentifier(cfg_name, model, replace_index, seed)
         df = experiment.load_gradients(noise=True, iter_range=iter_range, params=params)
 
     if params is None:
@@ -442,7 +442,7 @@ def bivariate_gradients(dataset, model, replace_index, seed, df=None,
 
     if save:
 
-        plot_identifier = f'gradient_pairs_{dataset}_{model}_replace{replace_index}_seed{seed}_params{"_".join(params)}'
+        plot_identifier = f'gradient_pairs_{cfg_name}_{model}_replace{replace_index}_seed{seed}_params{"_".join(params)}'
         plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.png'))
         plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.pdf'))
         plt.clf()
@@ -451,7 +451,7 @@ def bivariate_gradients(dataset, model, replace_index, seed, df=None,
     return
 
 
-def fit_pval_histogram(what, dataset, model, t, n_experiments=3, diffinit=False,
+def fit_pval_histogram(what, cfg_name, model, t, n_experiments=3, diffinit=False,
                        xlim=None, seed=1) -> None:
     """
     histogram of p-values (across parameters-?) for a given model etc.
@@ -462,21 +462,21 @@ def fit_pval_histogram(what, dataset, model, t, n_experiments=3, diffinit=False,
     fig, axarr = plt.subplots(nrows=1, ncols=1, figsize=(3.5, 2.1))
     pval_colour = '#b237c4'
     # sample experiments
-    df = results_utils.get_available_results(dataset, model, diffinit=diffinit)
+    df = results_utils.get_available_results(cfg_name, model, diffinit=diffinit)
     replace_indices = df['replace'].unique()
     replace_indices = np.random.choice(replace_indices, n_experiments, replace=False)
     print('Looking at replace indices...', replace_indices)
     all_pvals = []
 
     for i, replace_index in enumerate(replace_indices):
-        experiment = results_utils.ExperimentIdentifier(dataset, model, replace_index, seed, diffinit)
+        experiment = results_utils.ExperimentIdentifier(cfg_name, model, replace_index, seed, diffinit)
 
         if what == 'gradients':
             print('Loading gradients...')
             df = experiment.load_gradients(noise=True, iter_range=iter_range, params=None)
             second_col = df.columns[1]
         elif what == 'weights':
-            df = results_utils.get_posterior_samples(dataset, iter_range=iter_range,
+            df = results_utils.get_posterior_samples(cfg_name, iter_range=iter_range,
                                                      model=model, replace_index=replace_index,
                                                      params=None, seeds='all')
             second_col = df.columns[1]
@@ -493,7 +493,7 @@ def fit_pval_histogram(what, dataset, model, t, n_experiments=3, diffinit=False,
 
         for j, p in enumerate(params):
             print('getting fit for parameter', p)
-            df_fit = dr.estimate_statistics_through_training(what=what, dataset=None,
+            df_fit = dr.estimate_statistics_through_training(what=what, cfg_name=None,
                                                              model=None, replace_index=None,
                                                              seed=None,
                                                              df=df.loc[:, ['t', second_col, p]],
@@ -525,14 +525,14 @@ def fit_pval_histogram(what, dataset, model, t, n_experiments=3, diffinit=False,
 #    axarr.set_xscale('log')
     vis_utils.beautify_axes(np.array([axarr]))
     plt.tight_layout()
-    plot_identifier = f'pval_histogram_{dataset}_{model}_{what}'
+    plot_identifier = f'pval_histogram_{cfg_name}_{model}_{what}'
     plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.png'))
     plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.pdf'))
 
     return
 
 
-def visualise_fits(dataset, model, replace_index, seed, save=True, params=None) -> None:
+def visualise_fits(cfg_name, model, replace_index, seed, save=True, params=None) -> None:
     print('Visualising distribution fits through training')
     # load and fit the data
 
@@ -547,7 +547,7 @@ def visualise_fits(dataset, model, replace_index, seed, save=True, params=None) 
 
     for i, p in enumerate(params):
         print('visualising fit for parameter parameter', p)
-        df_fit = dr.estimate_statistics_through_training(what='gradients', dataset=dataset,
+        df_fit = dr.estimate_statistics_through_training(what='gradients', cfg_name=cfg_name,
                                                          model=model, replace_index=replace_index,
                                                          seed=seed, params=[p])
 
@@ -579,7 +579,7 @@ def visualise_fits(dataset, model, replace_index, seed, save=True, params=None) 
 
     if save:
         plot_label = model + '_replace' + str(replace_index) + '_seed' + str(seed) + '_'.join(params)
-        plt.savefig('plots/' + dataset + '/' + plot_label + '_fits.png')
+        plt.savefig('plots/' + cfg_name + '/' + plot_label + '_fits.png')
         plt.clf()
         plt.close()
 
@@ -650,14 +650,14 @@ def visualise_variance(df, times, colormap=None, label=None, save=False, value_l
     return
 
 
-def visualise_trace(datasets, models, replaces, seeds, privacys, save=True,
+def visualise_trace(cfg_names, models, replaces, seeds, privacys, save=True,
                     include_batches=False, iter_range=(None, None),
                     include_convergence=True, diffinit=False, convergence_tolerance=3,
                     include_vali=True, labels=None) -> None:
     """
     Show the full training set loss as well as the gradient (at our element) over training
     """
-    identifiers = vis_utils.process_identifiers(datasets, models, replaces, seeds, privacys)
+    identifiers = vis_utils.process_identifiers(cfg_names, models, replaces, seeds, privacys)
 
     if len(identifiers) > 1:
         print('WARNING: When more than one experiment is included, we turn off visualisation of batches to avoid cluttering the plot')
@@ -671,12 +671,12 @@ def visualise_trace(datasets, models, replaces, seeds, privacys, save=True,
     loss_list = []
 
     for identifier in identifiers:
-        dataset = identifier['dataset']
+        cfg_name = identifier['cfg_name']
         model = identifier['model']
         replace_index = identifier['replace']
         seed = identifier['seed']
         data_privacy = identifier['data_privacy']
-        experiment = results_utils.ExperimentIdentifier(dataset, model, replace_index, seed,
+        experiment = results_utils.ExperimentIdentifier(cfg_name, model, replace_index, seed,
                                                         data_privacy=data_privacy, diffinit=diffinit)
         df_loss = experiment.load_loss(iter_range=iter_range)
 
@@ -737,12 +737,12 @@ def visualise_trace(datasets, models, replaces, seeds, privacys, save=True,
 
     if include_convergence:
         for j, identifier in enumerate(identifiers):
-            dataset = identifier['dataset']
+            cfg_name = identifier['cfg_name']
             model = identifier['model']
             replace_index = identifier['replace']
             seed = identifier['seed']
             data_privacy = identifier['data_privacy']
-            convergence_point = dr.find_convergence_point_for_single_experiment(dataset, model,
+            convergence_point = dr.find_convergence_point_for_single_experiment(cfg_name, model,
                                                                                 replace_index,
                                                                                 seed, diffinit,
                                                                                 tolerance=convergence_tolerance,
@@ -759,7 +759,7 @@ def visualise_trace(datasets, models, replaces, seeds, privacys, save=True,
 
     if save:
         plot_label = '.'.join([':'.join(x) for x in identifiers])
-        plot_identifier = f'trace_{dataset}_{plot_label}'
+        plot_identifier = f'trace_{cfg_name}_{plot_label}'
         plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.png'))
         plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.pdf'))
     plt.clf()
@@ -768,9 +768,9 @@ def visualise_trace(datasets, models, replaces, seeds, privacys, save=True,
     return
 
 
-def visualise_autocorrelation(dataset, model, replace_index, seed, params, save=True) -> None:
+def visualise_autocorrelation(cfg_name, model, replace_index, seed, params, save=True) -> None:
     """ what's the autocorrelation of the weights?.... or gradients? """
-    experiment = results_utils.ExperimentIdentifer(dataset, model, replace_index, seed)
+    experiment = results_utils.ExperimentIdentifer(cfg_name, model, replace_index, seed)
     df = experiment.load_weights(params=params)
     n_lags = 500
     autocorr = np.zeros(n_lags)
@@ -790,7 +790,7 @@ def visualise_autocorrelation(dataset, model, replace_index, seed, params, save=
     vis_utils.beautify_axes(axarr)
 
     if save:
-        plot_identifier = f'autocorrelation_{dataset}_{model}_replace{replace_index}_seed{seed}'
+        plot_identifier = f'autocorrelation_{cfg_name}_{model}_replace{replace_index}_seed{seed}'
         plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.png'))
         plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.pdf'))
     plt.clf()
@@ -799,12 +799,12 @@ def visualise_autocorrelation(dataset, model, replace_index, seed, params, save=
     return
 
 
-def examine_parameter_level_gradient_noise(dataset, model, replace_index, seed,
+def examine_parameter_level_gradient_noise(cfg_name, model, replace_index, seed,
                                            times=[10, 25], save=True, params=['#1', '#5']) -> None:
     print('demonstrating gradient noise distributions at times', times, 'for parameters', params)
     iter_range = (min(times) - 1, max(times) + 1)
     assert params is not None
-    experiment = results_utils.ExperimentIdentifier(dataset, model, replace_index, seed)
+    experiment = results_utils.ExperimentIdentifier(cfg_name, model, replace_index, seed)
     df = experiment.load_gradients(noise=True, iter_range=iter_range, params=params)
 
     ncols = len(params)
@@ -836,7 +836,7 @@ def examine_parameter_level_gradient_noise(dataset, model, replace_index, seed,
     vis_utils.beautify_axes(axarr)
 
     if save:
-        plot_identifier = f'gradient_noise_{dataset}_{model}_replace{replace_index}_seed{seed}_{"_".join(params)}'
+        plot_identifier = f'gradient_noise_{cfg_name}_{model}_replace{replace_index}_seed{seed}_{"_".join(params)}'
         plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.png'))
         plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.pdf'))
     plt.clf()
@@ -845,12 +845,12 @@ def examine_parameter_level_gradient_noise(dataset, model, replace_index, seed,
     return
 
 
-def visually_compare_distributions(dataset, model, replace_index, seed, df=None,
+def visually_compare_distributions(cfg_name, model, replace_index, seed, df=None,
                                    times=[10, 25], save=False, iter_range=(None, None), params=None) -> None:
     print('Visually comparing distributions at times', times)
 
     if df is None:
-        experiment = results_utils.ExperimentIdentifier(dataset, model, replace_index, seed)
+        experiment = results_utils.ExperimentIdentifier(cfg_name, model, replace_index, seed)
         df = experiment.load_gradients(noise=True, iter_range=iter_range, params=params)
     else:
         if params is not None:
@@ -872,7 +872,7 @@ def visually_compare_distributions(dataset, model, replace_index, seed, df=None,
             print('WARNING: No data from iteration', t, ' - skipping!')
 
             continue
-        df_fit = dr.estimate_statistics_through_training(what='gradients', dataset=dataset,
+        df_fit = dr.estimate_statistics_through_training(what='gradients', cfg_name=cfg_name,
                                                          model=model,
                                                          replace_index=replace_index,
                                                          seed=seed, df=df_t)
@@ -910,7 +910,7 @@ def visually_compare_distributions(dataset, model, replace_index, seed, df=None,
     plt.tight_layout()
 
     if save:
-        plot_identifier = f'visual_{dataset}_{model}_replace{replace_index}_seed{seed}'
+        plot_identifier = f'visual_{cfg_name}_{model}_replace{replace_index}_seed{seed}'
 
         if params is not None:
             plot_identifier = plot_identifier + f'_{n_params}params'
@@ -924,7 +924,7 @@ def visually_compare_distributions(dataset, model, replace_index, seed, df=None,
     return
 
 
-def visualise_weight_trajectory(dataset, identifiers, df=None, save=True,
+def visualise_weight_trajectory(cfg_name, identifiers, df=None, save=True,
                                 iter_range=(None, None), params=['#4', '#2'],
                                 include_optimum=False, include_autocorrelation=False, diffinit=False) -> None:
     """
@@ -935,7 +935,7 @@ def visualise_weight_trajectory(dataset, identifiers, df=None, save=True,
         model = identifier['model']
         replace_index = identifier['replace']
         seed = identifier['seed']
-        experiment = results_utils.ExperimentIdentifier(dataset, model, replace_index, seed, diffinit)
+        experiment = results_utils.ExperimentIdentifier(cfg_name, model, replace_index, seed, diffinit)
         df = experiment.load_weights(iter_range=iter_range, params=params)
         df_list.append(df)
     colors = cm.viridis(np.linspace(0.2, 0.8, len(df_list)))
@@ -955,7 +955,7 @@ def visualise_weight_trajectory(dataset, identifiers, df=None, save=True,
 
     if include_optimum:
         # hack!
-        optimum, hessian = data_utils.solve_with_linear_regression(dataset)
+        optimum, hessian = data_utils.solve_with_linear_regression(cfg_name)
 
     if include_autocorrelation:
         ncols = 2
@@ -998,7 +998,7 @@ def visualise_weight_trajectory(dataset, identifiers, df=None, save=True,
     plt.tight_layout()
 
     if save:
-        plot_identifier = f'weights_{dataset}_{"_".join(labels)}'
+        plot_identifier = f'weights_{cfg_name}_{"_".join(labels)}'
         plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.png'))
         plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.pdf'))
     plt.clf()
@@ -1007,7 +1007,7 @@ def visualise_weight_trajectory(dataset, identifiers, df=None, save=True,
     return
 
 
-def compare_posteriors_with_different_data(dataset, model, t, replace_indices, params) -> None:
+def compare_posteriors_with_different_data(cfg_name, model, t, replace_indices, params) -> None:
     plt.clf()
     plt.close()
     fig, axarr = plt.subplots(nrows=1, ncols=len(params))
@@ -1015,7 +1015,7 @@ def compare_posteriors_with_different_data(dataset, model, t, replace_indices, p
 
     for j, replace_index in enumerate(replace_indices):
         for i, p in enumerate(params):
-            samples = results_utils.get_posterior_samples(dataset, iter_range=(t, t+1), model=model,
+            samples = results_utils.get_posterior_samples(cfg_name, iter_range=(t, t+1), model=model,
                                                           replace_index=replace_index, params=[p])
             sns.distplot(samples, ax=axarr[i], color=to_hex(colours[j]), label=str(replace_index), kde=False)
     # save
@@ -1030,14 +1030,14 @@ def compare_posteriors_with_different_data(dataset, model, t, replace_indices, p
     return
 
 
-def delta_over_time(dataset, model, identifier_pair, iter_range, include_bound=False) -> None:
+def delta_over_time(cfg_name, model, identifier_pair, iter_range, include_bound=False) -> None:
     """
     """
     assert len(identifier_pair) == 2
     replace_1, seed_1 = identifier_pair[0]['replace'], identifier_pair[0]['seed']
     replace_2, seed_2 = identifier_pair[1]['replace'], identifier_pair[1]['seed']
-    experiment_1 = results_utils.ExperimentIdentifier(dataset, model, replace_1, seed_1)
-    experiment_2 = results_utils.ExperimentIdentifier(dataset, model, replace_2, seed_2)
+    experiment_1 = results_utils.ExperimentIdentifier(cfg_name, model, replace_1, seed_1)
+    experiment_2 = results_utils.ExperimentIdentifier(cfg_name, model, replace_2, seed_2)
     samples_1 = experiment_1.load_weights(iter_range=iter_range)
     samples_2 = experiment_2.load_weights(iter_range=iter_range)
     gradients_1 = experiment_1.load_gradients(noise=False, iter_range=iter_range)
@@ -1065,7 +1065,7 @@ def delta_over_time(dataset, model, identifier_pair, iter_range, include_bound=F
 
     if include_bound:
         assert model == 'logistic'
-        _, batch_size, eta, _, N = em.get_experiment_details(dataset, model)
+        _, batch_size, eta, _, N = em.get_experiment_details(cfg_name, model)
         L = np.sqrt(2)
         bound = np.zeros(len(t))
 
@@ -1081,9 +1081,9 @@ def delta_over_time(dataset, model, identifier_pair, iter_range, include_bound=F
     return
 
 
-def sensitivity_v_variability(dataset, model, t, num_pairs, diffinit=False) -> None:
+def sensitivity_v_variability(cfg_name, model, t, num_pairs, diffinit=False) -> None:
     try:
-        df = dr.SensVar(dataset, model, t=t, num_pairs=num_pairs).load(diffinit=diffinit)
+        df = dr.SensVar(cfg_name, model, t=t, num_pairs=num_pairs).load(diffinit=diffinit)
     except FileNotFoundError:
         print('ERROR: Compute sens and var dist')
         return
@@ -1097,7 +1097,7 @@ def sensitivity_v_variability(dataset, model, t, num_pairs, diffinit=False) -> N
     for ax in axarr:
         ax.set_xlabel('sensitivity')
         ax.set_ylabel('variability')
-    axarr[0].set_title('dataset: ' + dataset + ', model: ' + model + ', t: ' + str(t) + ' (variable init)'*diffinit)
+    axarr[0].set_title('cfg_name: ' + cfg_name + ', model: ' + model + ', t: ' + str(t) + ' (variable init)'*diffinit)
     plt.tight_layout()
     vis_utils.beautify_axes(axarr)
 

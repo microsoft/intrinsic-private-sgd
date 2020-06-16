@@ -23,11 +23,11 @@ def beautify_axes(axarr):
     return True
 
 
-def process_identifiers(datasets, models, replaces, seeds, privacys):
+def process_identifiers(cfg_names, models, replaces, seeds, privacys):
     # figure out length of longest provided list
     n_identifiers = 1
 
-    for identifier_component in datasets, replaces, seeds, privacys:
+    for identifier_component in cfg_names, replaces, seeds, privacys:
         if type(identifier_component) == list:
             length = len(identifier_component)
 
@@ -35,12 +35,12 @@ def process_identifiers(datasets, models, replaces, seeds, privacys):
                 n_identifiers = length
     # make sure everything is either that length or not a list
 
-    if type(datasets) == list:
-        if not len(datasets) == n_identifiers:
-            assert len(datasets) == 1
-            datasets = n_identifiers*datasets
+    if type(cfg_names) == list:
+        if not len(cfg_names) == n_identifiers:
+            assert len(cfg_names) == 1
+            cfg_names = n_identifiers*cfg_names
     else:
-        datasets = [datasets]*n_identifiers
+        cfg_names = [cfg_names]*n_identifiers
 
     if type(models) == list:
         if not len(models) == n_identifiers:
@@ -72,7 +72,7 @@ def process_identifiers(datasets, models, replaces, seeds, privacys):
 
     identifiers = []
     for i in range(n_identifiers):
-        identifiers.append({'dataset': datasets[i],
+        identifiers.append({'cfg_name': cfg_names[i],
                             'model': models[i],
                             'replace': replaces[i],
                             'seed': seeds[i],

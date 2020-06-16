@@ -1,10 +1,10 @@
 #!/usr/bin/env ipython
 
 import abc
-import os
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+import ipdb
 from tensorflow import keras as K
 from tensorflow.keras.layers import Dense, Flatten, Dropout, Conv2D, MaxPooling2D
 
@@ -34,21 +34,7 @@ class Logger(object):
         if I define them in the model, they somehow get added to what keras
         thinks are the 'weights' of the model.
         """
-        metric_functions = [0]*len(self.metric_names)
-        for i, metric in enumerate(self.metric_names):
-            if metric == 'mse':
-                metric_functions[i] = K.metrics.MeanSquareError()
-            elif metric == 'accuracy':
-                metric_functions[i] = K.metrics.SparseCategoricalAccuracy()
-            elif metric == 'ce':
-                metric_functions[i] = K.metrics.SparseCategoricalCrossentropy()
-            elif metric == 'binary_crossentropy':
-                metric_functions[i] = K.metrics.BinaryCrossentropy()
-            elif metric == 'binary_accuracy':
-                metric_functions[i] = K.metrics.BinaryAccuracy(threshold=0.5)
-            else:
-                raise ValueError(metric)
-        self.metric_functions = metric_functions
+        self.metric_functions = define_metric_functions(self.metric_names)
 
     def initialise_log_files(self) -> None:
         # define paths (we will need this for tensorflow's print function later)
@@ -243,7 +229,7 @@ class Model(K.Sequential):
         for shape_size in shapes:
             weight_size = np.product(shape_size)
             weight_values = vector[indicator:(indicator + weight_size)]
-            this_weight = weight_values.reshape(shape_size)
+            this_weight = tf.reshape(weight_values, shape=shape_size)
             list_of_weights.append(this_weight)
             indicator = indicator + weight_size
         return list_of_weights
@@ -255,8 +241,7 @@ class Model(K.Sequential):
 
     def load_and_set_weights_from_flat(self, path, t):
         print(f'[model_utils] Loading flattened weights from {path} at time {t}')
-        # WARNING: THIS IS SPECIFIC TO HOW I'VE ENCODED THE WEIGHTS
-        weights = pd.read_csv(path, skiprows=1)
+        weights = pd.read_csv(path)
         if t not in weights['t'].unique():
             print(f'ERROR: Timepoint {t} is not available in file {path} (largest t is {weights["t"].max()}')
             raise ValueError(t)
@@ -450,3 +435,21 @@ def train_model(model: 'Model', training_cfg: dict, logging_cfg: dict,
               epochs=training_cfg['n_epochs'],
               logger=experiment_logger)
     return
+
+
+def define_metric_functions(metric_names):
+    metric_functions = [0]*len(metric_names)
+    for i, metric in enumerate(metric_names):
+        if metric == 'mse':
+            metric_functions[i] = K.metrics.MeanSquareError()
+        elif metric == 'accuracy':
+            metric_functions[i] = K.metrics.SparseCategoricalAccuracy()
+        elif metric == 'ce':
+            metric_functions[i] = K.metrics.SparseCategoricalCrossentropy()
+        elif metric == 'binary_crossentropy':
+            metric_functions[i] = K.metrics.BinaryCrossentropy()
+        elif metric == 'binary_accuracy':
+            metric_functions[i] = K.metrics.BinaryAccuracy(threshold=0.5)
+        else:
+            raise ValueError(metric)
+    return metric_functions

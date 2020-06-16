@@ -51,8 +51,8 @@ def get_dataset_size(data_cfg):
     return N
 
 
-def get_experiment_details(dataset, model, verbose=False, data_privacy='all'):
-    if dataset == 'housing_binary':
+def get_experiment_details(cfg_name, model, verbose=False, data_privacy='all'):
+    if cfg_name == 'housing_binary':
         task = 'binary'
         batch_size = 28
         lr = 0.1
@@ -62,24 +62,24 @@ def get_experiment_details(dataset, model, verbose=False, data_privacy='all'):
         elif model == 'mlp':
             n_weights = 121
         N = 364
-    elif 'mnist_binary' in dataset:
+    elif 'mnist_binary' in cfg_name:
         task = 'binary'
         batch_size = 32
 
-        if 'buggy' in dataset:
+        if 'buggy' in cfg_name:
             lr = 0.1
         else:
             lr = 0.5
 
         if model == 'logistic':
-            if 'cropped' in dataset:
+            if 'cropped' in cfg_name:
                 n_weights = 101
             else:
                 n_weights = 51
         elif model == 'mlp':
             n_weights = 521
         N = 10397
-    elif 'cifar10_binary' in dataset:
+    elif 'cifar10_binary' in cfg_name:
         task = 'binary'
         batch_size = 32
         lr = 0.5
@@ -87,14 +87,14 @@ def get_experiment_details(dataset, model, verbose=False, data_privacy='all'):
         if model == 'logistic':
             n_weights = 51
         N = 9000
-    elif dataset == 'protein':
+    elif cfg_name == 'protein':
         task = 'binary'
         batch_size = 50
         lr = 0.01
         assert model == 'logistic'
         n_weights = 75
         N = 65589
-    elif 'forest' in dataset:
+    elif 'forest' in cfg_name:
         task = 'binary'
         batch_size = 50
         lr = 1.0
@@ -104,12 +104,12 @@ def get_experiment_details(dataset, model, verbose=False, data_privacy='all'):
         else:
             n_weights = 511
         N = 378783
-    elif 'adult' in dataset:
+    elif 'adult' in cfg_name:
         task = 'binary'
         batch_size = 32
         lr = 0.5            # possibly check this
 
-        if 'pca' in dataset:
+        if 'pca' in cfg_name:
             if model == 'logistic':
                 n_weights = 51
             else:
@@ -120,7 +120,7 @@ def get_experiment_details(dataset, model, verbose=False, data_privacy='all'):
             else:
                 n_weights = 817
         N = 29305
-    elif dataset in ['mnist', 'mnist_square']:
+    elif cfg_name in ['mnist', 'mnist_square']:
         task = 'classification'
         batch_size = 32
         lr = 0.1
@@ -130,7 +130,7 @@ def get_experiment_details(dataset, model, verbose=False, data_privacy='all'):
         elif model == 'cnn':
             n_weights = 1448
         N = 54000
-    elif dataset == 'cifar10':
+    elif cfg_name == 'cifar10':
         task = 'classification'
         batch_size = 32
         lr = 0.01
@@ -141,14 +141,14 @@ def get_experiment_details(dataset, model, verbose=False, data_privacy='all'):
             raise NotImplementedError
         N = 45000
     else:
-        raise ValueError(dataset)
+        raise ValueError(cfg_name)
 
     if not data_privacy == 'all':
         N = N/2
 
     if verbose:
         print('Experiment details:')
-        print('\tDataset:', dataset)
+        print('\tcfg name:', cfg_name)
         print('\tModel:', model)
         print('\tTask:', task)
         print('\tbatch size:', batch_size)
