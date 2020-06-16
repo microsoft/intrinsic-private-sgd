@@ -76,11 +76,15 @@ We assume there will be a config called `mnist_binary`.
 ## Run experiments
 
 To run a single experiment with `seed = 5` and `replace_index = 10` we would use
+
 ```python run_experiment.py --cfg mnist_binary --seed 5 --replace_index 10```
+
 without specifying the seed and replace_index, it will use `1` and `None` respectively.
 
 To run a sweep of experiments using a grid of 25 seeds and 30 replace indices, we use
+
 ```python wrapper.py sweep --cfg mnist_binary --num_seeds 25 --num_replaces 30```
+
 This runs each seed and replace_index configuration twice - once with a fixed initialisation and once with variable.
 In total then, it will run 25 * 30 *2 = 1500 experiments in serial.
 
