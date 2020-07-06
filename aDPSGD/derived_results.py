@@ -8,7 +8,6 @@ import abc
 import numpy as np
 import pandas as pd
 from scipy.stats import ttest_rel
-
 import test_private_model
 import results_utils
 import stats_utils
@@ -260,7 +259,6 @@ class AggregatedLoss(DerivedResult):
 
 
 class SensVar(DerivedResult):
-    """"""
     def __init__(self, cfg_name, model,  t, num_pairs='max', data_privacy='all'):
         super(SensVar, self).__init__(cfg_name, model, data_privacy)
         self.t = t
@@ -423,7 +421,6 @@ class VersusTime(DerivedResult):
         self.suffix = '.csv'
 
     def identifier(self, diffinit: bool = False) -> str:
-        """ yes I know the diffinit input is never used """
         identifier = f'versus_time_nd{self.num_deltas}'
 
         return identifier
@@ -450,8 +447,6 @@ class VersusTime(DerivedResult):
         variability_diffinit_list = [np.nan]*n_T
 
         for i, t in enumerate(t_range):
-
-            # sensitivity
 
             if self.model == 'logistic':
                 theoretical_sensitivity = test_private_model.compute_wu_bound(L, t=t, N=N,
@@ -495,7 +490,6 @@ class VersusTime(DerivedResult):
         losses = AggregatedLoss(self.cfg_name, self.model, iter_range=self.iter_range,
                                 data_privacy=self.data_privacy).load(diffinit=True)
         df = df.join(losses)
-        ###
         df.to_csv(path_string)
         print(f'[VersusTime] Saved to {path_string}')
 
@@ -532,10 +526,6 @@ class Stability(DerivedResult):
 
 
 def generate_derived_results(cfg_name: str, model: str = 'logistic', t: int = None) -> None:
-    """
-    Helper function
-    """
-
     if t is None:
         t, valid_frac = find_convergence_point(cfg_name, model, diffinit=True,
                                                tolerance=3, metric='binary_accuracy', data_privacy='all')
@@ -644,55 +634,6 @@ def accuracy_at_eps(cfg_name, model, t, use_bound=False, num_experiments=500,
                'noiseless': [mean_noiseless, std_noiseless]}
 
     return results
-
-
-def estimate_empirical_lipschitz(cfg_name, model, diffinit, iter_range, n_samples=5000, verbose=True):
-    """
-    get the biggest gradient during training
-
-    NOTE: using 10k samples and all time-points,
-    - on housing+linear we get max_L ~ 2.49, ave_L ~ 0.33, min_L ~ 0.06
-
-    TODO: amortise
-    """
-    max_norm = 0
-    min_norm = 50
-    cumulative = 0
-    cum_count = 0
-    df = results_utils.get_available_results(cfg_name, model, replace_index=None, diffinit=diffinit, data_privacy='all')
-    n_exp = df.shape[0]
-
-    if n_samples is None:
-        if verbose:
-            print('Selecting', n_exp, 'experiments')
-        experiments = df
-    elif n_samples > n_exp:
-        if verbose:
-            print('WARNING: Only', n_exp, 'experiments available - selecting all')
-        experiments = df
-    else:
-        row_picks = np.random.choice(n_exp, n_samples, replace=False)
-        experiments = df.iloc[row_picks, :]
-
-    for row, exp in experiments.iterrows():
-        replace = exp['replace']
-        seed = exp['seed']
-        experiment = results_utils.ExperimentIdentifier(cfg_name, model, replace, seed, diffinit)
-        gradients = experiment.load_gradients(iter_range=iter_range)
-        grad_norm = np.linalg.norm(gradients.iloc[:, 2:], axis=1)
-        cumulative += np.sum(grad_norm)
-        cum_count += grad_norm.shape[0]
-        max_grad = np.max(grad_norm)
-        min_grad = np.min(grad_norm)
-
-        if max_grad > max_norm:
-            max_norm = max_grad
-
-        if min_grad < min_norm:
-            min_norm = min_grad
-    ave_norm = cumulative/cum_count
-
-    return min_norm, ave_norm, max_norm
 
 
 def estimate_sensitivity_empirically(cfg_name, model, t, num_deltas, diffinit=False,
@@ -836,8 +777,6 @@ def estimate_statistics_through_training(what, cfg_name, model, replace_index, s
     """
     Grab a trace file for a model, estimate the alpha value for gradient noise throughout training
     NOTE: All weights taken together as IID (in the list of params supplied)
-
-    TODO: save, amortise
     """
     assert what in ['gradients', 'weights']
 
@@ -894,7 +833,6 @@ def find_convergence_point_for_single_experiment(cfg_name, model, replace_index,
                                                  seed, diffinit=False, tolerance=3,
                                                  metric='ce', verbose=False,
                                                  data_privacy='all'):
-    # load the trace
     experiment = results_utils.ExperimentIdentifier(cfg_name, model, replace_index,
                                                     seed, diffinit=diffinit, data_privacy=data_privacy)
     loss = experiment.load_loss(iter_range=(None, None))
@@ -963,8 +901,7 @@ def compute_pairwise_sens_and_var(cfg_name, model, t, replace_indices,
     for a pair of experiments...
     estimate sensitivity (distance between means)
     estimate variability (variance about means .. both?)
-    given delta
-    return this epsilon!
+    given delta ... return this epsilon!
     optionally, by parameter (returns an array!)
     """
 
@@ -1013,7 +950,6 @@ def compute_pairwise_sens_and_var(cfg_name, model, t, replace_indices,
         print('Sensitivity from averaging posteriors and comparing:', sensitivity_bymean)
     variability_1 = (samples_1 - mean_1).values.std()
     variability_2 = (samples_2 - mean_2).values.std()
-    # NOT SURE ABOUT THIS
     variability = 0.5*(variability_1 + variability_2)
 
     if verbose:
@@ -1070,11 +1006,6 @@ def compute_sigma_v_num_seeds(cfg_name, model, t) -> pd.DataFrame:
 
     for num_seeds in [2, 5, 10]*5 + [20, 30]*3 + [40, 50]*2 + [60, 70, 80, 90, 100, 200]:
         for num_replaces in [25]:
-            # [50]:      # this is what it is for mnist (MLP)
-            # [75]: # this is what it is for adult and forest )LR)
-            #        [100]: # this is what it is for the others (LR)
-            # setting ephemeral = True will make this very slow but I think it's worth it for my sanity
-            # otherwise I need to do even more refactoring
             sigma = estimate_variability(cfg_name, model, t=t,
                                          num_seeds=num_seeds, num_replaces=num_replaces,
                                          ephemeral=True, diffinit=True)

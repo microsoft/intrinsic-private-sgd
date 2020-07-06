@@ -2,10 +2,6 @@
 # This script is for performing specific analyses/generating figures
 # It relies on e.g. statistics computed across experiments - "derived results"
 
-# may need this for fonts
-# sudo apt-get install ttf-mscorefonts-installer
-# sudo apt-get install texlive-full
-
 import numpy as np
 import vis_utils
 import matplotlib.pyplot as plt
@@ -23,8 +19,6 @@ import derived_results as dr
 import experiment_metadata as em
 
 plt.switch_backend('Agg')
-
-
 params = {'font.family': 'sans-serif',
           'font.size': 10}
 plt.rcParams.update(params)
@@ -36,8 +30,6 @@ PLOTS_DIR = Path('./visualisations/')
 def weight_evolution(cfg_name, model, n_seeds=50, replace_indices=None,
                      iter_range=(None, None), params=['#4', '#2'],
                      diffinit=False, aggregate=False):
-    """
-    """
     plt.clf()
     plt.close()
     fig, axarr = plt.subplots(nrows=len(params), ncols=1, sharex=True, figsize=(4, 3))
@@ -126,7 +118,6 @@ def weight_posterior(cfg_name, model, replace_indices=None, t=500, param='#0', o
     sns.distplot(df_2[param], ax=axarr, label='D - ' + str(replace_indices[1]),
                  kde=True, color='red', bins=n_bins, norm_hist=True)
     # show the empirical means
-    # this si sort of just debugging the sensitivity...
 
     if overlay_normal:
         mean_1 = df_1[param].mean()
@@ -176,8 +167,6 @@ def plot_utility_curve(cfg_name, model, delta, t,
         label_stub = 'accuracy'
     else:
         raise ValueError(metric_to_report)
-    # NOW FOR PLOTTING...!
-    scale = False
 
     if identifier is None:
         identifiers = utility_data.loc[:, ['replace', 'seed']].drop_duplicates()
@@ -199,14 +188,6 @@ def plot_utility_curve(cfg_name, model, delta, t,
             print('No data for setting', sensitivity_from_bound, '-skipping')
 
             continue
-
-        if scale:
-            maxx = df['noiseless'].copy()
-            minn = df['bolton'].copy()
-            df['bolton'] = (df['bolton'] - minn)/(maxx - minn)
-            df['augment'] = (df['augment'] - minn)/(maxx - minn)
-            df['augment_diffinit'] = (df['augment_diffinit'] - minn)/(maxx - minn)
-            df['noiseless'] = (df['noiseless'] - minn)/(maxx - minn)
 
         linestyle = '--' if sensitivity_from_bound is False else '-'
         size = 6
@@ -333,7 +314,6 @@ def qq_plot(what: str, cfg_name: str, model: str, replace_index: int, seed: int,
         print('ERROR: No data available')
 
         return False
-    # now actually visualise
     fig, axarr = plt.subplots(nrows=1, ncols=2, figsize=(7, 3.5))
 
     for i, t in enumerate(times):
@@ -352,56 +332,6 @@ def qq_plot(what: str, cfg_name: str, model: str, replace_index: int, seed: int,
     plot_identifier = f'qq_{what}_{cfg_name}_{model}_{"_".join(params)}'
     plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.png'))
     plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.pdf'))
-
-    return
-
-
-def visualise_gradient_values(cfg_name, identifiers, save=True,
-                              iter_range=(None, None), params=None,
-                              full_batch=True, include_max=False,
-                              diffinit=False, what='norm') -> None:
-    """
-    if include_max: plot the max gradient norm (this would be the empirical lipschitz constant)
-    """
-    fig, axarr = plt.subplots(nrows=1, ncols=1)
-
-    for i, identifier in enumerate(identifiers):
-        label = ':'.join(identifier)
-        model = identifier['model']
-        replace_index = identifier['replace']
-        seed = identifier['seed']
-        experiment = results_utils.ExperimentIdentifier(cfg_name, model, replace_index, seed, diffinit)
-        df = experiment.load_gradients(noise=False, iter_range=iter_range, params=params)
-
-        if full_batch:
-            # only use gradients from full dataset
-            df = df.loc[df['minibatch_id'] == 'ALL', :]
-        else:
-            # only use gradients from minibatches
-            df = df.loc[~(df['minibatch_id'] == 'ALL'), :]
-        times = df['t'].values.astype('float')
-
-        if what == 'norm':
-            grad_vals = np.linalg.norm(df.values[:, 2:].astype(float), axis=1)
-        elif what == 'max':
-            grad_vals = np.max(df.values[:, 2:].astype(float), axis=1)
-        axarr.scatter(times, grad_vals, label=label, s=4)
-        axarr.plot(times, grad_vals, label=label, alpha=0.5)
-
-        if include_max:
-            axarr.axhline(y=max(grad_vals), ls='--', alpha=0.5, color='black')
-    axarr.legend()
-    vis_utils.beautify_axes(np.array([axarr]))
-    axarr.set_title(cfg_name + ' ' + model)
-    axarr.set_ylabel('gradient ' + what)
-    axarr.set_xlabel('training steps')
-
-    if save:
-        plot_label = '_'.join([':'.join(x) for x in identifiers])
-
-        plot_identifier = f'grad_{what}_{cfg_name}_{plot_label}'
-        plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.png'))
-        plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.pdf'))
 
     return
 
@@ -441,7 +371,6 @@ def bivariate_gradients(cfg_name, model, replace_index, seed, df=None,
     plt.tight_layout()
 
     if save:
-
         plot_identifier = f'gradient_pairs_{cfg_name}_{model}_replace{replace_index}_seed{seed}_params{"_".join(params)}'
         plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.png'))
         plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.pdf'))
@@ -534,12 +463,9 @@ def fit_pval_histogram(what, cfg_name, model, t, n_experiments=3, diffinit=False
 
 def visualise_fits(cfg_name, model, replace_index, seed, save=True, params=None) -> None:
     print('Visualising distribution fits through training')
-    # load and fit the data
-
     if params is None:
         params = [None]
 
-    # establish the plot stuff
     fig, axarr = plt.subplots(nrows=3, ncols=1, sharex='col', figsize=(4, 5))
 
     n_comparators = len(params)
@@ -550,11 +476,10 @@ def visualise_fits(cfg_name, model, replace_index, seed, save=True, params=None)
         df_fit = dr.estimate_statistics_through_training(what='gradients', cfg_name=cfg_name,
                                                          model=model, replace_index=replace_index,
                                                          seed=seed, params=[p])
-
         if df_fit is False:
             print('No fit data available')
 
-            return False
+            return
         iterations = df_fit.index
         color = to_hex(colours[i])
         axarr[0].scatter(iterations, df_fit['norm_sigma'], c=color, alpha=1, s=4, zorder=2, label=p)
@@ -580,70 +505,6 @@ def visualise_fits(cfg_name, model, replace_index, seed, save=True, params=None)
     if save:
         plot_label = model + '_replace' + str(replace_index) + '_seed' + str(seed) + '_'.join(params)
         plt.savefig('plots/' + cfg_name + '/' + plot_label + '_fits.png')
-        plt.clf()
-        plt.close()
-
-    return
-
-
-def visualise_variance(df, times, colormap=None, label=None, save=False, value_lim=None) -> None:
-    """
-    At a set of timepoints (one on each row), show histogram of the value of the columns of df
-    with variance arising due to minibatch sampling.
-
-    Also overlay the "batch" estimate
-    """
-    print('Visualising variance at times:', times)
-    assert df.shape[1] > 2
-    what_is_it = df.columns[2:]
-
-    if len(what_is_it) > 4:
-        what_is_it = np.random.choice(what_is_it, 4, replace=False)
-        print('Subsetting to columns', what_is_it)
-
-    nrows = len(times)
-    assert nrows > 1
-    ncols = len(what_is_it)
-
-    fig, axarr = plt.subplots(nrows=nrows, ncols=ncols, sharex='col')
-
-    for i, t in enumerate(times):
-        df_t = df.loc[df['t'] == t, :]
-        df_minibatch = df_t.loc[~((df_t['minibatch_id'] == 'ALL') | (df_t['minibatch_id'] == 'VALI')), :]
-
-        if not df_minibatch.shape[0] > 1:
-            print('WARNING: No minibatch data at time', t)
-
-            continue
-        df_all = df_t.loc[df_t['minibatch_id'] == 'ALL', :]
-        assert df_all.shape[0] == 1
-        axrow = axarr[i]
-
-        if ncols == 1:
-            axrow = [axrow]
-
-        for j, what in enumerate(what_is_it):
-            ax = axrow[j]
-            sns.distplot(df_minibatch.loc[:, what], ax=ax, norm_hist=True, kde=False)
-            batch_value = df_all[what].iloc[0]
-            ax.axvline(x=batch_value, ls='--', color='blue')
-
-            if i == nrows - 1:
-                ax.set_xlabel(what)
-
-            if j == 0:
-                ax.set_ylabel('iter:' + str(t))
-
-            if j == ncols - 1 and value_lim is not None:
-                ax.set_xlim(value_lim)
-
-    vis_utils.beautify_axes(axarr)
-    plt.tight_layout()
-
-    if save:
-        plot_identifier = f'variance_{label}'
-        plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.png'))
-        plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.pdf'))
         plt.clf()
         plt.close()
 
@@ -768,11 +629,9 @@ def visualise_trace(cfg_names, models, replaces, seeds, privacys, save=True,
     return
 
 
-def visualise_autocorrelation(cfg_name, model, replace_index, seed, params, save=True) -> None:
-    """ what's the autocorrelation of the weights?.... or gradients? """
+def visualise_autocorrelation(cfg_name, model, replace_index, seed, params, save=True, n_lags=500) -> None:
     experiment = results_utils.ExperimentIdentifer(cfg_name, model, replace_index, seed)
     df = experiment.load_weights(params=params)
-    n_lags = 500
     autocorr = np.zeros(n_lags)
     fig, axarr = plt.subplots(nrows=len(params), ncols=1, sharex='col', figsize=(4, 1.5*len(params) + 1))
     axarr[0].set_title('autocorrelation of weight trajectory')
@@ -791,52 +650,6 @@ def visualise_autocorrelation(cfg_name, model, replace_index, seed, params, save
 
     if save:
         plot_identifier = f'autocorrelation_{cfg_name}_{model}_replace{replace_index}_seed{seed}'
-        plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.png'))
-        plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.pdf'))
-    plt.clf()
-    plt.close()
-
-    return
-
-
-def examine_parameter_level_gradient_noise(cfg_name, model, replace_index, seed,
-                                           times=[10, 25], save=True, params=['#1', '#5']) -> None:
-    print('demonstrating gradient noise distributions at times', times, 'for parameters', params)
-    iter_range = (min(times) - 1, max(times) + 1)
-    assert params is not None
-    experiment = results_utils.ExperimentIdentifier(cfg_name, model, replace_index, seed)
-    df = experiment.load_gradients(noise=True, iter_range=iter_range, params=params)
-
-    ncols = len(params)
-    param_cols = cm.viridis(np.linspace(0.2, 0.8, ncols))
-    fig, axarr = plt.subplots(nrows=len(times), ncols=ncols, sharey='row',
-                              sharex='col', figsize=(1.7*len(params) + 1, 2*len(times) + 1))
-
-    for i, t in enumerate(times):
-        df_t = df.loc[df['t'] == t, :]
-
-        if df_t.shape[0] == 0:
-            print('WARNING: No data from iteration', t, ' - skipping!')
-
-            continue
-
-        for j, p in enumerate(params):
-            grad_noise = df_t.loc[:, p].values.flatten()
-            sns.distplot(grad_noise, ax=axarr[i, j], kde=False, norm_hist=True, color=to_hex(param_cols[j]))
-
-    # now set the axes and stuff
-
-    for i, t in enumerate(times):
-        axarr[i, 0].set_ylabel('iteration :' + str(t))
-
-    for j, p in enumerate(params):
-        axarr[0, j].set_title('param: ' + p)
-        axarr[-1, j].set_xlabel('gradient noise')
-
-    vis_utils.beautify_axes(axarr)
-
-    if save:
-        plot_identifier = f'gradient_noise_{cfg_name}_{model}_replace{replace_index}_seed{seed}_{"_".join(params)}'
         plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.png'))
         plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.pdf'))
     plt.clf()

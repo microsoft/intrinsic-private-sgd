@@ -92,7 +92,6 @@ class Logger(object):
             tf.print(weights, output_stream='file:///' + self.weights_file_path, summarize=-1, end='\n')
         # --- gradients --- #
         if save_gradients:
-            # TODO
             raise NotImplementedError
             # TODO get this to work
             # gradients = self.model.compute_gradients(X, y)
