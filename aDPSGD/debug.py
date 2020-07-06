@@ -1,18 +1,14 @@
 #!/usr/bin/env ipython
-
 import numpy as np
 import pandas as pd
 import glob
 import ipdb
 
-import eval_utils
 import derived_results
 from results_utils import ExperimentIdentifier
 
-def run_checks(cfg_name, model, diffinit, data_privacy='all'):
-    """
 
-    """
+def run_checks(cfg_name, model, diffinit, data_privacy='all'):
     fail = False
     # look for missing experiments
     # get the convergence point

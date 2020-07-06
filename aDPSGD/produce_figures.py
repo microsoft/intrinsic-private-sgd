@@ -2,10 +2,6 @@
 # This script is for performing specific analyses/generating figures
 # It relies on e.g. statistics computed across experiments - "derived results"
 
-# may need this for fonts
-# sudo apt-get install ttf-mscorefonts-installer
-# sudo apt-get install texlive-full
-
 import numpy as np
 import re
 import test_private_model
@@ -67,23 +63,6 @@ def generate_plots(cfg_name: str, model: str, t=None) -> None:
 
 
 def generate_reports(cfg_name: str, model: str, t=None, num_experiments=50) -> None:
-    """
-    Report
-    - empirical sensitivity
-    - theoretical sensitivity (if relevant)
-    - empirical variability (fixed initialisation)
-    - empirical variability (variable initialisation)
-    - delta
-    - intrinsic epsilon (variable initialisation, theoretical sensitivity)
-    - intrinsic epislon (variable initialisation, empirical sensitivity)
-    - noiseless performance
-    - "bolton" performance at eps = 1
-    - aDPSGD performance at eps = 1 (fixed initialisation)
-    - aDPSGD performance at eps = 1 (variable initialisation)
-    - "bolton" performance at eps = 0.5
-    - aDPSGD performance at eps = 0.5 (fixed initialisation)
-    - aDPSGD performance at eps = 0.5 (variable initialisation)
-    """
     print('\n')
     print(f'Report for {cfg_name} with {model} at {t}')
     print('\n')
@@ -152,10 +131,6 @@ def generate_reports(cfg_name: str, model: str, t=None, num_experiments=50) -> N
 def plot_delta_histogram(cfg_name: str, model: str, num_deltas='max', t=500,
                          include_bounds=False, xlim=None, ylim=None,
                          data_privacy='all', multivariate=False) -> None:
-    """
-    num_deltas is the number of examples we're using to estimate the histograms
-    """
-
     if multivariate:
         raise NotImplementedError('Multivariate plotting is not implemented')
     delta_histogram = dr.DeltaHistogram(cfg_name, model, num_deltas, t, data_privacy, multivariate)
@@ -180,7 +155,6 @@ def plot_delta_histogram(cfg_name: str, model: str, num_deltas='max', t=500,
     # merge vary_S for the different initialisations
     vary_S = np.concatenate([vary_S, vary_S_diffinit])
 
-    # plot
     plt.clf()
     plt.close()
     fig, axarr = plt.subplots(nrows=1, ncols=1, figsize=(4, 2.1))
@@ -327,17 +301,14 @@ def plot_epsilon_distribution(cfg_name, model, t, delta=None, num_pairs='max',
     for ax in axarr:
         ax.set_ylabel('density')
 
-    if which == 'both':
-        for ax in axarr:
+    for ax in axarr:
+        if which == 'both':
             ax.legend()
-
-    if xlim is not None:
-        for ax in axarr:
+        if xlim is not None:
             ax.set_xlim(xlim)
-
-    if ylim is not None:
-        for ax in axarr:
+        if ylim is not None:
             ax.set_ylim(ylim)
+
     plt.tight_layout()
     vis_utils.beautify_axes(axarr)
 
@@ -350,18 +321,6 @@ def plot_epsilon_distribution(cfg_name, model, t, delta=None, num_pairs='max',
 
 def plot_sens_and_var_over_time(cfg_name, model, num_deltas='max', iter_range=(0, 1000),
                                 data_privacy='all', metric='binary_crossentropy', acc_lims=None) -> None:
-    """
-    Estimate the empirical (and theoretical I guess) sensitivity and variability v. "convergence point" (time)
-    The objective is to create a CSV with columns:
-    - convergence point
-    - train loss
-    - vali loss
-    - theoretical sensitivity
-    - empirical sensitivity
-    - variability w/out diffinit
-    - variability with diffinit
-    ... and then plot that, basically
-    """
     df = dr.VersusTime(cfg_name, model).load()
 
     df = df.loc[df['t'] <= iter_range[1], :]
@@ -442,8 +401,6 @@ def plot_sens_and_var_over_time(cfg_name, model, num_deltas='max', iter_range=(0
 
 
 def plot_stability_of_estimated_values(cfg_name, model, t) -> None:
-    """
-    """
     stability = dr.Stability(cfg_name, model, t)
     stability_dict = stability.load()
 
@@ -454,7 +411,6 @@ def plot_stability_of_estimated_values(cfg_name, model, t) -> None:
     print('Plotting sigma v seeds')
     sigma_df = stability_dict['sigma']
     sigma_v_seed = sigma_df[['num_seeds', 'sigma']]
-#    sigma_v_seed = sigma_df[sigma_df['num_replaces'] == sigma_df['num_replaces'].max()][['num_seeds', 'sigma']]
     fig, axarr = plt.subplots(nrows=1, ncols=1, figsize=figsize)
     axarr.scatter(sigma_v_seed['num_seeds'], sigma_v_seed['sigma'], s=size, c=em.dp_colours['augment_diffinit'])
     sigma_we_use = dr.estimate_variability(cfg_name, model, t, diffinit=True)
@@ -504,11 +460,7 @@ def plot_stability_of_estimated_values(cfg_name, model, t) -> None:
 
 
 def compare_mnist_variants() -> None:
-    """
-    visualise distribution of feature values across the three mnist datasets
-    """
     colours = cm.get_cmap('Set1')(np.arange(3))
-    # ---- compare the distributions ---- #
     mnist_binary_pca, _, _, _, _, _ = data_utils.load_data('mnist_binary_pca')
     mnist_binary_grp, _, _, _, _, _ = data_utils.load_data('mnist_binary')
     mnist_binary_cropped, _, _, _, _, _ = data_utils.load_data('mnist_binary_cropped')
@@ -540,7 +492,6 @@ def compare_mnist_variants() -> None:
     cropped_loss = dr.AggregatedLoss('mnist_binary_cropped', 'logistic').load(diffinit=True)
     fig, axarr = plt.subplots(nrows=2, ncols=1, sharex=True, figsize=(3.5, 3.5))
     size = 6
-    # first row is crossentropy, second is accuracy
 
     for i, metric in enumerate(['binary_crossentropy', 'binary_accuracy']):
         axarr[i].scatter(pca_loss.index, pca_loss[f'{metric}_mean_train'], label='PCA', s=size, color=colours[0])
