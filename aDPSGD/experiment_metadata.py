@@ -20,7 +20,7 @@ model_names = {'logistic': 'logistic regression',
 
 lr_convergence_points = {'cifar10_binary': 2000,
                          'mnist_binary_pca': 1850,
-                         'mnist_binary': 1850,       # TODO fix update
+                         'mnist_binary': 1850,       # TODO update
                          'adult': 3400,
                          'forest': 8400}
 
