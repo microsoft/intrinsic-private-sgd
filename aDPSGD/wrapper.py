@@ -1,19 +1,17 @@
 import argparse
-import numpy as np
-
-from experiment_metadata import get_dataset_size
 from run_experiment import load_cfg, run_experiment
-from results_utils import ExperimentIdentifier
+from results_utils import ExperimentIdentifier, get_grid_to_run
 from derived_results import generate_derived_results
 from produce_figures import generate_plots, generate_reports
 
 
 def run_sweep(cfg, num_seeds, num_replaces):
     print('Running sweep!')
-    seeds = np.random.choice(99999, num_seeds)
+    seeds, replace_indices = get_grid_to_run(cfg, num_seeds, num_replaces)
+#    seeds = np.random.choice(99999, num_seeds)
 
-    N = get_dataset_size(cfg['data'])
-    replace_indices = np.random.choice(N, num_replaces)
+#    N = get_dataset_size(cfg['data'])
+#    replace_indices = np.random.choice(N, num_replaces)
 
     for seed in seeds:
         for replace_index in replace_indices:

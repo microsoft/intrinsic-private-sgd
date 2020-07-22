@@ -36,7 +36,7 @@ def get_model_init_path(cfg, diffinit):
         architecture = cfg['model']['architecture']
         cfg_name = cfg['cfg_name']
         init_path = f'{architecture}_{cfg_name}_init.h5'
-        init_path = Path('models') / init_path
+        init_path = (Path('./models') / init_path).resolve()
 
     return init_path
 
