@@ -37,12 +37,18 @@ dp_colours = {'augment': '#14894e',
 
 
 def get_dataset_size(data_cfg):
+    """ Note that this is the size of the training dataset """
     name = data_cfg['name']
     if name == 'mnist':
         if data_cfg['binary']:
             N = 10397
         else:
             N = 54000
+    elif name == 'cifar10':
+        if data_cfg['binary']:
+            N = 9000
+        else:
+            raise ValueError(data_cfg['binary'])
     else:
         raise NotImplementedError
     return N

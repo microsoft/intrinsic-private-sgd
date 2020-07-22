@@ -8,10 +8,6 @@ from produce_figures import generate_plots, generate_reports
 def run_sweep(cfg, num_seeds, num_replaces):
     print('Running sweep!')
     seeds, replace_indices = get_grid_to_run(cfg, num_seeds, num_replaces)
-#    seeds = np.random.choice(99999, num_seeds)
-
-#    N = get_dataset_size(cfg['data'])
-#    replace_indices = np.random.choice(N, num_replaces)
 
     for seed in seeds:
         for replace_index in replace_indices:
@@ -48,8 +44,8 @@ if __name__ == '__main__':
                         choices=['sweep', 'derive', 'figures', 'report'])
     parser.add_argument('--cfg', type=str, help='Name of yaml cfg of experiment')
     # --- these options are for switch == sweep
-    parser.add_argument('--num_seeds', type=int, help='Number of seeds to run', default=10)
-    parser.add_argument('--num_replaces', type=int, help='Number of replace indices to run', default=10)
+    parser.add_argument('--num_seeds', type=int, help='Number of seeds to run', default=100)
+    parser.add_argument('--num_replaces', type=int, help='Number of replace indices to run', default=100)
     # --- these options are for switch == derive
     parser.add_argument('--t', type=int, help='Time point at which to run derived experiments', default=None)
     args = parser.parse_args()

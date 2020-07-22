@@ -6,6 +6,7 @@ import yaml
 import os
 from pathlib import Path
 from time import time
+from tensorflow.keras.backend import clear_session
 
 import model_utils
 from data_utils import load_data
@@ -64,6 +65,7 @@ def run_experiment(cfg, diffinit, seed, replace_index):
                             path_stub=path_stub)
     # clean up
     del model
+    clear_session()
     print('Finished after', time() - t0, 'seconds')
 
 

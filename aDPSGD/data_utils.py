@@ -114,6 +114,14 @@ def load_data(options, replace_index):
 
     x_train, y_train, x_vali, y_vali, x_test, y_test = validation_split(x_train, y_train, x_test, y_test, replace_index)
 
+    # Convert everything to float32
+    x_train = np.float32(x_train)
+    y_train = np.float32(y_train)
+    x_vali = np.float32(x_vali)
+    y_vali = np.float32(y_vali)
+    x_test = np.float32(x_test)
+    y_test = np.float32(y_test)
+
     return x_train, y_train, x_vali, y_vali, x_test, y_test
 
 

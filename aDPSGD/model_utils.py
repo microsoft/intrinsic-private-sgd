@@ -179,7 +179,7 @@ class Model(K.Sequential):
             # just once at the start
             logger.on_batch_end()
         for e in range(epochs):
-            if e % 100 == 0:
+            if e % 10 == 0:
                 print(f'epoch: {e}')
             shuf = np.random.permutation(N)
             x_train = x_train[shuf]
