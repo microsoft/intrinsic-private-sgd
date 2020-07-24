@@ -22,8 +22,7 @@ class Logger(object):
         self.model = model
         self.path_stub = path_stub
         self.logging_cadence = cadence
-        self.logging_counter = 0
-#        self.logging_counter = tf.Variable(initial_value=0, name='logging_counter', trainable=False, dtype=tf.int32)
+        self.logging_counter = tf.Variable(initial_value=0, name='logging_counter', trainable=False, dtype=tf.int32)                 # This needs to be a tf.Variable so we can tf.print it later
         self.X_train = X_train
         self.X_vali = X_vali
         self.y_train = y_train
@@ -58,11 +57,7 @@ class Logger(object):
         # list of files makes flushing easier
         self.log_files = [self.weights_file, self.grads_file, self.loss_file]
         # store headers (TODO could do this while tidying the files up later)
-        if tf.executing_eagerly():
-            n_parameters = len(self.model.get_weights(flat=True))
-        else:
-            n_parameters = self.model.get_weights(flat=True).shape[0]
-            print(n_parameters)
+        n_parameters = len(self.model.get_weights(flat=True))
         print(f'[logging] There are {n_parameters} weights in the model!')
         self.weights_file.write('t,' + ','.join(['#' + str(x) for x in range(n_parameters)]) + '\n')
         self.grads_file.write('t,minibatch_id,' + ','.join(['#' + str(x) for x in range(n_parameters)]) + '\n')
@@ -93,7 +88,7 @@ class Logger(object):
         grads.to_csv(self.grads_file_path, index=False)
         del grads
 
-    @tf.function
+#    @tf.function
     def log_model(self, X: np.ndarray, y: np.ndarray, minibatch_id: str,
                   save_weights: bool = False, save_gradients: bool = False) -> None:
         # --- metrics --- #
@@ -119,6 +114,7 @@ class Logger(object):
                            save_weights=self.save_weights, save_gradients=self.save_gradients)
             self.log_model(X=self.X_vali, y=self.y_vali, minibatch_id='VALI',
                            save_weights=False, save_gradients=False)
+        self.logging_counter.assign_add(1)
             # N = self.X_train.shape[0]
             # now over the minibatches
             # TODO do this
@@ -127,7 +123,6 @@ class Logger(object):
 #                X_batch = self.X[minibatch_idx]
 #                y_batch = self.y[minibatch_idx]
 #                self.log_model(X=X_batch, y=y_batch, minibatch_id=str(s), save_weights=False)
-        self.logging_counter += 1
 
     def on_epoch_end(self) -> None:
         for f in self.log_files:
@@ -202,12 +197,14 @@ class Model(K.Sequential):
                 x_batch = x_train[batch_idx*batch_size:(batch_idx+1)*batch_size]
                 y_batch = y_train[batch_idx*batch_size:(batch_idx+1)*batch_size]
                 _ = self.train_on_batch(x_batch, y_batch)
+                logger.log_model(X=x_batch, y=y_batch, minibatch_id='BATCH',
+                                 save_weights=False, save_gradients=True)
                 if logger is not None:
                     logger.on_batch_end()
             if logger is not None:
                 logger.on_epoch_end()
         if logger is not None:
-            logger.on_training_end()
+           logger.on_training_end()
 
     #def train_step(self, x, y):
     #    pass
