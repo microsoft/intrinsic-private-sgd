@@ -7,22 +7,31 @@ import tensorflow as tf
 import ipdb
 from tensorflow import keras as K
 from tensorflow.keras.layers import Dense, Flatten, Dropout, Conv2D, MaxPooling2D
+# from tensorflow.python.framework.ops import disable_eager_execution
+
+
+# disable_eager_execution()
 
 
 class Logger(object):
     """
     """
     def __init__(self, model: 'Model', path_stub: str, cadence: int,
-                 X_train: np.ndarray, y_train: np.ndarray, X_vali: np.ndarray, y_vali: np.ndarray) -> None:
+                 X_train: np.ndarray, y_train: np.ndarray, X_vali: np.ndarray, y_vali: np.ndarray,
+                 save_weights: bool, save_gradients: bool) -> None:
         self.model = model
         self.path_stub = path_stub
         self.logging_cadence = cadence
-        self.logging_counter = tf.Variable(initial_value=0, name='logging_counter', trainable=False, dtype=tf.int32)
+        self.logging_counter = 0
+#        self.logging_counter = tf.Variable(initial_value=0, name='logging_counter', trainable=False, dtype=tf.int32)
         self.X_train = X_train
         self.X_vali = X_vali
         self.y_train = y_train
         self.y_vali = y_vali
         self.metric_names = self.model.metric_names
+
+        self.save_weights = save_weights
+        self.save_gradients = save_gradients
 
         # initialise some stuff now
         self.initialise_log_files()
@@ -49,7 +58,11 @@ class Logger(object):
         # list of files makes flushing easier
         self.log_files = [self.weights_file, self.grads_file, self.loss_file]
         # store headers (TODO could do this while tidying the files up later)
-        n_parameters = len(self.model.get_weights(flat=True))
+        if tf.executing_eagerly():
+            n_parameters = len(self.model.get_weights(flat=True))
+        else:
+            n_parameters = self.model.get_weights(flat=True).shape[0]
+            print(n_parameters)
         print(f'[logging] There are {n_parameters} weights in the model!')
         self.weights_file.write('t,' + ','.join(['#' + str(x) for x in range(n_parameters)]) + '\n')
         self.grads_file.write('t,minibatch_id,' + ','.join(['#' + str(x) for x in range(n_parameters)]) + '\n')
@@ -74,8 +87,11 @@ class Logger(object):
         weights.replace('[\[\] ]', '', regex=True, inplace=True)
         weights.to_csv(self.weights_file_path, index=False)
         del weights
-        # gradients
-        # TODO should be the same as weights though
+        # gradients (same as weights)
+        grads = pd.read_csv(self.grads_file_path, sep='[, ]', engine='python')
+        grads.replace('[\[\] ]', '', regex=True, inplace=True)
+        grads.to_csv(self.grads_file_path, index=False)
+        del grads
 
     @tf.function
     def log_model(self, X: np.ndarray, y: np.ndarray, minibatch_id: str,
@@ -92,19 +108,17 @@ class Logger(object):
             tf.print(weights, output_stream='file:///' + self.weights_file_path, summarize=-1, end='\n')
         # --- gradients --- #
         if save_gradients:
-            raise NotImplementedError
-            # TODO get this to work
-            # gradients = self.model.compute_gradients(X, y)
-            # self.grads_file.write(str(self.counter) + ',' + minibatch_id)
-            # for g in gradients:
-            #    self.grads_file.write(',')
-            #    self.grads_file.write(','.join(map(str, g.flatten())))
-            # self.grads_file.write('\n')
+            grads = self.model.compute_gradients(X, y, flat=True)
+            tf.print(self.logging_counter, output_stream='file:///' + self.grads_file_path, end=',')
+            tf.print(minibatch_id, output_stream='file:///' + self.grads_file_path, end=',')
+            tf.print(grads, output_stream='file:///' + self.grads_file_path, summarize=-1, end='\n')
 
     def on_batch_end(self) -> None:
         if self.logging_counter % self.logging_cadence == 0:
-            self.log_model(X=self.X_train, y=self.y_train, minibatch_id='ALL', save_weights=True)
-            self.log_model(X=self.X_vali, y=self.y_vali, minibatch_id='VALI', save_weights=False)
+            self.log_model(X=self.X_train, y=self.y_train, minibatch_id='ALL',
+                           save_weights=self.save_weights, save_gradients=self.save_gradients)
+            self.log_model(X=self.X_vali, y=self.y_vali, minibatch_id='VALI',
+                           save_weights=False, save_gradients=False)
             # N = self.X_train.shape[0]
             # now over the minibatches
             # TODO do this
@@ -113,7 +127,7 @@ class Logger(object):
 #                X_batch = self.X[minibatch_idx]
 #                y_batch = self.y[minibatch_idx]
 #                self.log_model(X=X_batch, y=y_batch, minibatch_id=str(s), save_weights=False)
-        self.logging_counter.assign_add(1)
+        self.logging_counter += 1
 
     def on_epoch_end(self) -> None:
         for f in self.log_files:
@@ -195,6 +209,18 @@ class Model(K.Sequential):
         if logger is not None:
             logger.on_training_end()
 
+    #def train_step(self, x, y):
+    #    pass
+
+    @tf.function
+    def compute_gradients(self, x, y, flat=False):
+        with tf.GradientTape() as g:
+            loss = self.compiled_loss(self(x), y)
+            grads = g.gradient(loss, self.weights)
+        if flat:
+            grads = tf.squeeze(tf.concat([tf.reshape(g, [-1, 1]) for g in grads], axis=0))
+        return grads
+
     def load_weights(self, path: str, t: int = None) -> None:
         print(f'Loading weights from {path}')
         if not path.exists():
@@ -267,16 +293,22 @@ class Model(K.Sequential):
         hessian = K.backend.get_session().run([self.hessian], feed_dict=feed_dict)
         return hessian
 
-    def compute_gradients(self, X, y):
+    @tf.function
+    def compute_gradients_old(self, X, y):
         """
         """
-        raise NotImplementedError
-        if self.grads is None:
+        return 0
+#        gradients = self.optimizer.get_gradients(self.loss_functions[0](self._targets, self.outputs), 
+#                                                 self.weights)
+
+#        if self.grads is None:
             # the loss only exists after the model has been compiled!
-            self.grads = tf.gradients(ys=self.model.total_loss, xs=self.model.weights)
-        feed_dict = {self.model.input: X, self.model._targets[0]: y.reshape(-1, 1)}
+#            self.grads = tf.gradients(ys=self.total_loss, xs=self.weights)
+#            print(self.grads)
+        #feed_dict = {self.model.input: X, self.model._targets[0]: y.reshape(-1, 1)}
         # feed_dict.update(temp_weights_dict)
-        gradients = K.backend.get_session().run([self.grads], feed_dict=feed_dict)[0]
+        #gradients = K.backend.get_session().run([self.grads], feed_dict=feed_dict)[0]
+#        return
         return gradients
 
 
@@ -427,7 +459,9 @@ def train_model(model: 'Model', training_cfg: dict, logging_cfg: dict,
     experiment_logger = Logger(model, path_stub,
                                cadence=logging_cfg['cadence'],
                                X_train=x_train, y_train=y_train,
-                               X_vali=x_vali, y_vali=y_vali)
+                               X_vali=x_vali, y_vali=y_vali,
+                               save_weights=logging_cfg['save_weights'],
+                               save_gradients=logging_cfg['save_gradients'])
 
     model.fit(x_train=x_train, y_train=y_train,
               batch_size=training_cfg['batch_size'],
