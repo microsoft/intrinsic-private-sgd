@@ -1,5 +1,5 @@
 import argparse
-from run_experiment import load_cfg, run_experiment
+from run_experiment import load_cfg, run_single_experiment
 from results_utils import ExperimentIdentifier, get_grid_to_run
 from derived_results import generate_derived_results
 from produce_figures import generate_plots, generate_reports
@@ -20,7 +20,7 @@ def run_sweep(cfg, num_seeds, num_replaces):
                 if experiment.exists():
                     print(f'Experiment with seed {seed} and replace index {replace_index} already exists - skipping')
                 else:
-                    run_experiment(cfg, diffinit, seed, replace_index)
+                    run_single_experiment(cfg, diffinit, seed, replace_index)
 
 
 def run_generate_derived_results(cfg, t):

@@ -1,5 +1,6 @@
 #!/usr/bin/env ipython
 # Define experimenta metadata
+from cfg_utils import load_cfg
 
 dataset_colours = {'cifar10_binary': '#A6373F',
                    'mnist_binary_pca': '#552B72',
@@ -54,100 +55,36 @@ def get_dataset_size(data_cfg):
     return N
 
 
-def get_experiment_details(cfg_name, model, verbose=False, data_privacy='all'):
-    if cfg_name == 'housing_binary':
-        task = 'binary'
-        batch_size = 28
-        lr = 0.1
-
-        if model in ['linear', 'logistic']:
-            n_weights = 14
-        elif model == 'mlp':
-            n_weights = 121
-        N = 364
-    elif 'mnist_binary' in cfg_name:
-        task = 'binary'
-        batch_size = 32
-
-        if 'buggy' in cfg_name:
-            lr = 0.1
-        else:
-            lr = 0.5
-
-        if model == 'logistic':
-            if 'cropped' in cfg_name:
-                n_weights = 101
-            else:
-                n_weights = 51
-        elif model == 'mlp':
-            n_weights = 521
-        N = 10397
-    elif 'cifar10_binary' in cfg_name:
-        task = 'binary'
-        batch_size = 32
-        lr = 0.5
-
-        if model == 'logistic':
-            n_weights = 51
-        N = 9000
-    elif cfg_name == 'protein':
-        task = 'binary'
-        batch_size = 50
-        lr = 0.01
-        assert model == 'logistic'
-        n_weights = 75
-        N = 65589
-    elif 'forest' in cfg_name:
-        task = 'binary'
-        batch_size = 50
-        lr = 1.0
-
-        if model == 'logistic':
-            n_weights = 50
-        else:
-            n_weights = 511
-        N = 378783
-    elif 'adult' in cfg_name:
-        task = 'binary'
-        batch_size = 32
-        lr = 0.5            # possibly check this
-
-        if 'pca' in cfg_name:
-            if model == 'logistic':
-                n_weights = 51
-            else:
-                raise ValueError(model)
-        else:
-            if model == 'logistic':
-                n_weights = 101
-            else:
-                n_weights = 817
-        N = 29305
-    elif cfg_name in ['mnist', 'mnist_square']:
-        task = 'classification'
-        batch_size = 32
-        lr = 0.1
-
-        if model == 'mlp':
-            n_weights = 986
-        elif model == 'cnn':
-            n_weights = 1448
-        N = 54000
-    elif cfg_name == 'cifar10':
-        task = 'classification'
-        batch_size = 32
-        lr = 0.01
-
-        if model == 'mlp':
-            n_weights = 7818
-        elif model == 'cnn':
-            raise NotImplementedError
-        N = 45000
+def get_n_weights(cfg):
+    model = cfg['model']['architecture']
+    if model == 'logistic':
+        n_weights = cfg['model']['input_size'] + 1
     else:
-        raise ValueError(cfg_name)
+        dataset_name = cfg['data']['name']
+        binary = cfg['data']['binary']
+        if dataset_name == 'mnist':
+            if binary:
+                n_weights = 521
+            else:
+                if model == 'mlp':
+                    n_weights = 986
+                elif model == 'cnn':
+                    n_weights = 1448
+        elif dataset_name == 'forest':
+            n_weights = 511
+        elif dataset_name == 'adult':
+            n_weights = 817
 
-    if not data_privacy == 'all':
-        N = N/2
+    return n_weights
+
+
+def get_experiment_details(cfg_name, model, verbose=False, data_privacy='all'):
+    cfg = load_cfg(cfg_name)
+    task = cfg['model']['task_type']
+    batch_size = cfg['training']['batch_size']
+    lr = cfg['training']['optimization_algorithm']['learning_rate']
+    N = get_dataset_size(cfg['data'])
+    n_weights = get_n_weights(cfg)
 
     if verbose:
         print('Experiment details:')

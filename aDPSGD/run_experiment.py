@@ -2,32 +2,14 @@
 # This is the script which runs the experiment! (trains a model!)
 
 import argparse
-import yaml
-import os
 from pathlib import Path
 from time import time
 from tensorflow.keras.backend import clear_session
 
-import model_utils
+from model_utils import build_model, prep_for_training, train_model
 from data_utils import load_data
 from results_utils import ExperimentIdentifier
-
-
-def check_cfg_for_consistency(cfg):
-    if cfg['data']['binary']:
-        assert cfg['model']['task_type'] == 'binary'
-        assert cfg['model']['output_size'] == 1
-
-    if 'flatten' in cfg['data']:
-        if cfg['data']['flatten'] is True:
-            assert type(cfg['model']['input_size']) == int
-        else:
-            assert len(cfg['model']['input_size']) > 1
-
-    if cfg['model']['architecture'] in ['logistic', 'linear']:
-        if cfg['model']['hidden_size'] is not None:
-            print('WARNING: Hidden size specified for logistic or linear model!')
-    print('cfg passed checks')
+from cfg_utils import load_cfg
 
 
 def get_model_init_path(cfg, diffinit):
@@ -42,7 +24,7 @@ def get_model_init_path(cfg, diffinit):
     return init_path
 
 
-def run_experiment(cfg, diffinit, seed, replace_index):
+def run_single_experiment(cfg, diffinit, seed, replace_index):
     t0 = time()
     # how we convert the cfg into a path and such is defined in ExperimentIdentifier
     exp = ExperimentIdentifier(seed=seed, replace_index=replace_index, diffinit=diffinit)
@@ -54,31 +36,19 @@ def run_experiment(cfg, diffinit, seed, replace_index):
     x_train, y_train, x_vali, y_vali, x_test, y_test = load_data(options=cfg['data'], replace_index=replace_index)
     # define model
     init_path = get_model_init_path(cfg, diffinit)
-    model = model_utils.build_model(**cfg['model'], init_path=init_path)
+    model = build_model(**cfg['model'], init_path=init_path)
     # prep model for training
-    model_utils.prep_for_training(model, seed=seed,
-                                  optimizer_settings=cfg['training']['optimization_algorithm'],
-                                  task_type=cfg['model']['task_type'])
+    prep_for_training(model, seed=seed,
+                      optimizer_settings=cfg['training']['optimization_algorithm'],
+                      task_type=cfg['model']['task_type'])
     # now train
-    model_utils.train_model(model, cfg['training'], cfg['logging'],
-                            x_train, y_train, x_vali, y_vali,
-                            path_stub=path_stub)
+    train_model(model, cfg['training'], cfg['logging'],
+                x_train, y_train, x_vali, y_vali,
+                path_stub=path_stub)
     # clean up
     del model
     clear_session()
     print('Finished after', time() - t0, 'seconds')
-
-
-def load_cfg(cfg_identifier):
-    if '.yaml' in cfg_identifier:
-        cfg_name = cfg_identifier.rstrip('.yaml')
-    else:
-        cfg_name = cfg_identifier
-    # cfg = yaml.safe_load(open(os.path.join('cfgs', args.cfg + '.yaml')))
-    cfg = yaml.load(open(os.path.join('cfgs', cfg_identifier + '.yaml')))
-    cfg['cfg_name'] = cfg_name
-    check_cfg_for_consistency(cfg)
-    return cfg
 
 
 if __name__ == '__main__':
@@ -90,4 +60,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
     cfg = load_cfg(args.cfg)
 
-    run_experiment(cfg, args.diffinit, args.seed, args.replace_index)
+    run_single_experiment(cfg, args.diffinit, args.seed, args.replace_index)

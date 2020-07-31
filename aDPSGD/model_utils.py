@@ -4,13 +4,8 @@ import abc
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-import ipdb
 from tensorflow import keras as K
 from tensorflow.keras.layers import Dense, Flatten, Dropout, Conv2D, MaxPooling2D
-# from tensorflow.python.framework.ops import disable_eager_execution
-
-
-# disable_eager_execution()
 
 
 class Logger(object):
@@ -18,19 +13,26 @@ class Logger(object):
     """
     def __init__(self, model: 'Model', path_stub: str, cadence: int,
                  X_train: np.ndarray, y_train: np.ndarray, X_vali: np.ndarray, y_vali: np.ndarray,
-                 save_weights: bool, save_gradients: bool) -> None:
+                 batch_size: int, save_weights: bool, save_gradients: bool,
+                 sample_minibatch_gradients: bool, n_gradients: int) -> None:
         self.model = model
         self.path_stub = path_stub
         self.logging_cadence = cadence
         self.logging_counter = tf.Variable(initial_value=0, name='logging_counter', trainable=False, dtype=tf.int32)                 # This needs to be a tf.Variable so we can tf.print it later
+        self.batch_size = batch_size
         self.X_train = X_train
         self.X_vali = X_vali
         self.y_train = y_train
         self.y_vali = y_vali
+        self.N = X_train.shape[0]
+
         self.metric_names = self.model.metric_names
 
         self.save_weights = save_weights
         self.save_gradients = save_gradients
+
+        self.sample_minibatch_gradients = sample_minibatch_gradients
+        self.n_gradients = n_gradients
 
         # initialise some stuff now
         self.initialise_log_files()
@@ -90,7 +92,7 @@ class Logger(object):
 
 #    @tf.function
     def log_model(self, X: np.ndarray, y: np.ndarray, minibatch_id: str,
-                  save_weights: bool = False, save_gradients: bool = False) -> None:
+                  save_weights: bool, save_gradients: bool) -> None:
         # --- metrics --- #
         metric_results = self.model.compute_metrics(X, y, metric_functions=self.metric_functions)
         tf.print(self.logging_counter, output_stream='file:///' + self.loss_file_path, end=',')
@@ -108,21 +110,33 @@ class Logger(object):
             tf.print(minibatch_id, output_stream='file:///' + self.grads_file_path, end=',')
             tf.print(grads, output_stream='file:///' + self.grads_file_path, summarize=-1, end='\n')
 
+    def sample_gradients(self, batch_size=None):
+        if batch_size is None:
+            batch_size = self.batch_size
+        for s in range(self.n_gradients):
+            batch_sample_x, batch_sample_y = self.get_random_minibatch(batch_size)
+            batch_sample_grads = self.model.compute_gradients(batch_sample_x, batch_sample_y, flat=True)
+            tf.print(self.logging_counter, output_stream='file:///' + self.grads_file_path, end=',')
+            tf.print(f'minibatch_sample_{s}', output_stream='file:///' + self.grads_file_path, end=',')
+            tf.print(batch_sample_grads,
+                     output_stream='file:///' + self.grads_file_path, summarize=-1, end='\n')
+
+    def get_random_minibatch(self, batch_size):
+        """ This is only using for sampling gradients, not during training (batches are sequential) """
+        minibatch_idx = np.random.choice(self.N, batch_size, replace=False)
+        X_batch = self.X_train[minibatch_idx]
+        y_batch = self.y_train[minibatch_idx]
+        return X_batch, y_batch
+
     def on_batch_end(self) -> None:
         if self.logging_counter % self.logging_cadence == 0:
             self.log_model(X=self.X_train, y=self.y_train, minibatch_id='ALL',
                            save_weights=self.save_weights, save_gradients=self.save_gradients)
             self.log_model(X=self.X_vali, y=self.y_vali, minibatch_id='VALI',
                            save_weights=False, save_gradients=False)
+            if self.sample_gradients:
+                self.sample_gradients()
         self.logging_counter.assign_add(1)
-            # N = self.X_train.shape[0]
-            # now over the minibatches
-            # TODO do this
-#            for s in range(self.n_minibatches):
-#                minibatch_idx = np.random.choice(N, self.minibatch_size, replace=False)
-#                X_batch = self.X[minibatch_idx]
-#                y_batch = self.y[minibatch_idx]
-#                self.log_model(X=X_batch, y=y_batch, minibatch_id=str(s), save_weights=False)
 
     def on_epoch_end(self) -> None:
         for f in self.log_files:
@@ -196,27 +210,34 @@ class Model(K.Sequential):
             for batch_idx in range(n_batches):
                 x_batch = x_train[batch_idx*batch_size:(batch_idx+1)*batch_size]
                 y_batch = y_train[batch_idx*batch_size:(batch_idx+1)*batch_size]
-                _ = self.train_on_batch(x_batch, y_batch)
                 logger.log_model(X=x_batch, y=y_batch, minibatch_id='BATCH',
                                  save_weights=False, save_gradients=True)
+                self.train_on_batch(x_batch, y_batch)
                 if logger is not None:
                     logger.on_batch_end()
             if logger is not None:
                 logger.on_epoch_end()
         if logger is not None:
-           logger.on_training_end()
-
-    #def train_step(self, x, y):
-    #    pass
+            logger.on_training_end()
 
     @tf.function
-    def compute_gradients(self, x, y, flat=False):
-        with tf.GradientTape() as g:
-            loss = self.compiled_loss(self(x), y)
-            grads = g.gradient(loss, self.weights)
+    def train_on_batch(self, x, y):
+        gradients = self.compute_gradients(x, y)
+        self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
+
+        return gradients
+
+    @tf.function
+    def compute_gradients(self, x, y, flat:bool = False):
+        with tf.GradientTape() as tape:
+            y_pred = self(x, training=True)
+            loss = self.loss_function(y, y_pred)
+
+        trainable_vars = self.trainable_variables
+        gradients = tape.gradient(loss, trainable_vars)
         if flat:
-            grads = tf.squeeze(tf.concat([tf.reshape(g, [-1, 1]) for g in grads], axis=0))
-        return grads
+            gradients = tf.squeeze(tf.concat([tf.reshape(gg, [-1, 1]) for gg in gradients], axis=0))
+        return gradients
 
     def load_weights(self, path: str, t: int = None) -> None:
         print(f'Loading weights from {path}')
@@ -289,24 +310,6 @@ class Model(K.Sequential):
         feed_dict = {self.model.input: X, self.model._targets[0]: y.reshape(-1, 1)}
         hessian = K.backend.get_session().run([self.hessian], feed_dict=feed_dict)
         return hessian
-
-    @tf.function
-    def compute_gradients_old(self, X, y):
-        """
-        """
-        return 0
-#        gradients = self.optimizer.get_gradients(self.loss_functions[0](self._targets, self.outputs), 
-#                                                 self.weights)
-
-#        if self.grads is None:
-            # the loss only exists after the model has been compiled!
-#            self.grads = tf.gradients(ys=self.total_loss, xs=self.weights)
-#            print(self.grads)
-        #feed_dict = {self.model.input: X, self.model._targets[0]: y.reshape(-1, 1)}
-        # feed_dict.update(temp_weights_dict)
-        #gradients = K.backend.get_session().run([self.grads], feed_dict=feed_dict)[0]
-#        return
-        return gradients
 
 
 class Linear(Model):
@@ -423,18 +426,18 @@ def prep_for_training(model: 'Model', seed: int, optimizer_settings: dict, task_
         raise NotImplementedError('Only SGD is implemented currently')
     # set up the loss
     if task_type == 'classification':
-        loss = 'sparse_categorical_crossentropy'
+        loss = K.losses.SparseCategoricalCrossentropy()
         metric_names = ['ce', 'accuracy']
     elif task_type == 'regression':
-        loss = 'mse'
+        loss = K.losses.MeanSquaredError()
         metric_names = ['mse']
     elif task_type == 'binary':
-        loss = 'binary_crossentropy'
+        loss = K.losses.BinaryCrossentropy()
         metric_names = ['binary_crossentropy', 'binary_accuracy']
     else:
         raise ValueError(task_type)
-    model.compile(optimizer=sgd,
-                  loss=loss)
+    model.optimizer = sgd
+    model.loss_function = loss
     model.metric_names = metric_names
 
     if model.init_path is None:
@@ -457,8 +460,11 @@ def train_model(model: 'Model', training_cfg: dict, logging_cfg: dict,
                                cadence=logging_cfg['cadence'],
                                X_train=x_train, y_train=y_train,
                                X_vali=x_vali, y_vali=y_vali,
+                               batch_size=training_cfg['batch_size'],
                                save_weights=logging_cfg['save_weights'],
-                               save_gradients=logging_cfg['save_gradients'])
+                               save_gradients=logging_cfg['save_gradients'],
+                               sample_minibatch_gradients=logging_cfg['sample_minibatch_gradients'],
+                               n_gradients=logging_cfg['n_gradients'])
 
     model.fit(x_train=x_train, y_train=y_train,
               batch_size=training_cfg['batch_size'],
