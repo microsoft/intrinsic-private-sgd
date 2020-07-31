@@ -137,8 +137,6 @@ class UtilityCurve(DerivedResult):
     def generate(self, diffinit) -> None:
         path_string = self.path_string(diffinit)
 
-        ipdb.set_trace()
-
         if path_string.exists():
             print(f'[UtilityCurve] WARNING: Utility curve has already been generated, file {path_string} exists!')
 

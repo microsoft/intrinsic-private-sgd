@@ -579,13 +579,11 @@ def load_adult(data_privacy='all', pca=False):
 
         if pca:
             print('doing PCA!')
-            ipdb.set_trace()
             transformer = PCA(n_components=50)
             transformer.fit(x_train)
             # transform everything
             x_train = transformer.transform(x_train)
             x_test = transformer.transform(x_test)
-            ipdb.set_trace()
 
         # now project to sphere
         print('Projecting to sphere...')
