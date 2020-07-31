@@ -210,8 +210,6 @@ class Model(K.Sequential):
             for batch_idx in range(n_batches):
                 x_batch = x_train[batch_idx*batch_size:(batch_idx+1)*batch_size]
                 y_batch = y_train[batch_idx*batch_size:(batch_idx+1)*batch_size]
-                logger.log_model(X=x_batch, y=y_batch, minibatch_id='BATCH',
-                                 save_weights=False, save_gradients=True)
                 self.train_on_batch(x_batch, y_batch)
                 if logger is not None:
                     logger.on_batch_end()
