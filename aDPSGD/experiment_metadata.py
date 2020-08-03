@@ -23,7 +23,9 @@ lr_convergence_points = {'cifar10_binary': 2000,
                          'mnist_binary_pca': 1850,
                          'mnist_binary': 1850,       # TODO update
                          'adult': 3400,
-                         'forest': 8400}
+                         'forest': 8400,
+                         'cifar2_lr': 100,
+                         'cifar2_lr_gradtest': 200}
 
 nn_convergence_points = {'cifar10_binary': 2500,
                          'mnist_binary_pca': 4750,
@@ -35,6 +37,18 @@ dp_colours = {'augment': '#14894e',
               'augment_diffinit': '#441e85',
               'both_diffinit': 'black',
               'bolton': '#c3871c'}
+
+
+def get_dataset_name(cfg_name) -> str:
+    cfg = load_cfg(cfg_name)
+    data_name = cfg['data']['name']
+    if 'cifar' in data_name:
+        if cfg['data']['binary']:
+            return 'CIFAR2'
+        else:
+            return 'CIFAR10'
+    else:
+        raise NotImplementedError
 
 
 def get_dataset_size(data_cfg):

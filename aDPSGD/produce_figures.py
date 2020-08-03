@@ -371,10 +371,10 @@ def plot_sens_and_var_over_time(cfg_name, model, num_deltas='max', iter_range=(0
 
     if model == 'logistic':
         convergence_points = em.lr_convergence_points
-        title = em.dataset_names[cfg_name] + ' (logistic regression)'
+        title = em.get_dataset_name(cfg_name) + ' (logistic regression)'
     else:
         convergence_points = em.nn_convergence_points
-        title = em.dataset_names[cfg_name] + ' (neural network)'
+        title = em.get_dataset_name(cfg_name) + ' (neuraml network)'
     convergence_point = convergence_points[cfg_name]
 
     for ax in axarr:
@@ -417,7 +417,7 @@ def plot_stability_of_estimated_values(cfg_name, model, t) -> None:
     axarr.axhline(y=sigma_we_use, ls='--', c=em.dp_colours['augment_diffinit'], alpha=0.4)
     axarr.set_xlabel('number of random seeds')
     axarr.set_ylabel(r'estimated $\sigma_i(\mathcal{D})$')
-    axarr.set_title(em.dataset_names[cfg_name] + ' (' + em.model_names[model] + ')')
+    axarr.set_title(em.get_dataset_name(cfg_name) + ' (' + em.model_names[model] + ')')
     upper_y = 1.05*max(np.max(sigma_v_seed['sigma']), sigma_we_use)
     lower_y = 0.95*np.min(sigma_v_seed['sigma'])
     axarr.set_ylim(lower_y, upper_y)
@@ -445,7 +445,7 @@ def plot_stability_of_estimated_values(cfg_name, model, t) -> None:
     axarr.set_ylabel('estimated sensitivity')
     axarr.set_ylim(0, None)
     axarr.set_xscale('log')
-    axarr.set_title(em.dataset_names[cfg_name] + ' (' + em.model_names[model] + ')')
+    axarr.set_title(em.get_dataset_name(cfg_name) + ' (' + em.model_names[model] + ')')
     vis_utils.beautify_axes(np.array([axarr]))
     plt.tight_layout()
 
@@ -572,7 +572,7 @@ def overlay_pval_plot(model='logistic', xlim=None, n_experiments=50,
                                                            plot=False)
         sns.distplot(log_pvals, kde=True, bins=min(100, int(len(log_pvals)*0.25)),
                      ax=axarr, color=em.dataset_colours[ds], norm_hist=True,
-                     label=em.dataset_names[ds],
+                     label=em.get_dataset_name(ds),
                      kde_kws={'alpha': 0.6})
 
         if n_params not in vertical_lines_we_already_have:
@@ -625,7 +625,7 @@ def overlay_eps_plot(model='logistic', cfg_names=None, xlim=None, ylim=None, tit
                                                   variability_from='empirical',
                                                   xlim=None, ylim=None,
                                                   data_privacy='all', plot=False)
-        sns.distplot(eps_diffinit, ax=axarr, label=em.dataset_names[ds],
+        sns.distplot(eps_diffinit, ax=axarr, label=em.get_dataset_name(ds),
                      color=em.dataset_colours[ds], bins=n_bins, norm_hist=True, kde=True)
     axarr.legend()
     axarr.set_ylabel('density')
