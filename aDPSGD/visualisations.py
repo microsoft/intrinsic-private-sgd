@@ -519,16 +519,16 @@ def visualise_trace(cfg_names, models, replaces, seeds, privacys, save=True,
     Show the full training set loss as well as the gradient (at our element) over training
     """
     identifiers = vis_utils.process_identifiers(cfg_names, models, replaces, seeds, privacys)
+    print(identifiers)
 
     if len(identifiers) > 1:
         print('WARNING: When more than one experiment is included, we turn off visualisation of batches to avoid cluttering the plot')
         include_batches = False
 
     if labels is None:
-        labels = [':'.join(x) for x in identifiers]
+        labels =[f'{x["cfg_name"]}-{x["model"]}-{x["replace"]}-{x["seed"]}' for x in identifiers]
     else:
         assert len(labels) == len(identifiers)
-
     loss_list = []
 
     for identifier in identifiers:
@@ -619,7 +619,7 @@ def visualise_trace(cfg_names, models, replaces, seeds, privacys, save=True,
     plt.tight_layout()
 
     if save:
-        plot_label = '.'.join([':'.join(x) for x in identifiers])
+        plot_label = '__'.join([f'r{x["replace"]}-s{x["seed"]}' for x in identifiers])
         plot_identifier = f'trace_{cfg_name}_{plot_label}'
         plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.png'))
         plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.pdf'))
