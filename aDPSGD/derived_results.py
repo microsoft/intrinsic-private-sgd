@@ -85,7 +85,7 @@ class DeltaHistogram(DerivedResult):
             if path_string.exists():
                 print(f'WARNING: Delta histogram has already been generated, file {path_string} exists!')
 
-                break
+                continue
 
             path_string.parent.mkdir(exist_ok=True)
             print('Couldn\'t find', path_string)
