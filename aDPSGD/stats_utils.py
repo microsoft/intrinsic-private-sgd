@@ -2,12 +2,13 @@
 # Functions mostly around fitting distributions
 
 import numpy as np
-from scipy.stats import kstest, laplace, shapiro, anderson
+import pandas as pd
+import ipdb
+from ping import multivariate_normality
+from scipy.stats import kstest, laplace, shapiro, anderson, invwishart
 
 
 def fit_alpha_stable(X):
-    """
-    """
     N = X.shape[0]
     # copied from umut
 
@@ -21,6 +22,55 @@ def fit_alpha_stable(X):
     return alpha, goodness_of_fit
 
 
+def fit_multivariate_normal(X):
+    _, pval = multivariate_normality(X, alpha=.05)
+    mean = X.mean(axis=0)
+    cov = np.cov(X.T)
+
+    return mean, cov, None, pval
+
+def test_multivariate_normal():
+    """ compute pval across grid of N and d for diagonal Gaussian, non-diagonal Gaussian, Laplace """
+    max_d = 60  ## the HZ test implementation in pingouin (maybe generally) fails d larger than this...
+    ns = []
+    ds = []
+    pvals_diagonal_gauss = []
+    pvals_nondiag_gauss = []
+    pvals_laplace = []
+    replicate = []
+    for r in range(1, 10): # replicates
+        fixed_cov = invwishart.rvs(df=max_d, scale=np.eye(max_d))
+        for d in range(5, max_d, 5):
+            for n in [75, 100, 250, 500, 625, 750, 875, 1000]:
+                if n < d:
+                    continue
+                diagonal_gauss = np.random.multivariate_normal(mean=np.zeros(d), cov=np.eye(d), size=n)
+                nondiag_gauss = np.random.multivariate_normal(mean=np.zeros(d), cov=fixed_cov[:d, :d], size=n)
+                laplace = np.random.laplace(loc=0, scale=1, size=(n, d))
+
+                _, _, _, pval_diagonal_gauss = fit_multivariate_normal(diagonal_gauss)
+                _, _, _, pval_nondiag_gauss = fit_multivariate_normal(nondiag_gauss)
+                _, _, _, pval_laplace = fit_multivariate_normal(laplace)
+                if np.isnan(pval_diagonal_gauss):
+                    print(f'd: {d}, n: {n}')
+                    ipdb.set_trace()
+
+                pvals_diagonal_gauss.append(pval_diagonal_gauss)
+                pvals_nondiag_gauss.append(pval_nondiag_gauss)
+                pvals_laplace.append(pval_laplace)
+                ns.append(n)
+                ds.append(d)
+                replicate.append(r)
+
+    results = pd.DataFrame({'n': ns, 'd': ds,
+                            'pval_diagonal_gauss': pvals_diagonal_gauss,
+                            'pval_nondiag_gauss': pvals_nondiag_gauss,
+                            'pval_laplace': pvals_laplace,
+                            'replicate': replicate})
+    return results
+
+
+        
 def alpha_estimator(m, X):
     """
     this is taken from
@@ -106,3 +156,34 @@ def test_alpha_estimator(N=100, d=1):
 
     print('norm:', alpha_norm)
     print('beta:', alpha_beta)
+
+
+def mvg_sigma_bound(gamma=None, sensitivity=0.3, delta=1e-5, epsilon=1, m=1, n=1):
+    if gamma is None:
+        gamma = sensitivity/2
+    r = min(m, n)
+    # harmonic number
+    harmonic_r = sum([1/x for x in range(1, r+1)])
+    # generalised harmonic number
+    harmonic_r12 = sum([1/np.sqrt(x) for x in range(1, r+1)])
+    print(f'harmonic numbers are: {harmonic_r, harmonic_r12}')
+    alpha = (harmonic_r + harmonic_r12)*(gamma**2) + 2*harmonic_r*gamma*sensitivity
+    print(f'alpha is {alpha}')
+    zeta = 2*np.sqrt(-m*n*np.log(delta)) - 2*np.log(delta) + m*n
+    print(f'zeta is {zeta}')
+    beta = 2*(m*n)**(0.25)*harmonic_r*sensitivity*zeta
+    print(f'beta is {beta}')
+    IB = (-beta + np.sqrt(beta**2 + 8*alpha*epsilon))**2/(4*alpha**2)
+    print(f'if psi is diagonal IDENTITY and sigma is diagonal lambda, lambda must be at least...')
+    print(f'{np.sqrt(m)*np.sqrt(n)/IB}')
+#    print(f'bound on inverse is {IB}')
+#    inverse_bound_with_diag_psi = inverse_bound/np.sqrt(n)
+#    print(f'if psi is diagonal identity we get {inverse_bound_with_diag_psi}')
+#    print(f'bound is {1/inverse_bound}')
+#    print(f'if sigma is diagonal we scale by sqrt(m) to get: {1/(inverse_bound*np.sqrt(m))}')
+
+def uni_sigma_bound(sensitivity=0.3, delta=1e-5, epsilon=1):
+    c = np.sqrt(2*np.log(1.25/delta) + 1e-5)
+    bound = c*sensitivity/epsilon
+    print(f'c is {c}')
+    print(f'bound is {bound}')

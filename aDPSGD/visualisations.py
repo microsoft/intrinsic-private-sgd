@@ -1,5 +1,4 @@
-#!/usr/bin/env ipython
-# This script is for performing specific analyses/generating figures
+#!/usr/bin/env ipython # This script is for performing specific analyses/generating figures
 # It relies on e.g. statistics computed across experiments - "derived results"
 
 import numpy as np
@@ -914,4 +913,40 @@ def sensitivity_v_variability(cfg_name, model, t, num_pairs, diffinit=False) -> 
     plt.tight_layout()
     vis_utils.beautify_axes(axarr)
 
+    return
+
+
+def multivariate_normal_test_vis(df, logscale: bool = False) -> None:
+    fig, axarr = plt.subplots(nrows=3, ncols=1, sharex=True)
+    axarr[-1].set_xlabel('N')
+    ns = df['n'].unique()
+    ds = df['d'].unique()
+    colours = cm.viridis(np.linspace(0, 1, len(ds)))
+    for i, d in enumerate(ds):
+        df_d = df[df['d'] == d]
+        for j, label in enumerate(['pval_diagonal_gauss', 'pval_nondiag_gauss', 'pval_laplace']):
+            val_mean = df_d[[label, 'n']].groupby('n').mean()
+            val_std = df_d[[label, 'n']].groupby('n').std()
+            uh = axarr[j].plot(val_mean.index, val_mean.values[:, 0], color=colours[i], label=d)
+            axarr[j].fill_between(val_mean.index, (val_mean - val_std).values[:, 0], (val_mean + val_std).values[:, 0], color=colours[i], alpha=0.1)
+    fig.colorbar(plt.cm.ScalarMappable(plt.Normalize(vmin=min(ds), vmax=max(ds)), cmap='viridis'),
+                 ax=axarr, label='dimension', drawedges=False, ticks=ds)
+    axarr[0].set_ylabel('pval\nMVN')
+    axarr[1].set_ylabel('pval\nMVNd')
+    axarr[2].set_ylabel('pval\nlaplace')
+
+    for ax in axarr:
+        #ax.legend()
+        ax.axhline(y=0.05, ls='--', color='red', alpha=0.5)
+        if logscale:
+            ax.set_yscale('log')
+            ax.set_ylim(1e-5, 1)
+        else:
+            ax.set_ylim(0, 1)
+    vis_utils.beautify_axes(axarr)
+
+    plt.savefig(PLOTS_DIR / f'multivar_test{"_log"*logscale}.png')
+    plt.savefig(PLOTS_DIR / f'multivar_test{"_log"*logscale}.pdf')
+    plt.clf()
+    plt.close()
     return
