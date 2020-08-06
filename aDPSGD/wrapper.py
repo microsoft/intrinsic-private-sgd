@@ -3,11 +3,14 @@ from run_experiment import load_cfg, run_single_experiment
 from results_utils import ExperimentIdentifier, get_grid_to_run
 from derived_results import generate_derived_results
 from produce_figures import generate_plots, generate_reports
+import numpy as np
 
 
 def run_sweep(cfg, num_seeds, num_replaces):
     print('Running sweep!')
     seeds, replace_indices = get_grid_to_run(cfg, num_seeds, num_replaces)
+    seeds = np.random.choice(seeds, num_seeds, replace=False)
+    replace_indices = np.random.choice(replace_indices, num_replaces, replace=False)
 
     for seed in seeds:
         for replace_index in replace_indices:
