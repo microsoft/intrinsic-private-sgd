@@ -54,7 +54,7 @@ def run_single_experiment(cfg, diffinit, seed, replace_index):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--cfg', type=str, help='Name of yaml cfg of experiment')
-    parser.add_argument('--diffinit', type=bool, help='Allow initialisation to vary with seed?', default=True)
+    parser.add_argument('--diffinit', type=bool, help='Allow initialisation to vary with seed?', default=False)
     parser.add_argument('--seed', type=int, help='Random seed used for SGD', default=1)
     parser.add_argument('--replace_index', type=int, help='Which training example to replace with x0', default=None)
     args = parser.parse_args()
