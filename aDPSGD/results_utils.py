@@ -84,7 +84,7 @@ class ExperimentIdentifier(object):
         return results_exist
 
     def load_gradients(self, noise=False, iter_range=(None, None), params=None, verbose=False) -> pd.DataFrame:
-        path = self.path_stub().with_name(self.path_stub().name + '.all_gradients.csv')
+        path = self.path_stub().with_name(self.path_stub().name + '.grads.csv')
 
         if params is not None:
             assert type(params) == list
@@ -190,6 +190,14 @@ def get_grid_to_run(cfg, num_seeds, num_replaces):
     return seeds, replaces
 
 
+def get_replace_index_with_most_seeds(cfg_name: str, model: str, diffinit: bool = False) -> int:
+    df = get_available_results(cfg_name, model, replace_index=None, seed=None, diffinit=diffinit)
+    seeds_per_replace = df['replace'].value_counts()
+    replace_with_most_seeds = seeds_per_replace.idxmax()
+    print(f'Selecting replace index {replace_with_most_seeds}, which has {seeds_per_replace[replace_with_most_seeds]} seeds')
+    return replace_with_most_seeds
+
+
 def get_available_results(cfg_name: str, model: str, replace_index: int = None, seed: int = None,
                           diffinit: bool = False, data_privacy: str = 'all') -> pd.DataFrame:
 
@@ -224,10 +232,9 @@ def get_available_results(cfg_name: str, model: str, replace_index: int = None, 
 
 def get_posterior_samples(cfg_name, iter_range, model='linear', replace_index=None,
                           params=None, seeds='all', num_seeds='max', verbose=True,
-                          diffinit=False, data_privacy='all'):
+                          diffinit=False, data_privacy='all', what='weights'):
     """
     grab the values of the weights of [params] at [at_time] for all the available seeds from identifier_stub
-    might want to re-integrate this with sacred at some point
     """
 
     if seeds == 'all':
@@ -242,21 +249,26 @@ def get_posterior_samples(cfg_name, iter_range, model='linear', replace_index=No
         available_seeds = np.random.choice(available_seeds, num_seeds, replace=False)
 
     if verbose:
-        print(f'Loading samples from seeds: {available_seeds} in range {iter_range}')
+        print(f'Loading {what} from seeds: {available_seeds} in range {iter_range}')
     samples = []
 
     base_experiment = ExperimentIdentifier(cfg_name, model, replace_index, diffinit=diffinit, data_privacy=data_privacy)
 
     for i, s in enumerate(available_seeds):
         base_experiment.seed = s
-        weights_from_s = base_experiment.load_weights(iter_range=iter_range, params=params, verbose=False)
+        if what == 'weights':
+            data_from_s = base_experiment.load_weights(iter_range=iter_range, params=params, verbose=False)
+        elif what == 'gradients':
+            data_from_s = base_experiment.load_gradients(iter_range=iter_range, params=params, verbose=False)
+        else:
+            raise ValueError
         try:
-            if weights_from_s.shape[0] == 0:
+            if data_from_s.shape[0] == 0:
                 print('WARNING: No data from seed', s, 'in range', iter_range, ' - skipping')
             else:
                 # insert the seed (the format should be similar to when we load gradient noise)
-                weights_from_s.insert(loc=1, column='seed', value=s)
-                samples.append(weights_from_s)
+                data_from_s.insert(loc=1, column='seed', value=s)
+                samples.append(data_from_s)
         except AttributeError:
             print(f'WARNING: No data from seed {s} in range {iter_range} or something, not sure why this error happened? - skipping')
 
@@ -266,4 +278,7 @@ def get_posterior_samples(cfg_name, iter_range, model='linear', replace_index=No
         print(f'[get_posterior_samples] WARNING: No actual samples acquired for replace {replace_index}!')
         samples = False
 
+    if what == 'gradients':
+        # remove reference to minibatchs samples
+        samples = samples[samples['minibatch_id'].str.contains('minibatch_sample')].drop(columns='minibatch_id')
     return samples

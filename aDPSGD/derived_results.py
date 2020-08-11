@@ -491,6 +491,17 @@ class VersusTime(DerivedResult):
         losses = AggregatedLoss(self.cfg_name, self.model, iter_range=self.iter_range,
                                 data_privacy=self.data_privacy).load(diffinit=True)
         df = df.join(losses)
+        # now fit the statistics
+        weight_statistics = estimate_statistics_through_training('weights', self.cfg_name,
+                                                                 self.model, replace_index=None,
+                                                                 seed=None, df=None, params=None,
+                                                                 iter_range=self.iter_range, diffinit=True)
+        gradient_statistics = estimate_statistics_through_training('gradients', self.cfg_name,
+                                                                   self.model, replace_index=None,
+                                                                   seed=None, df=None, params=None,
+                                                                   iter_range=self.iter_range, diffinit=True)
+        df = df.join(weight_statistics, how='outer')
+        df = df.join(gradient_statistics, how='outer')
         df.to_csv(path_string)
         print(f'[VersusTime] Saved to {path_string}')
 
@@ -665,6 +676,13 @@ def get_deltas(cfg_name, iter_range, model,
     we want to get num_deltas values of delta in the end
     """
     df = results_utils.get_available_results(cfg_name, model, diffinit=diffinit, data_privacy=data_privacy)
+    # filter out replaces with only a small number of seeds
+    seeds_per_replace = df['replace'].value_counts()
+    good_replaces = seeds_per_replace[seeds_per_replace > 2].index
+    replace_per_seed = df['seed'].value_counts()
+    good_seeds = replace_per_seed[replace_per_seed > 2].index
+    df = df[df['replace'].isin(good_replaces)]
+    df = df[df['seed'].isin(good_seeds)]
 
     if num_deltas == 'max':
         num_deltas = int(df.shape[0]/2)
@@ -761,10 +779,13 @@ def get_deltas(cfg_name, iter_range, model,
             print('WARNING: Missing data for (seed, replace) = (', seed_p, replace_index_p, ')')
             wp_weights = np.array([np.nan])
 
-        if multivariate:
-            delta = np.abs(w_weights - wp_weights)
-        else:
-            delta = np.linalg.norm(w_weights - wp_weights)
+        try:
+            if multivariate:
+                delta = np.abs(w_weights - wp_weights)
+            else:
+                delta = np.linalg.norm(w_weights - wp_weights)
+        except TypeError:
+            ipdb.set_trace()
         deltas[i] = delta
     w_identifiers = list(zip(w['replace'], w['seed']))
     wp_identifiers = list(zip(wp['replace'], wp['seed']))
@@ -781,11 +802,14 @@ def estimate_statistics_through_training(what, cfg_name, model, replace_index, s
     """
     assert what in ['gradients', 'weights']
 
-    experiment = results_utils.ExperimentIdentifier(cfg_name, model, replace_index, seed, diffinit)
+    if replace_index is None:
+        replace_index = results_utils.get_replace_index_with_most_seeds(cfg_name, model, diffinit=diffinit)
 
     if df is None:
         if what == 'gradients':
-            df = experiment.load_gradients(noise=True, params=params, iter_range=iter_range)
+            df = results_utils.get_posterior_samples(cfg_name, model=model, replace_index=replace_index,
+                                                     iter_range=iter_range, params=params, diffinit=diffinit,
+                                                     what='gradients')
         else:
             print('Getting posterior for weights, seed is irrelevant')
             df = results_utils.get_posterior_samples(cfg_name, model=model, replace_index=replace_index,
@@ -800,33 +824,50 @@ def estimate_statistics_through_training(what, cfg_name, model, replace_index, s
     iterations = df['t'].unique()
     # store the results in this dataframe
     df_fits = pd.DataFrame(index=iterations)
+    df_fits.index.name = 't'
     df_fits['N'] = np.nan
     df_fits['alpha'] = np.nan
     df_fits['alpha_fit'] = np.nan
 
     for t in iterations:
         df_t = df.loc[df['t'] == t, :]
-        # columns are all gradient noise
-        X = df_t.iloc[:, 2:].values.reshape(-1, 1)
-        N = X.shape[0]
-        df_fits['N'] = N
+        # zero it out by seed
+        if what == 'gradients':
+            seed_means = df_t.groupby('seed').transform('mean')
+            df_t = (df_t - seed_means).drop(columns=['seed', 't'])
+            X = df_t.values
+        else:
+            X = df_t.iloc[:, 2:].values
+            X = X - X.mean(axis=0)
+        df_fits['N'] = X.shape[0]
         # fit alpha_stable
         alpha, fit = stats_utils.fit_alpha_stable(X)
         df_fits.loc[t, 'alpha'] = alpha
         df_fits.loc[t, 'alpha_fit'] = fit
-        # fit gaussian
-        mu, sigma, W, p = stats_utils.fit_normal(X)
+        # fit multivariate gaussian - dont record the params since they don't fit...
+        _, _, _, p = stats_utils.fit_multivariate_normal(X)
+        df_fits.loc[t, 'mvnorm_mu'] = np.nan
+        df_fits.loc[t, 'mvnorm_sigma'] = np.nan
+        df_fits.loc[t, 'mvnorm_W'] = np.nan
+        df_fits.loc[t, 'mvnorm_p'] = p
+        # Now flatten and look at univariate distributions
+        X_flat = X.reshape(-1, 1)
+        df_fits['N_flat'] = X_flat.shape[0]
+        # fit univariate gaussian
+        mu, sigma, W, p = stats_utils.fit_normal(X_flat)
         df_fits.loc[t, 'norm_mu'] = mu
         df_fits.loc[t, 'norm_sigma'] = sigma
         df_fits.loc[t, 'norm_W'] = W
         df_fits.loc[t, 'norm_p'] = p
         # fit laplace
-        loc, scale, D, p = stats_utils.fit_laplace(X)
+        loc, scale, D, p = stats_utils.fit_laplace(X_flat)
         df_fits.loc[t, 'lap_loc'] = loc
         df_fits.loc[t, 'lap_scale'] = scale
         df_fits.loc[t, 'lap_D'] = D
         df_fits.loc[t, 'lap_p'] = p
 
+    # Attach what the fit was on
+    df_fits.columns = [f'{what}_{x}' for x in df_fits.columns]
     return df_fits
 
 

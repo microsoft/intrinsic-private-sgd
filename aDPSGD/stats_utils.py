@@ -23,11 +23,20 @@ def fit_alpha_stable(X):
 
 
 def fit_multivariate_normal(X):
-    _, pval = multivariate_normality(X, alpha=.05)
+    try:
+        _, pval = multivariate_normality(X, alpha=.05)
+    except MemoryError:
+        print(f'WARNING: X with size {X.shape} is too big for multivariate normal fit!')
+        N = X.shape[0]
+        smaller_N = 20000
+        X_smaller = X[np.random.choice(N, smaller_N, replace=False), :]
+        print(f'Trying with smaller X of size {X_smaller.shape}!')
+        _, pval = multivariate_normality(X_smaller, alpha=.05)
     mean = X.mean(axis=0)
     cov = np.cov(X.T)
 
     return mean, cov, None, pval
+
 
 def test_multivariate_normal():
     """ compute pval across grid of N and d for diagonal Gaussian, non-diagonal Gaussian, Laplace """
@@ -70,7 +79,6 @@ def test_multivariate_normal():
     return results
 
 
-        
 def alpha_estimator(m, X):
     """
     this is taken from
@@ -81,9 +89,10 @@ def alpha_estimator(m, X):
     X: gradient noise (grad - minibatch grad)
     m: K1 I think (n is K2)
     """
+    print(f'alpha estimator using m = {m}')
     # X is N by d matrix
     N = len(X)           # number of gradients, basically
-    n = int(N/m) # must be an integer: this is K2 in the theorem
+    n = int(N/m)        # must be an integer: this is K2 in the theorem
     Y = np.sum(X.reshape(n, m, -1), axis=1)      # produce Y by first reshaping X to be n x m (x the rest), summing over m'th dimension
     eps = np.spacing(1)
     Y_log_norm = (np.log(np.linalg.norm(Y, axis=1) + eps)).mean()
@@ -114,7 +123,15 @@ def fit_laplace(X):
     # I think the kstest isn't very good for testing laplace fit, the p-value has a very high variance even when I run the test on
     # 1000000 iid laplace RVs
     # need to find a better test
-    Dval_lap, pval_lap = kstest(X, laplace(loc=loc, scale=scale).cdf)
+    try:
+        Dval_lap, pval_lap = kstest(X, laplace(loc=loc, scale=scale).cdf)
+    except MemoryError:
+        print(f'WARNING: X with size {X.shape} is too big for Laplace fit!')
+        N = X.shape[0]
+        smaller_N = 20000
+        X_smaller = X[np.random.choice(N, smaller_N, replace=False)]
+        print(f'Trying with smaller X of size {X_smaller.shape}!')
+        Dval_lap, pval_lap = kstest(X_smaller, laplace(loc=loc, scale=scale).cdf)
 
     return loc, scale, Dval_lap, pval_lap
 
