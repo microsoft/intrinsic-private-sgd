@@ -244,9 +244,12 @@ def get_posterior_samples(cfg_name, iter_range, model='linear', replace_index=No
     else:
         assert type(seeds) == list
         available_seeds = seeds
-
     if not num_seeds == 'max' and num_seeds < len(available_seeds):
         available_seeds = np.random.choice(available_seeds, num_seeds, replace=False)
+
+    if replace_index is None:
+        replace_index = get_replace_index_with_most_seeds(cfg_name=cfg_name, model=model, diffinit=diffinit)
+
 
     if verbose:
         print(f'Loading {what} from seeds: {available_seeds} in range {iter_range}')
@@ -256,6 +259,9 @@ def get_posterior_samples(cfg_name, iter_range, model='linear', replace_index=No
 
     for i, s in enumerate(available_seeds):
         base_experiment.seed = s
+        if not base_experiment.exists():
+            print(f'WARNIG: File {base_experiment.path_stub()} doesn\'t seem to exist -skipping')
+            continue
         if what == 'weights':
             data_from_s = base_experiment.load_weights(iter_range=iter_range, params=params, verbose=False)
         elif what == 'gradients':

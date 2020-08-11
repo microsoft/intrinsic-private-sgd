@@ -916,6 +916,15 @@ def sensitivity_v_variability(cfg_name, model, t, num_pairs, diffinit=False) -> 
     return
 
 
+def mvn_covariance(df) -> None:
+    X = df.iloc[:, 2:]
+    X = X - X.mean(axis=0)
+    cov = np.cov(X.T)
+    sns.heatmap(cov)
+    plt.savefig(PLOTS_DIR / 'cov.png')
+    return
+
+
 def multivariate_normal_test_vis(df, logscale: bool = False) -> None:
     fig, axarr = plt.subplots(nrows=3, ncols=1, sharex=True)
     axarr[-1].set_xlabel('N')

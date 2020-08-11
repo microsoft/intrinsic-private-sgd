@@ -7,6 +7,7 @@ import ipdb
 from ping import multivariate_normality
 from scipy.stats import kstest, laplace, shapiro, anderson, invwishart
 
+smaller_N = 10000  # due to memory errors
 
 def fit_alpha_stable(X):
     N = X.shape[0]
@@ -28,7 +29,6 @@ def fit_multivariate_normal(X):
     except MemoryError:
         print(f'WARNING: X with size {X.shape} is too big for multivariate normal fit!')
         N = X.shape[0]
-        smaller_N = 20000
         X_smaller = X[np.random.choice(N, smaller_N, replace=False), :]
         print(f'Trying with smaller X of size {X_smaller.shape}!')
         _, pval = multivariate_normality(X_smaller, alpha=.05)
@@ -128,7 +128,6 @@ def fit_laplace(X):
     except MemoryError:
         print(f'WARNING: X with size {X.shape} is too big for Laplace fit!')
         N = X.shape[0]
-        smaller_N = 20000
         X_smaller = X[np.random.choice(N, smaller_N, replace=False)]
         print(f'Trying with smaller X of size {X_smaller.shape}!')
         Dval_lap, pval_lap = kstest(X_smaller, laplace(loc=loc, scale=scale).cdf)

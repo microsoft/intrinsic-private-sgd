@@ -15,50 +15,66 @@ from run_experiment import load_cfg
 # --- to do with testing the model's performance --- #
 
 
-def get_target_noise_for_model(cfg_name, model, t, epsilon, delta, sensitivity, verbose):
-    target_noise = compute_gaussian_noise(epsilon, delta, sensitivity)
+def get_target_noise_for_model(cfg_name: str, model: str, t: int, epsilon, delta,
+                               sensitivity, verbose, multivariate=False):
+    if multivariate:
+        d = len(sensitivity.flatten())
+        epsilon = epsilon/d
+        if verbose:
+            print(f'[get target noise] scaling epsilon by {d} because multivariate')
+    target_sigma = compute_gaussian_noise(epsilon, delta, sensitivity, verbose=verbose)
 
     if verbose:
-        print('[test] Target noise:', target_noise)
+        print('[test] Target noise:', target_sigma)
 
     # without different initiaisation
-    intrinsic_noise = derived_results.estimate_variability(cfg_name, model, t, multivariate=False, diffinit=False)
+    intrinsic_noise = derived_results.estimate_variability(cfg_name, model, t,
+                                                           multivariate=multivariate,
+                                                           diffinit=False)
 
-    if intrinsic_noise < target_noise:
-        noise_to_add = compute_additional_noise(target_noise, intrinsic_noise)
+    if np.any(intrinsic_noise < target_sigma):
+        noise_to_add = compute_additional_noise(target_sigma, intrinsic_noise)
     else:
         noise_to_add = 0
-    print('[augment_sgd] \nintrinsic noise:', intrinsic_noise, '\nnoise to add:', noise_to_add)
+    if verbose:
+        print('[augment_sgd] \nintrinsic noise:', intrinsic_noise, '\nnoise to add:', noise_to_add)
 
-    if np.abs(noise_to_add) < 1e-5:
+    if np.all(np.abs(noise_to_add) < 1e-5):
         print('[augment_sgd] Hurray! Essentially no noise required!')
 
     # noise using different initialisation
     intrinsic_noise_diffinit = derived_results.estimate_variability(cfg_name, model, t,
-                                                                    multivariate=False, diffinit=True)
+                                                                    multivariate=multivariate,
+                                                                    diffinit=True)
 
-    if intrinsic_noise_diffinit < target_noise:
-        noise_to_add_diffinit = compute_additional_noise(target_noise, intrinsic_noise_diffinit)
+    if np.any(intrinsic_noise_diffinit < target_sigma):
+        noise_to_add_diffinit = compute_additional_noise(target_sigma, intrinsic_noise_diffinit)
     else:
         noise_to_add_diffinit = 0
-    print(f'[augment_sgd_diffinit] \nintrinsic noise: {intrinsic_noise_diffinit}\nnoise to add {noise_to_add_diffinit}')
+    if verbose:
+        print(f'[augment_sgd_diffinit] \nintrinsic noise: {intrinsic_noise_diffinit}\nnoise to add {noise_to_add_diffinit}')
 
-    if np.abs(noise_to_add_diffinit) < 1e-5:
+    if np.all(np.abs(noise_to_add_diffinit) < 1e-5):
         print('[augment_sgd] Hurray! Essentially no noise required!')
 
-    if noise_to_add_diffinit > noise_to_add:
+    if np.any(noise_to_add_diffinit > noise_to_add):
         print('WARNING: Noise from diffinit is... lower than without it?')
-        ipdb.set_trace()
+        assert multivariate
 
-    return target_noise, noise_to_add, noise_to_add_diffinit
+    if multivariate:
+        target_sigma = target_sigma.flatten()
+        noise_to_add = noise_to_add.flatten()
+        noise_to_add_diffinit = noise_to_add_diffinit.flatten()
+    return target_sigma, noise_to_add, noise_to_add_diffinit
 
 
 def test_model_with_noise(cfg_name, replace_index, seed, t,
                           epsilon=None, delta=None,
                           sens_from_bound=True,
                           metric_to_report='binary_accuracy',
-                          verbose=False, num_deltas=1000,
-                          data_privacy='all'):
+                          verbose=False, num_deltas='max',
+                          data_privacy='all',
+                          multivariate=False):
     """
     test the model on the test set of the respective dataset
     """
@@ -94,17 +110,20 @@ def test_model_with_noise(cfg_name, replace_index, seed, t,
         sensitivity = derived_results.estimate_sensitivity_empirically(cfg_name, model, t,
                                                                        num_deltas=num_deltas,
                                                                        diffinit=False,
-                                                                       data_privacy=data_privacy)
+                                                                       data_privacy=data_privacy,
+                                                                       multivariate=multivariate)
 
     if sensitivity is False:
         print('ERROR: Empirical sensitivity not available.')
 
         return False
-    print('Sensitivity:', sensitivity)
+    if verbose:
+        print('Sensitivity:', sensitivity)
 
-    target_noise, noise_to_add, noise_to_add_diffinit = get_target_noise_for_model(cfg_name, model, t,
+    target_sigma, noise_to_add, noise_to_add_diffinit = get_target_noise_for_model(cfg_name, model, t,
                                                                                    epsilon, delta,
-                                                                                   sensitivity, verbose)
+                                                                                   sensitivity, verbose,
+                                                                                   multivariate=multivariate)
 
     weights_path = experiment.path_stub().with_name(experiment.path_stub().name + '.weights.csv')
     print('Evaluating model from', weights_path)
@@ -130,7 +149,7 @@ def test_model_with_noise(cfg_name, replace_index, seed, t,
         if n == metric_to_report:
             noiseless_performance = v
 
-    noise_options = {'bolton': target_noise,
+    noise_options = {'bolton': target_sigma,
                      'augment_sgd': noise_to_add,
                      'augment_sgd_diffinit': noise_to_add_diffinit}
     noise_performance = {'bolton': np.nan,
@@ -192,12 +211,15 @@ def compute_gaussian_noise(epsilon, delta, sensitivity, verbose=True):
     return sigma
 
 
-def compute_additional_noise(target_noise, intrinsic_noise):
+def compute_additional_noise(target_sigma, intrinsic_noise):
     """
-    assuming we want to get to target_noise STDDEV, from intrinsic noise,
+    assuming we want to get to target_sigma STDDEV, from intrinsic noise,
     independent gaussians
     """
-    additional_noise = np.sqrt(target_noise**2 - intrinsic_noise**2)
+    additional_noise = np.sqrt(target_sigma**2 - intrinsic_noise**2)
+
+    if type(additional_noise) == np.ndarray:
+        additional_noise[intrinsic_noise > target_sigma] = 0
 
     return additional_noise
 

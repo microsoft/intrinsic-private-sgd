@@ -754,7 +754,7 @@ def get_deltas(cfg_name, iter_range, model,
     else:
         assert ((wp['replace'].astype(int).values - w['replace'].astype(int).values) == 0).mean() == 1
 
-    deltas = np.zeros(shape=num_deltas)
+    deltas = [0]*num_deltas
 
     for i in range(num_deltas):
         replace_index = w.iloc[i]['replace']
@@ -779,18 +779,16 @@ def get_deltas(cfg_name, iter_range, model,
             print('WARNING: Missing data for (seed, replace) = (', seed_p, replace_index_p, ')')
             wp_weights = np.array([np.nan])
 
-        try:
-            if multivariate:
-                delta = np.abs(w_weights - wp_weights)
-            else:
-                delta = np.linalg.norm(w_weights - wp_weights)
-        except TypeError:
-            ipdb.set_trace()
+        if multivariate:
+            delta = np.abs(w_weights - wp_weights)
+        else:
+            delta = np.linalg.norm(w_weights - wp_weights)
         deltas[i] = delta
     w_identifiers = list(zip(w['replace'], w['seed']))
     wp_identifiers = list(zip(wp['replace'], wp['seed']))
     identifiers = np.array(list(zip(w_identifiers, wp_identifiers)))
 
+    deltas = np.array(deltas)
     return deltas, identifiers
 
 
