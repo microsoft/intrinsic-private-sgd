@@ -104,10 +104,10 @@ def load_data(options, replace_index):
     elif data_type == 'forest':
         x_train, y_train, x_test, y_test = load_forest(data_privacy=data_privacy)
     elif data_type == 'adult':
-        if options['preprocessing'] == 'PCA':
+        pca = False
+        if 'preprocessing' in options and options['preprocessing'] == 'PCA':
+            print('WARNING: When are we doing PCA with adult?')
             pca = True
-        else:
-            pca = False
         x_train, y_train, x_test, y_test = load_adult(data_privacy=data_privacy, pca=pca)
     else:
         raise ValueError(data_type)

@@ -238,7 +238,7 @@ class Model(K.Sequential):
         return gradients
 
     def load_weights(self, path: str, t: int = None) -> None:
-        print(f'Loading weights from {path}')
+        print(f'[model utils] Loading weights from {path}')
         if not path.exists():
             print(f'WARNING: Weights path  {path} does not exist, can\'t load weights!')
             return

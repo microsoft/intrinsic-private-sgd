@@ -250,7 +250,6 @@ def get_posterior_samples(cfg_name, iter_range, model='linear', replace_index=No
     if replace_index is None:
         replace_index = get_replace_index_with_most_seeds(cfg_name=cfg_name, model=model, diffinit=diffinit)
 
-
     if verbose:
         print(f'Loading {what} from seeds: {available_seeds} in range {iter_range}')
     samples = []

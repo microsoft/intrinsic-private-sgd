@@ -64,6 +64,8 @@ def get_dataset_size(data_cfg):
             N = 9000
         else:
             raise ValueError(data_cfg['binary'])
+    elif name == 'adult':
+        N = 29305
     else:
         raise NotImplementedError
     return N
