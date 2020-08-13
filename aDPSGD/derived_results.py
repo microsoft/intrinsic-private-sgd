@@ -121,16 +121,17 @@ class DeltaHistogram(DerivedResult):
 
 class UtilityCurve(DerivedResult):
     def __init__(self, cfg_name, model, num_deltas, t, data_privacy='all', metric_to_report='binary_accuracy',
-                 verbose=True, diffinit=True, num_experiments=500):
+                 verbose=True, num_experiments=500, multivariate: bool = False):
         super(UtilityCurve, self).__init__(cfg_name, model, data_privacy)
         self.num_deltas = num_deltas
         self.num_experiments = num_experiments
         self.t = t
         self.metric_to_report = metric_to_report
+        self.multivariate = multivariate
         self.suffix = '.csv'
 
     def identifier(self, diffinit: bool) -> str:
-        identifier = f'utility_nd{self.num_deltas}_t{self.t}_ne{self.num_experiments}'
+        identifier = f'utility_nd{self.num_deltas}_t{self.t}_ne{self.num_experiments}{"_multivar"*self.multivariate}'
 
         return identifier
 
@@ -174,7 +175,8 @@ class UtilityCurve(DerivedResult):
                                                                        sens_from_bound=sens_from_bound,
                                                                        metric_to_report=self.metric_to_report,
                                                                        verbose=False,
-                                                                       num_deltas=self.num_deltas)
+                                                                       num_deltas=self.num_deltas,
+                                                                       multivariate=self.multivariate)
                     noiseless_at_eps, bolton_at_eps, augment_at_eps, augment_with_diffinit_at_eps = results
                     seed.append(exp_seed)
                     replace.append(exp_replace)
@@ -553,7 +555,7 @@ def generate_derived_results(cfg_name: str, model: str = 'logistic', t: int = No
     AggregatedLoss(cfg_name, model).generate(diffinit=False)
     SensVar(cfg_name, model, t=t).generate()
     Sigmas(cfg_name, model, t=t).generate(diffinit=True)
-    VersusTime(cfg_name, model).generate()
+    VersusTime(cfg_name, model, iter_range=(0, t+200)).generate()
     Stability(cfg_name, model, t=t).generate()
 
     return
@@ -566,7 +568,7 @@ def calculate_epsilon(cfg_name, model, t, use_bound=False, diffinit=True,
     """
     task, batch_size, lr, n_weights, N = em.get_experiment_details(cfg_name, model)
     delta = 1.0/(N**2)
-    variability = estimate_variability(cfg_name, model, t, multivariate=False, diffinit=diffinit, verbose=verbose)
+    variability = estimate_variability(cfg_name, model, t, multivariate=multivariate, diffinit=diffinit, verbose=verbose)
 
     if use_bound:
         sensitivity = test_private_model.compute_wu_bound(lipschitz_constant=np.sqrt(2), t=t, N=N,
@@ -1092,3 +1094,29 @@ def compute_sens_v_num_deltas(cfg_name, model, t):
                                    'sens': sens_array})
 
     return stability_sens
+
+
+def compute_mvn_fit_and_alpha(cfg_name, model, t, diffinit=True) -> dict:
+    try:
+        df = VersusTime(cfg_name, model).load()
+        df_t = df.loc[df['t'] == t, :]
+        if not t in df['t'].values:
+            raise ValueError(t, f'ERROR: {t} is not in the file, ts are: {df["t"].unique()}')
+        assert df_t.shape[0] == 1
+        p = df_t['weights_mvnorm_p'].values[0]
+        alpha = df_t['weights_alpha'].values[0]
+    except FileNotFoundError:
+        print(f'Couldn\'t find VersusTime analysis for {cfg_name} - computing on the fly!')
+        replace_index = results_utils.get_replace_index_with_most_seeds(cfg_name, model, diffinit=diffinit)
+
+        iter_range = (t, t + 1)
+        params = None
+        df = results_utils.get_posterior_samples(cfg_name, model=model, replace_index=replace_index,
+                                                 iter_range=iter_range, params=params, diffinit=diffinit,
+                                                 what='weights')
+        df_t = df.loc[df['t'] == t, :]
+        X = df_t.iloc[:, 2:].values
+        X = X - X.mean(axis=0)
+        _, _, _, p = stats_utils.fit_multivariate_normal(X)
+        alpha, _ = stats_utils.fit_alpha_stable(X)
+    return {'mvn p': p, 'alpha': alpha}

@@ -66,6 +66,9 @@ def generate_reports(cfg_name: str, model: str, t=None, num_experiments=50) -> N
     print('\n')
     print(f'Report for {cfg_name} with {model} at {t}')
     print('\n')
+    p, alpha = dr.compute_mvn_fit_and_alpha(cfg_name, model, t, diffinit=True)
+    print(f'Fit of MVN: {p}, alpha from alpha-stable: {alpha}')
+
     empirical_sensitivity = dr.estimate_sensitivity_empirically(cfg_name, model, t,
                                                                 num_deltas='max',
                                                                 diffinit=True,
