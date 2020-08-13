@@ -16,7 +16,7 @@ from run_experiment import load_cfg
 
 
 def get_target_noise_for_model(cfg_name: str, model: str, t: int, epsilon, delta,
-                               sensitivity, verbose, multivariate=False):
+                               sensitivity, verbose, multivariate):
     if multivariate:
         d = len(sensitivity.flatten())
         epsilon = epsilon/d
@@ -138,6 +138,8 @@ def test_model_with_noise(cfg_name, replace_index, seed, t,
     metric_functions = model_utils.define_metric_functions(metric_names)
     metrics = model_object.compute_metrics(x_test, y_test, metric_functions=metric_functions)
     metrics = [m.numpy() for m in metrics]
+    for mf in metric_functions:
+        mf.reset_states()
 
     if verbose:
         print('PERFORMANCE (no noise):')
@@ -157,6 +159,7 @@ def test_model_with_noise(cfg_name, replace_index, seed, t,
                          'augment_sgd_diffinit': np.nan}
 
     n_weights = len(model_object.get_weights(flat=True))
+    del model_object
     # generate standard gaussian noise
     standard_noise = np.random.normal(size=n_weights, loc=0, scale=1)
 
@@ -173,6 +176,8 @@ def test_model_with_noise(cfg_name, replace_index, seed, t,
 
         metrics = model_object.compute_metrics(x_test, y_test, metric_functions=metric_functions)
         metrics = [m.numpy() for m in metrics]
+        for mf in metric_functions:
+            mf.reset_states()
 
         if verbose:
             print(f'PERFORMANCE ({setting}):')

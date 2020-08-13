@@ -959,3 +959,30 @@ def multivariate_normal_test_vis(df, logscale: bool = False) -> None:
     plt.clf()
     plt.close()
     return
+
+
+def sens_v_var_per_parameter(cfg_name, model, t, diffinit=True) -> None:
+    sens = dr.estimate_sensitivity_empirically(cfg_name, model, t, num_deltas='max',
+                                               diffinit=diffinit, multivariate=True)
+    sens_uni = dr.estimate_sensitivity_empirically(cfg_name, model, t, num_deltas='max',
+                                               diffinit=diffinit, multivariate=False)
+    var_diffinit = dr.estimate_variability(cfg_name, model, t=t, multivariate=True, diffinit=True)
+    var_diffinit_uni = dr.estimate_variability(cfg_name, model, t=t, multivariate=False, diffinit=True)
+    var_fixinit = dr.estimate_variability(cfg_name, model, t=t, multivariate=True, diffinit=False)
+    var_fixinit_uni = dr.estimate_variability(cfg_name, model, t=t, multivariate=False, diffinit=False)
+    
+    fig, axarr = plt.subplots(nrows=1, ncols=1)
+    size = 4
+    axarr.scatter(x=sens, y=var_fixinit, label='fixed init', color='red', s=size)
+    axarr.scatter(x=sens, y=var_diffinit, label='diff init', color='blue', s=size)
+    axarr.axvline(x=sens_uni, ls='--', label='overall sensitivity', color='black')
+    axarr.axhline(y=var_diffinit_uni, ls='--', label='overall sigma (diff init)', color='blue')
+    axarr.axhline(y=var_fixinit_uni, ls='--', label='overall sigma (fixed init)', color='red')
+    vis_utils.beautify_axes(np.array([axarr]))
+    axarr.set_xlabel('sensitivity')
+    axarr.legend()
+    axarr.set_ylabel('sigma')
+    axarr.set_title(f'{cfg_name} at {t}')
+
+    plt.savefig(PLOTS_DIR / f'per_param_sens_v_var_{cfg_name}_t{t}.png')
+    return

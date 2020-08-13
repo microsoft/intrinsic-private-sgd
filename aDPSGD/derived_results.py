@@ -226,7 +226,11 @@ class AggregatedLoss(DerivedResult):
             experiment = results_utils.ExperimentIdentifier(self.cfg_name, self.model, replace_index=row['replace'],
                                                             seed=row['seed'], diffinit=diffinit,
                                                             data_privacy=self.data_privacy)
-            loss = experiment.load_loss(iter_range=self.iter_range, verbose=False)
+            try:
+                loss = experiment.load_loss(iter_range=self.iter_range, verbose=False)
+            except FileNotFoundError:
+                print(f'WARNING: Could not find loss for {experiment.path_stub()}')
+                continue
             loss_train = loss.loc[loss['minibatch_id'] == 'ALL', :].set_index('t')
             loss_vali = loss.loc[loss['minibatch_id'] == 'VALI', :].set_index('t')
             train_list.append(loss_train)
