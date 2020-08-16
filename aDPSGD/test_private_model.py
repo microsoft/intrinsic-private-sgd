@@ -128,38 +128,17 @@ def test_model_with_noise(cfg_name, replace_index, seed, t,
     weights_path = experiment.path_stub().with_name(experiment.path_stub().name + '.weights.csv')
     print('Evaluating model from', weights_path)
 
-    model_object = model_utils.build_model(**cfg['model'], init_path=weights_path, t=t)
-    # this is for initialising the model etc.
-    model_utils.prep_for_training(model_object, seed=0,
-                                  optimizer_settings=cfg['training']['optimization_algorithm'],
-                                  task_type=cfg['model']['task_type'])
-
-    metric_names = model_object.metric_names
-    metric_functions = model_utils.define_metric_functions(metric_names)
-    metrics = model_object.compute_metrics(x_test, y_test, metric_functions=metric_functions)
-    metrics = [m.numpy() for m in metrics]
-    for mf in metric_functions:
-        mf.reset_states()
-
-    if verbose:
-        print('PERFORMANCE (no noise):')
-
-    for (n, v) in zip(metric_names, metrics):
-        if verbose:
-            print(n, v)
-
-        if n == metric_to_report:
-            noiseless_performance = v
-
-    noise_options = {'bolton': target_sigma,
+    noise_options = {'noiseless': 0,
+                     'bolton': target_sigma,
                      'augment_sgd': noise_to_add,
                      'augment_sgd_diffinit': noise_to_add_diffinit}
-    noise_performance = {'bolton': np.nan,
+    noise_performance = {'noiseless': np.nan,
+                         'bolton': np.nan,
                          'augment_sgd': np.nan,
                          'augment_sgd_diffinit': np.nan}
 
-    n_weights = len(model_object.get_weights(flat=True))
-    del model_object
+    n_weights = em.get_n_weights(cfg)
+
     # generate standard gaussian noise
     standard_noise = np.random.normal(size=n_weights, loc=0, scale=1)
 
@@ -174,6 +153,8 @@ def test_model_with_noise(cfg_name, replace_index, seed, t,
         unflattened_noisy_weights = model_object.unflatten_weights(noisy_weights)
         model_object.set_weights(unflattened_noisy_weights)
 
+        metric_names = model_object.metric_names
+        metric_functions = model_utils.define_metric_functions(metric_names)
         metrics = model_object.compute_metrics(x_test, y_test, metric_functions=metric_functions)
         metrics = [m.numpy() for m in metrics]
         for mf in metric_functions:
@@ -191,8 +172,11 @@ def test_model_with_noise(cfg_name, replace_index, seed, t,
 
                 break
         del model_object
+        del metric_functions
+        del metrics
 
     # extract the performances
+    noiseless_performance = noise_performance['noiseless']
     bolton_performance = noise_performance['bolton']
     augment_performance = noise_performance['augment_sgd']
     augment_performance_diffinit = noise_performance['augment_sgd_diffinit']

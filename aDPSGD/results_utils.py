@@ -148,7 +148,10 @@ class ExperimentIdentifier(object):
     def load_loss(self, iter_range=(None, None), verbose=False):
         path = self.path_stub().with_name(self.path_stub().name + '.loss.csv')
 
-        df = pd.read_csv(path)
+        try:
+            df = pd.read_csv(path)
+        except pd.errors.EmptyDataError:
+            raise ValueError(path, f'{path} appears to be empty?')
 
         if iter_range[0] is not None:
             df = df.loc[df['t'] >= iter_range[0], :]

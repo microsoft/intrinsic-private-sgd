@@ -62,12 +62,15 @@ def generate_plots(cfg_name: str, model: str, t=None) -> None:
     return
 
 
-def generate_reports(cfg_name: str, model: str, t=None, num_experiments=50) -> None:
+def generate_reports(cfg_name: str, model: str, t=None, num_experiments=500) -> None:
     print('\n')
     print(f'Report for {cfg_name} with {model} at {t}')
     print('\n')
-    p, alpha = dr.compute_mvn_fit_and_alpha(cfg_name, model, t, diffinit=True)
-    print(f'Fit of MVN: {p}, alpha from alpha-stable: {alpha}')
+    res = dr.compute_mvn_fit_and_alpha(cfg_name, model, t, diffinit=True)
+    p = res['mvn p']
+    alpha = res['alpha']
+    print(f'Fit of MVN: \t\t\t\t{p}')
+    print(f'Alpha from alpha-stable: \t\t{alpha}')
 
     empirical_sensitivity = dr.estimate_sensitivity_empirically(cfg_name, model, t,
                                                                 num_deltas='max',
@@ -76,11 +79,12 @@ def generate_reports(cfg_name: str, model: str, t=None, num_experiments=50) -> N
     print(f'Empirical sensitivity: \t\t\t{empirical_sensitivity}')
 
     _, batch_size, lr, _, N = em.get_experiment_details(cfg_name, model)
-    theoretical_sensitivity = test_private_model.compute_wu_bound(lipschitz_constant=np.sqrt(2),
-                                                                  t=t, N=N, batch_size=batch_size,
-                                                                  eta=lr, verbose=False)
-    print(f'Theoretical sensitivity from bound: \t{theoretical_sensitivity}')
-    print('')
+    if model == 'logistic':
+        theoretical_sensitivity = test_private_model.compute_wu_bound(lipschitz_constant=np.sqrt(2),
+                                                                      t=t, N=N, batch_size=batch_size,
+                                                                      eta=lr, verbose=False)
+        print(f'Theoretical sensitivity from bound: \t{theoretical_sensitivity}')
+        print('')
 
     empirical_variability = dr.estimate_variability(cfg_name, model, t=t, diffinit=False, verbose=False)
     empirical_variability_diffinit = dr.estimate_variability(cfg_name, model, t=t, diffinit=True, verbose=False)
@@ -91,9 +95,10 @@ def generate_reports(cfg_name: str, model: str, t=None, num_experiments=50) -> N
     print(f'Delta: {1/(N**2)}')
     print('')
 
-    epsilon_theoretical = dr.calculate_epsilon(cfg_name, model, t=t, use_bound=True, verbose=False)
+    if model == 'logistic':
+        epsilon_theoretical = dr.calculate_epsilon(cfg_name, model, t=t, use_bound=True, verbose=False)
+        print(f'Epsilon using theoretical sensitivity: \t{epsilon_theoretical}')
     epsilon_empirical = dr.calculate_epsilon(cfg_name, model, t=t, use_bound=False, verbose=False)
-    print(f'Epsilon using theoretical sensitivity: \t{epsilon_theoretical}')
     print(f'Epsilon using empirical sensitivity: \t{epsilon_empirical}')
     print('')
 

@@ -572,11 +572,16 @@ def calculate_epsilon(cfg_name, model, t, use_bound=False, diffinit=True,
     """
     task, batch_size, lr, n_weights, N = em.get_experiment_details(cfg_name, model)
     delta = 1.0/(N**2)
-    variability = estimate_variability(cfg_name, model, t, multivariate=multivariate, diffinit=diffinit, verbose=verbose)
+    variability = estimate_variability(cfg_name, model, t,
+                                       multivariate=multivariate,
+                                       diffinit=diffinit, verbose=verbose)
 
     if use_bound:
-        sensitivity = test_private_model.compute_wu_bound(lipschitz_constant=np.sqrt(2), t=t, N=N,
-                                                          batch_size=batch_size, eta=lr, verbose=verbose)
+        if model == 'logistic':
+            sensitivity = test_private_model.compute_wu_bound(lipschitz_constant=np.sqrt(2), t=t, N=N,
+                                                              batch_size=batch_size, eta=lr, verbose=verbose)
+        else:
+            sensitivity = np.nan
 
         if multivariate:
             sensitivity = np.array([sensitivity]*len(variability))
