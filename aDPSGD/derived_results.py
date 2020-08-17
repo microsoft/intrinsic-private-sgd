@@ -497,7 +497,7 @@ class VersusTime(DerivedResult):
         losses = AggregatedLoss(self.cfg_name, self.model, iter_range=self.iter_range,
                                 data_privacy=self.data_privacy).load(diffinit=True)
         df = df.join(losses)
-        # now fit the statistics
+        # now fit the statistics (warning: these are underpowered...)
         weight_statistics = estimate_statistics_through_training('weights', self.cfg_name,
                                                                  self.model, replace_index=None,
                                                                  seed=None, df=None, params=None,
@@ -554,13 +554,13 @@ def generate_derived_results(cfg_name: str, model: str = 'logistic', t: int = No
             print(f'Selecting t as convergence point {t}, valid fraction {valid_frac}')
 
     DeltaHistogram(cfg_name, model, t=t).generate()
-    UtilityCurve(cfg_name, model, num_deltas='max', t=t).generate(diffinit=True)
     AggregatedLoss(cfg_name, model).generate(diffinit=True)
     AggregatedLoss(cfg_name, model).generate(diffinit=False)
     SensVar(cfg_name, model, t=t).generate()
     Sigmas(cfg_name, model, t=t).generate(diffinit=True)
     VersusTime(cfg_name, model, iter_range=(0, t+200)).generate()
     Stability(cfg_name, model, t=t).generate()
+    UtilityCurve(cfg_name, model, num_deltas='max', t=t).generate(diffinit=True)
 
     return
 
