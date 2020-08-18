@@ -16,12 +16,14 @@ def run_sweep(cfg, num_seeds, num_replaces):
         for replace_index in replace_indices:
             experiment = ExperimentIdentifier()
             experiment.init_from_cfg(cfg)
+            experiment.seed = seed
+            experiment.replace_index = replace_index
 
             for diffinit in False, True:
                 experiment.diffinit = diffinit
 
                 if experiment.exists():
-                    print(f'Experiment with seed {seed} and replace index {replace_index} already exists - skipping')
+                    print(f'\t\t[sweep] Experiment with seed {seed} and replace index {replace_index} already exists - skipping')
                 else:
                     run_single_experiment(cfg, diffinit, seed, replace_index)
 

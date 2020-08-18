@@ -276,8 +276,6 @@ class SensVar(DerivedResult):
 
     def generate(self, diffinit=True) -> None:
         for diffinit in [False, True]:
-            print('DEBUG')
-            print(diffinit)
             path_string = self.path_string(diffinit)
             print(path_string)
 
