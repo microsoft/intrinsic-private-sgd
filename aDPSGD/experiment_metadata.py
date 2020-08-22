@@ -92,6 +92,8 @@ def get_n_weights(cfg):
             n_weights = 511
         elif dataset_name == 'adult':
             n_weights = 817
+        elif dataset_name == 'cifar10':
+            n_weights = 521
 
     return n_weights
 

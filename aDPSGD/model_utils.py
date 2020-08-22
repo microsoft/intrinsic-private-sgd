@@ -6,6 +6,7 @@ import pandas as pd
 import tensorflow as tf
 from tensorflow import keras as K
 from tensorflow.keras.layers import Dense, Flatten, Dropout, Conv2D, MaxPooling2D
+import ipdb
 
 
 class Logger(object):
@@ -256,8 +257,25 @@ class Model(K.Sequential):
         super(Model, self).save_weights(path.as_posix())
 
     @tf.function
-    def get_weights(self, flat: bool = False) -> tf.Tensor:
+    def get_weights(self, flat: bool = False, sort: bool = True) -> tf.Tensor:
         weights = self.weights
+        if sort:
+            # This only works for MLP
+            assert len(weights) == 4
+            dense_layer = weights[0]
+            assert dense_layer.name == 'dense/kernel:0'
+            dense_bias = weights[1]
+            assert dense_bias.name == 'dense/bias:0'
+            final_layer = weights[2]
+            assert final_layer.name == 'dense_1/kernel:0'
+            assert dense_bias.shape[0] == final_layer.shape[0]
+            sort_idx = tf.squeeze(tf.argsort(final_layer, axis=0))
+            final_layer_sorted = tf.gather(final_layer, sort_idx)
+            dense_layer_sorted = tf.gather(dense_layer, sort_idx, axis=1)
+            dense_bias_sorted = tf.squeeze(tf.gather(dense_bias, sort_idx))
+            # the last one doesn't need sorting
+            weights = [dense_layer_sorted, dense_bias_sorted,
+                       final_layer_sorted, weights[3]]
         if flat:
             weights = tf.squeeze(tf.concat([tf.reshape(w, [-1, 1]) for w in weights], axis=0))
         return weights

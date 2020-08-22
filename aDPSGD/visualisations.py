@@ -916,12 +916,12 @@ def sensitivity_v_variability(cfg_name, model, t, num_pairs, diffinit=False) -> 
     return
 
 
-def mvn_covariance(df) -> None:
-    X = df.iloc[:, 2:]
-    X = X - X.mean(axis=0)
+def mvn_covariance(X, identifier: str = '') -> None:
     cov = np.cov(X.T)
     sns.heatmap(cov)
-    plt.savefig(PLOTS_DIR / 'cov.png')
+    plt.savefig(PLOTS_DIR / f'{identifier}_cov.png')
+    plt.clf()
+    plt.close()
     return
 
 

@@ -12,6 +12,7 @@ import test_private_model
 import results_utils
 import stats_utils
 import experiment_metadata as em
+from visualisations import mvn_covariance
 
 
 class DerivedResult(object):
@@ -1104,26 +1105,32 @@ def compute_sens_v_num_deltas(cfg_name, model, t):
 
 
 def compute_mvn_fit_and_alpha(cfg_name, model, t, diffinit=True) -> dict:
-    try:
-        df = VersusTime(cfg_name, model).load()
-        df_t = df.loc[df['t'] == t, :]
-        if not t in df['t'].values:
-            raise ValueError(t, f'ERROR: {t} is not in the file, ts are: {df["t"].unique()}')
-        assert df_t.shape[0] == 1
-        p = df_t['weights_mvnorm_p'].values[0]
-        alpha = df_t['weights_alpha'].values[0]
-    except FileNotFoundError:
-        print(f'Couldn\'t find VersusTime analysis for {cfg_name} - computing on the fly!')
-        replace_index = results_utils.get_replace_index_with_most_seeds(cfg_name, model, diffinit=diffinit)
+    replace_index = results_utils.get_replace_index_with_most_seeds(cfg_name, model, diffinit=diffinit)
 
-        iter_range = (t, t + 1)
-        params = None
-        df = results_utils.get_posterior_samples(cfg_name, model=model, replace_index=replace_index,
-                                                 iter_range=iter_range, params=params, diffinit=diffinit,
-                                                 what='weights')
-        df_t = df.loc[df['t'] == t, :]
-        X = df_t.iloc[:, 2:].values
-        X = X - X.mean(axis=0)
+    iter_range = (t, t + 1)
+    params = None
+    df = results_utils.get_posterior_samples(cfg_name, model=model, replace_index=replace_index,
+                                             iter_range=iter_range, params=params, diffinit=diffinit,
+                                             what='weights')
+    df_t = df.loc[df['t'] == t, :]
+    X = df_t.iloc[:, 2:].values
+    X = X - X.mean(axis=0)
+    d = X.shape[1]
+    if d > 55:
+        print(f'More than 55 features (d = {d}), selecting a random subset')
+        n_replicates = (d // 55 + 1)
+        print(f'Using {n_replicates} replicates')
+        p_array = []
+        for _ in range(n_replicates):
+            idx_subset = np.random.choice(d, 55, replace=False)
+            X_sub = X[:, idx_subset]
+            _, _, _, p = stats_utils.fit_multivariate_normal(X_sub)
+            p_array.append(p)
+        print(p_array)
+        p = np.min(p_array)
+        print(np.mean(p_array), np.std(p_array))
+    else:
         _, _, _, p = stats_utils.fit_multivariate_normal(X)
-        alpha, _ = stats_utils.fit_alpha_stable(X)
+    alpha, _ = stats_utils.fit_alpha_stable(X)
+    mvn_covariance(X, identifier=f'{cfg_name}_{t}')
     return {'mvn p': p, 'alpha': alpha}
