@@ -257,7 +257,7 @@ class Model(K.Sequential):
         super(Model, self).save_weights(path.as_posix())
 
     @tf.function
-    def get_weights(self, flat: bool = False, sort: bool = True) -> tf.Tensor:
+    def get_weights(self, flat: bool = False, sort: bool = False) -> tf.Tensor:
         weights = self.weights
         if sort:
             # This only works for MLP

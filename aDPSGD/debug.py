@@ -94,7 +94,7 @@ def check_for_different_initialisations_with_same_seed(cfg_name, model, diffinit
         except AssertionError:
             ipdb.set_trace()
         # only care about starting weights
-        weights = exp.load_weights(iter_range=(0, 0), verbose=False)
+        weights = exp.load_weights(iter_range=(0, 0), verbose=False, sort=False)
         if seed in seed_weights:
             known_weights = seed_weights[seed][1]
             for i, w in enumerate(known_weights):

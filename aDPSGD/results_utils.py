@@ -5,7 +5,8 @@
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from experiment_metadata import get_dataset_size
+from experiment_metadata import get_dataset_size, get_input_hidden_size
+import ipdb
 
 TRACES_DIR = './traces/'
 
@@ -121,7 +122,8 @@ class ExperimentIdentifier(object):
 
         return df
 
-    def load_weights(self, iter_range=(None, None), params=None, verbose=True) -> pd.DataFrame:
+    def load_weights(self, iter_range=(None, None), params=None,
+                     verbose=True, sort=False) -> pd.DataFrame:
         path = self.path_stub().with_name(self.path_stub().name + '.weights.csv')
 
         if params is not None:
@@ -140,9 +142,61 @@ class ExperimentIdentifier(object):
         if iter_range[1] is not None:
             df = df.loc[df['t'] <= iter_range[1], :]
 
-        if verbose:
-            print('Loaded weights from', path)
+        if sort:
+            df = self.sort_weights(df)
 
+        if verbose:
+            if sort:
+                print(f'Loaded and sorted weights from {path}')
+            else:
+                print(f'Loaded weights from {path}')
+
+        return df
+
+    def sort_weights(self, df) -> pd.DataFrame:
+        """ Sorting all the weights """
+        if not self.model == 'mlp':
+            print('WARNING: Weight sorting is only meaningful for MLP - doing nothing')
+            return df
+        weights = df.iloc[:, 1:].values
+        N = df.shape[0]
+        # Set up the weights
+        input_size, hidden_size = get_input_hidden_size(self.cfg_name)
+        dense_layer_shape = (input_size, hidden_size)
+        shape_of_weights = [dense_layer_shape, [hidden_size], [hidden_size], [1]]
+        try:
+            assert np.sum([np.product(x) for x in shape_of_weights]) == weights.shape[1]
+        except AssertionError:
+            ipdb.set_trace()
+        # Split it up (copied from unflattening the weights)
+        indicator = 0
+        list_of_weights = []
+        for shape_size in shape_of_weights:
+            weight_size = np.product(shape_size)
+            weight_values = weights[:, indicator:(indicator+weight_size)]
+            list_of_weights.append(weight_values)
+            indicator = indicator + weight_size
+        dense_layer = list_of_weights[0].reshape(N,
+                                                 dense_layer_shape[0],
+                                                 dense_layer_shape[1])
+        dense_bias = list_of_weights[1]
+        final_layer = list_of_weights[2]
+        # Check things
+        assert dense_bias.shape[1] == dense_layer.shape[2]
+        assert dense_bias.shape[1] == final_layer.shape[1]
+        # Sort by the final layer
+        sort_idx = np.argsort(final_layer, axis=1)
+        dense_layer_sorted = np.take_along_axis(dense_layer,
+                                                sort_idx.reshape(N, 1, hidden_size),
+                                                axis=2)
+        dense_bias_sorted = np.take_along_axis(dense_bias, sort_idx, axis=1)
+        final_layer_sorted = np.take_along_axis(final_layer, sort_idx, axis=1)
+        # Flatten dense layer again
+        dense_layer_sorted = dense_layer_sorted.reshape(N, -1)
+        # Reinsert into the weights
+        weights = np.hstack([dense_layer_sorted, dense_bias_sorted,
+                             final_layer_sorted, list_of_weights[-1]])
+        df.iloc[:, 1:] = weights
         return df
 
     def load_loss(self, iter_range=(None, None), verbose=False):
@@ -235,7 +289,7 @@ def get_available_results(cfg_name: str, model: str, replace_index: int = None, 
 
 def get_posterior_samples(cfg_name, iter_range, model='linear', replace_index=None,
                           params=None, seeds='all', num_seeds='max', verbose=True,
-                          diffinit=False, data_privacy='all', what='weights'):
+                          diffinit=False, data_privacy='all', what='weights', sort=False):
     """
     grab the values of the weights of [params] at [at_time] for all the available seeds from identifier_stub
     """
@@ -265,7 +319,9 @@ def get_posterior_samples(cfg_name, iter_range, model='linear', replace_index=No
             print(f'WARNIG: File {base_experiment.path_stub()} doesn\'t seem to exist -skipping')
             continue
         if what == 'weights':
-            data_from_s = base_experiment.load_weights(iter_range=iter_range, params=params, verbose=False)
+            data_from_s = base_experiment.load_weights(iter_range=iter_range,
+                                                       params=params, verbose=False,
+                                                       sort=sort)
         elif what == 'gradients':
             data_from_s = base_experiment.load_gradients(iter_range=iter_range, params=params, verbose=False)
         else:

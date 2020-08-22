@@ -3,10 +3,9 @@
 
 import yaml
 import os
-from pathlib import Path
 
 
-def check_cfg_for_consistency(cfg):
+def check_cfg_for_consistency(cfg, verbose=False):
     if cfg['data']['binary']:
         assert cfg['model']['task_type'] == 'binary'
         assert cfg['model']['output_size'] == 1
@@ -17,10 +16,11 @@ def check_cfg_for_consistency(cfg):
         else:
             assert len(cfg['model']['input_size']) > 1
 
-    if cfg['model']['architecture'] in ['logistic', 'linear']:
-        if cfg['model']['hidden_size'] is not None:
-            print('WARNING: Hidden size specified for logistic or linear model!')
-    print('cfg passed checks')
+    if verbose:
+        if cfg['model']['architecture'] in ['logistic', 'linear']:
+            if cfg['model']['hidden_size'] is not None:
+                print('WARNING: Hidden size specified for logistic or linear model!')
+        print('cfg passed checks')
 
 
 def load_cfg(cfg_identifier):

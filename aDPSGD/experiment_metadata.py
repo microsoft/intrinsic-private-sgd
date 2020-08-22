@@ -98,6 +98,13 @@ def get_n_weights(cfg):
     return n_weights
 
 
+def get_input_hidden_size(cfg_name):
+    cfg = load_cfg(cfg_name)
+    input_size = cfg['model']['input_size']
+    hidden_size = cfg['model']['hidden_size']
+    return input_size, hidden_size
+
+
 def get_experiment_details(cfg_name, model, verbose=False, data_privacy='all'):
     cfg = load_cfg(cfg_name)
     task = cfg['model']['task_type']

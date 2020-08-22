@@ -65,15 +65,20 @@ class DeltaHistogram(DerivedResult):
     """
     Distribution of etc
     """
-    def __init__(self, cfg_name, model, num_deltas='max', t=500, data_privacy='all', multivariate=False):
+    def __init__(self, cfg_name, model, num_deltas='max', t=500,
+                 data_privacy='all', multivariate=False, sort=False):
         super(DeltaHistogram, self).__init__(cfg_name, model, data_privacy)
         self.num_deltas = num_deltas
         self.t = t
         self.multivariate = multivariate
+        self.sort = sort
         self.suffix = '.npy'
 
     def identifier(self, diffinit: bool) -> str:
         identifier = f'delta_histogram_nd{self.num_deltas}_t{self.t}{"_diffinit"*diffinit}{"_multivar"*self.multivariate}'
+
+        if self.sort:
+            identifier = f'{identifier}_sorted'
 
         return identifier
 
@@ -91,23 +96,33 @@ class DeltaHistogram(DerivedResult):
             path_string.parent.mkdir(exist_ok=True)
             print('Couldn\'t find', path_string)
             # vary-both
-            vary_both, identifiers_both = get_deltas(self.cfg_name, iter_range=(self.t, self.t+1),
+            vary_both, identifiers_both = get_deltas(self.cfg_name,
+                                                     iter_range=(self.t, self.t+1),
                                                      model=self.model,
-                                                     vary_seed=True, vary_data=True,
-                                                     num_deltas=self.num_deltas, diffinit=diffinit,
-                                                     data_privacy=self.data_privacy, multivariate=self.multivariate)
+                                                     vary_seed=True,
+                                                     vary_data=True,
+                                                     num_deltas=self.num_deltas,
+                                                     diffinit=diffinit,
+                                                     data_privacy=self.data_privacy,
+                                                     multivariate=self.multivariate,
+                                                     sort=self.sort)
             # vary-S
             vary_S, identifiers_S = get_deltas(self.cfg_name, iter_range=(self.t, self.t+1),
                                                model=self.model,
                                                vary_seed=False, vary_data=True,
-                                               num_deltas=self.num_deltas, diffinit=diffinit,
-                                               data_privacy=self.data_privacy, multivariate=self.multivariate)
+                                               num_deltas=self.num_deltas,
+                                               diffinit=diffinit,
+                                               data_privacy=self.data_privacy,
+                                               multivariate=self.multivariate,
+                                               sort=self.sort)
             # vary-r
             vary_r, identifiers_r = get_deltas(self.cfg_name, iter_range=(self.t, self.t+1),
                                                model=self.model,
                                                vary_seed=True, vary_data=False,
                                                num_deltas=self.num_deltas, diffinit=diffinit,
-                                               data_privacy=self.data_privacy, multivariate=self.multivariate)
+                                               data_privacy=self.data_privacy,
+                                               multivariate=self.multivariate,
+                                               sort=self.sort)
 
             # now save
             delta_histogram_data = {'vary_both': vary_both,
@@ -332,16 +347,20 @@ class Sigmas(DerivedResult):
     As for estimating the sensitivity, we want to grab a bunch of posteriors and estimate the variability
     """
     def __init__(self, cfg_name, model, t, num_replaces='max', num_seeds='max',
-                 data_privacy='all', multivariate=False):
+                 data_privacy='all', multivariate=False, sort=False):
         super(Sigmas, self).__init__(cfg_name, model, data_privacy)
         self.num_replaces = num_replaces
         self.num_seeds = num_seeds
         self.t = t
         self.multivariate = multivariate
+        self.sort = sort
         self.suffix = '.npy'
 
     def identifier(self, diffinit: bool) -> str:
         identifier = f'sigmas_t{self.t}_ns{self.num_seeds}{"_diffinit"*diffinit}{"_multivar"*self.multivariate}'
+
+        if self.sort:
+            identifier = f'{identifier}_sorted'
 
         return identifier
 
@@ -380,7 +399,8 @@ class Sigmas(DerivedResult):
                                                           verbose=verbose,
                                                           diffinit=diffinit,
                                                           data_privacy=self.data_privacy,
-                                                          num_seeds=self.num_seeds)
+                                                          num_seeds=self.num_seeds,
+                                                          sort=self.sort)
             try:
                 params = samples.columns[2:]
 
@@ -418,16 +438,21 @@ class VersusTime(DerivedResult):
     - variability w/out diffinit
     - variability with diffinit
     """
-    def __init__(self, cfg_name, model, data_privacy='all', iter_range=(0, 1000), num_deltas='max', cadence=200):
+    def __init__(self, cfg_name, model, data_privacy='all',
+                 iter_range=(0, 1000), num_deltas='max', cadence=200, sort=False):
         super(VersusTime, self).__init__(cfg_name, model, data_privacy)
         self.iter_range = iter_range
         self.num_deltas = num_deltas
         assert None not in self.iter_range
         self.cadence = cadence
+        self.sort = sort
         self.suffix = '.csv'
 
     def identifier(self, diffinit: bool = False) -> str:
         identifier = f'versus_time_nd{self.num_deltas}'
+
+        if self.sort:
+            identifier = f'{identifier}_sorted'
 
         return identifier
 
@@ -464,7 +489,8 @@ class VersusTime(DerivedResult):
             empirical_sensitivity = estimate_sensitivity_empirically(self.cfg_name, self.model, t,
                                                                      num_deltas=self.num_deltas,
                                                                      diffinit=True,
-                                                                     data_privacy=self.data_privacy)
+                                                                     data_privacy=self.data_privacy,
+                                                                     sort=self.sort)
 
             assert empirical_sensitivity is not None
 
@@ -472,11 +498,13 @@ class VersusTime(DerivedResult):
             variability_fixinit = estimate_variability(self.cfg_name, self.model, t,
                                                        multivariate=False,
                                                        diffinit=False,
-                                                       data_privacy=self.data_privacy)
+                                                       data_privacy=self.data_privacy,
+                                                       sort=self.sort)
             variability_diffinit = estimate_variability(self.cfg_name, self.model, t,
                                                         multivariate=False,
                                                         diffinit=True,
-                                                        data_privacy=self.data_privacy)
+                                                        data_privacy=self.data_privacy,
+                                                        sort=self.sort)
 
             # now record everything
             theoretical_sensitivity_list[i] = theoretical_sensitivity
@@ -500,7 +528,8 @@ class VersusTime(DerivedResult):
         weight_statistics = estimate_statistics_through_training('weights', self.cfg_name,
                                                                  self.model, replace_index=None,
                                                                  seed=None, df=None, params=None,
-                                                                 iter_range=self.iter_range, diffinit=True)
+                                                                 iter_range=self.iter_range, diffinit=True,
+                                                                 sort=self.sort)
         gradient_statistics = estimate_statistics_through_training('gradients', self.cfg_name,
                                                                    self.model, replace_index=None,
                                                                    seed=None, df=None, params=None,
@@ -514,10 +543,11 @@ class VersusTime(DerivedResult):
 
 
 class Stability(DerivedResult):
-    def __init__(self, cfg_name, model, t, data_privacy='all'):
+    def __init__(self, cfg_name, model, t, data_privacy='all', sort=False):
         super(Stability, self).__init__(cfg_name, model, data_privacy)
         self.t = t
         self.suffix = '.npy'
+        self.sort = sort
 
     def identifier(self, diffinit: bool = False) -> str:
         identifier = f'stability_t{self.t}'
@@ -532,8 +562,8 @@ class Stability(DerivedResult):
 
             return
 
-        sigma_df = compute_sigma_v_num_seeds(self.cfg_name, self.model, self.t)
-        sens_df = compute_sens_v_num_deltas(self.cfg_name, self.model, self.t)
+        sigma_df = compute_sigma_v_num_seeds(self.cfg_name, self.model, self.t, sort=self.sort)
+        sens_df = compute_sens_v_num_deltas(self.cfg_name, self.model, self.t, sort=self.sort)
         stability_dict = {'sigma': sigma_df,
                           'sens': sens_df}
         print(f'[Stability] Saved to {path_string}')
@@ -551,6 +581,13 @@ def generate_derived_results(cfg_name: str, model: str = 'logistic', t: int = No
             raise ValueError(f'Convergence point not good, valid fraction: {valid_frac}')
         else:
             print(f'Selecting t as convergence point {t}, valid fraction {valid_frac}')
+
+    if model == 'mlp':
+        DeltaHistogram(cfg_name, model, t=t, sort=True).generate()
+        SensVar(cfg_name, model, t=t, sort=True).generate()
+        Sigmas(cfg_name, model, t=t, sort=True).generate(diffinit=True)
+        VersusTime(cfg_name, model, iter_range=(0, t+200), sort=True).generate()
+        Stability(cfg_name, model, t=t, sort=True).generate()
 
     DeltaHistogram(cfg_name, model, t=t).generate()
     AggregatedLoss(cfg_name, model).generate(diffinit=True)
@@ -672,7 +709,7 @@ def estimate_sensitivity_empirically(cfg_name, model, t, num_deltas, diffinit=Fa
 def get_deltas(cfg_name, iter_range, model,
                vary_seed=True, vary_data=True, params=None, num_deltas=100,
                include_identifiers=False, diffinit=False, data_privacy='all',
-               multivariate=False, verbose=False):
+               multivariate=False, verbose=False, sort=False):
     """
     collect samples of weights from experiments on cfg_name+model, varying:
     - seed (vary_seed)
@@ -773,7 +810,8 @@ def get_deltas(cfg_name, iter_range, model,
         exp = results_utils.ExperimentIdentifier(cfg_name, model, replace_index, seed, diffinit, data_privacy)
 
         if exp.exists():
-            w_weights = exp.load_weights(iter_range=iter_range, params=params, verbose=False).values[:, 1:]
+            w_weights = exp.load_weights(iter_range=iter_range, params=params,
+                                         verbose=False, sort=sort).values[:, 1:]
             # the first column is the time-step
         else:
             print('WARNING: Missing data for (seed, replace) = (', seed, replace_index, ')')
@@ -784,7 +822,8 @@ def get_deltas(cfg_name, iter_range, model,
         exp_p = results_utils.ExperimentIdentifier(cfg_name, model, replace_index_p, seed_p, diffinit, data_privacy)
 
         if exp_p.exists():
-            wp_weights = exp_p.load_weights(iter_range=iter_range, params=params, verbose=False).values[:, 1:]
+            wp_weights = exp_p.load_weights(iter_range=iter_range, params=params,
+                                            verbose=False, sort=sort).values[:, 1:]
         else:
             print('WARNING: Missing data for (seed, replace) = (', seed_p, replace_index_p, ')')
             wp_weights = np.array([np.nan])
@@ -1072,7 +1111,7 @@ def compute_sigma_v_num_seeds(cfg_name, model, t) -> pd.DataFrame:
     return stability_sigma
 
 
-def compute_sens_v_num_deltas(cfg_name, model, t):
+def compute_sens_v_num_deltas(cfg_name, model, t, sort=False):
     """
     compute empirical
     - sens
@@ -1087,7 +1126,8 @@ def compute_sens_v_num_deltas(cfg_name, model, t):
         vary_S, _ = get_deltas(cfg_name, iter_range=(t, t+1),
                                model=model, vary_seed=False, vary_data=True,
                                num_deltas=num_deltas, diffinit=True,
-                               data_privacy='all', multivariate=False)
+                               data_privacy='all', multivariate=False,
+                               sort=sort)
 
         if vary_S is None:
             sens = None
@@ -1104,21 +1144,24 @@ def compute_sens_v_num_deltas(cfg_name, model, t):
     return stability_sens
 
 
-def compute_mvn_fit_and_alpha(cfg_name, model, t, diffinit=True) -> dict:
+def compute_mvn_fit_and_alpha(cfg_name, model, t, diffinit=True, sort=False) -> dict:
     replace_index = results_utils.get_replace_index_with_most_seeds(cfg_name, model, diffinit=diffinit)
 
     iter_range = (t, t + 1)
     params = None
-    df = results_utils.get_posterior_samples(cfg_name, model=model, replace_index=replace_index,
-                                             iter_range=iter_range, params=params, diffinit=diffinit,
-                                             what='weights')
+    df = results_utils.get_posterior_samples(cfg_name, model=model,
+                                             replace_index=replace_index,
+                                             iter_range=iter_range,
+                                             params=params, diffinit=diffinit,
+                                             what='weights',
+                                             sort=sort)
     df_t = df.loc[df['t'] == t, :]
     X = df_t.iloc[:, 2:].values
     X = X - X.mean(axis=0)
     d = X.shape[1]
     if d > 55:
         print(f'More than 55 features (d = {d}), selecting a random subset')
-        n_replicates = (d // 55 + 1)
+        n_replicates = 2 * (d // 55 + 1)
         print(f'Using {n_replicates} replicates')
         p_array = []
         for _ in range(n_replicates):
