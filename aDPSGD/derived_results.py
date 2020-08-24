@@ -696,10 +696,11 @@ def accuracy_at_eps(cfg_name, model, t, use_bound=False, num_experiments=500,
 
 
 def estimate_sensitivity_empirically(cfg_name, model, t, num_deltas, diffinit=False,
-                                     data_privacy='all', multivariate=False, verbose=True):
+                                     data_privacy='all', multivariate=False,
+                                     verbose=True, sort=False):
     """ pull up the histogram
     """
-    delta_histogram_data = DeltaHistogram(cfg_name, model, num_deltas, t, data_privacy, multivariate).load(diffinit, generate_if_needed=True, verbose=verbose)
+    delta_histogram_data = DeltaHistogram(cfg_name, model, num_deltas, t, data_privacy, multivariate, sort=sort).load(diffinit, generate_if_needed=True, verbose=verbose)
     vary_data_deltas = delta_histogram_data['vary_S']
     sensitivity = np.nanmax(vary_data_deltas, axis=0)
 
@@ -1049,11 +1050,11 @@ def compute_pairwise_sens_and_var(cfg_name, model, t, replace_indices,
 
 def estimate_variability(cfg_name, model, t, multivariate=False, diffinit=False,
                          data_privacy='all', num_replaces='max', num_seeds='max',
-                         ephemeral=False, verbose=True):
+                         ephemeral=False, verbose=True, sort=False):
     """
     This just pulls up the Sigmas result, and potentially subsets
     """
-    sigmas_result = Sigmas(cfg_name, model, t, num_replaces, num_seeds, data_privacy, multivariate)
+    sigmas_result = Sigmas(cfg_name, model, t, num_replaces, num_seeds, data_privacy, multivariate, sort=sort)
 
     if ephemeral:
         sigmas_data = sigmas_result.generate(diffinit, verbose=False, ephemeral=True)
@@ -1144,7 +1145,8 @@ def compute_sens_v_num_deltas(cfg_name, model, t, sort=False):
     return stability_sens
 
 
-def compute_mvn_fit_and_alpha(cfg_name, model, t, diffinit=True, sort=False) -> dict:
+def compute_mvn_fit_and_alpha(cfg_name, model, t, diffinit=True, sort=False,
+                              just_on_normal_marginals=False) -> dict:
     replace_index = results_utils.get_replace_index_with_most_seeds(cfg_name, model, diffinit=diffinit)
 
     iter_range = (t, t + 1)
@@ -1159,6 +1161,17 @@ def compute_mvn_fit_and_alpha(cfg_name, model, t, diffinit=True, sort=False) -> 
     X = df_t.iloc[:, 2:].values
     X = X - X.mean(axis=0)
     d = X.shape[1]
+    if just_on_normal_marginals:
+        print('Selecting just those parameters with normal marginals')
+        normal_marginals = []
+        for di in range(d):
+            Xd = X[:, di]
+            _, _, _, pval = stats_utils.fit_normal(Xd)
+            if pval > 0.05:
+                normal_marginals.append(di)
+        print(f'Found {len(normal_marginals)} parameters with normally-distributed marginals!')
+        X = X[:, normal_marginals]
+        d = X.shape[1]
     if d > 55:
         print(f'More than 55 features (d = {d}), selecting a random subset')
         n_replicates = 2 * (d // 55 + 1)
@@ -1174,6 +1187,7 @@ def compute_mvn_fit_and_alpha(cfg_name, model, t, diffinit=True, sort=False) -> 
         print(np.mean(p_array), np.std(p_array))
     else:
         _, _, _, p = stats_utils.fit_multivariate_normal(X)
+        
     alpha, _ = stats_utils.fit_alpha_stable(X)
     mvn_covariance(X, identifier=f'{cfg_name}_{t}')
     return {'mvn p': p, 'alpha': alpha}

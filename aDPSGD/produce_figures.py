@@ -26,7 +26,7 @@ plt.rcParams.update(params)
 FIGS_DIR = Path('./figures/')
 
 
-def generate_plots(cfg_name: str, model: str, t=None) -> None:
+def generate_plots(cfg_name: str, model: str, t=None, sort=False) -> None:
     """
     Wrapper to generate plots for a specific config
     (other plots compare across multiple configs)
@@ -52,12 +52,16 @@ def generate_plots(cfg_name: str, model: str, t=None) -> None:
         versus_time_acc_lims = None
 
     plot_delta_histogram(cfg_name, model, t=t, include_bounds=(model == 'logistic'),
-                         xlim=delta_histogram_xlim, ylim=delta_histogram_ylim)
+                         xlim=delta_histogram_xlim, ylim=delta_histogram_ylim,
+                         sort=sort)
     plot_epsilon_distribution(cfg_name, model, t=t,
-                              xlim=epsilon_distribution_xlim, ylim=epsilon_distribution_ylim)
+                              xlim=epsilon_distribution_xlim,
+                              ylim=epsilon_distribution_ylim,
+                              sort=sort)
     plot_sens_and_var_over_time(cfg_name, model, iter_range=(0, int(t*1.2)),
-                                acc_lims=versus_time_acc_lims)
-    plot_stability_of_estimated_values(cfg_name, model, t)
+                                acc_lims=versus_time_acc_lims,
+                                sort=sort)
+    plot_stability_of_estimated_values(cfg_name, model, t, sort=sort)
 
     return
 
@@ -138,10 +142,11 @@ def generate_reports(cfg_name: str, model: str, t=None, num_experiments=500) -> 
 
 def plot_delta_histogram(cfg_name: str, model: str, num_deltas='max', t=500,
                          include_bounds=False, xlim=None, ylim=None,
-                         data_privacy='all', multivariate=False) -> None:
+                         data_privacy='all', multivariate=False,
+                         sort=False) -> None:
     if multivariate:
         raise NotImplementedError('Multivariate plotting is not implemented')
-    delta_histogram = dr.DeltaHistogram(cfg_name, model, num_deltas, t, data_privacy, multivariate)
+    delta_histogram = dr.DeltaHistogram(cfg_name, model, num_deltas, t, data_privacy, multivariate, sort=sort)
     plot_data = delta_histogram.load(diffinit=False)
     plot_data_diffinit = delta_histogram.load(diffinit=True)
 
@@ -219,6 +224,8 @@ def plot_delta_histogram(cfg_name: str, model: str, num_deltas='max', t=500,
     plt.tight_layout()
 
     figure_identifier = f'delta_histogram_{cfg_name}_{data_privacy}_{model}_t{t}'
+    if sort:
+        figure_identifier = f'{figure_identifier}_sorted'
     plt.savefig((FIGS_DIR / figure_identifier).with_suffix('.png'))
     plt.savefig((FIGS_DIR / figure_identifier).with_suffix('.pdf'))
 
