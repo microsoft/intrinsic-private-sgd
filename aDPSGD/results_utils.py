@@ -126,15 +126,7 @@ class ExperimentIdentifier(object):
                      verbose=True, sort=False) -> pd.DataFrame:
         path = self.path_stub().with_name(self.path_stub().name + '.weights.csv')
 
-        if params is not None:
-            assert type(params) == list
-            usecols = ['t'] + params
-        else:
-            if verbose:
-                print('WARNING: Loading all columns can be slow!')
-            usecols = None
-
-        df = pd.read_csv(path, usecols=usecols)
+        df = pd.read_csv(path, usecols=None)
 
         if iter_range[0] is not None:
             df = df.loc[df['t'] >= iter_range[0], :]
@@ -144,6 +136,11 @@ class ExperimentIdentifier(object):
 
         if sort:
             df = self.sort_weights(df)
+
+        if params is not None:
+            assert type(params) == list
+            params_cols = ['t'] + params
+            df = df[params_cols]
 
         if verbose:
             if sort:

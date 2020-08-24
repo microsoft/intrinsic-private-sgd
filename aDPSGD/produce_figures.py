@@ -62,6 +62,7 @@ def generate_plots(cfg_name: str, model: str, t=None, sort=False) -> None:
                                 acc_lims=versus_time_acc_lims,
                                 sort=sort)
     plot_stability_of_estimated_values(cfg_name, model, t, sort=sort)
+    plot_distance_v_time(cfg_name, model, sort)
 
     return
 
@@ -83,6 +84,7 @@ def generate_reports(cfg_name: str, model: str, t=None, num_experiments=500) -> 
     print(f'Empirical sensitivity: \t\t\t{empirical_sensitivity}')
 
     _, batch_size, lr, _, N = em.get_experiment_details(cfg_name, model)
+
     if model == 'logistic':
         theoretical_sensitivity = test_private_model.compute_wu_bound(lipschitz_constant=np.sqrt(2),
                                                                       t=t, N=N, batch_size=batch_size,
@@ -144,6 +146,7 @@ def plot_delta_histogram(cfg_name: str, model: str, num_deltas='max', t=500,
                          include_bounds=False, xlim=None, ylim=None,
                          data_privacy='all', multivariate=False,
                          sort=False) -> None:
+
     if multivariate:
         raise NotImplementedError('Multivariate plotting is not implemented')
     delta_histogram = dr.DeltaHistogram(cfg_name, model, num_deltas, t, data_privacy, multivariate, sort=sort)
@@ -224,8 +227,49 @@ def plot_delta_histogram(cfg_name: str, model: str, num_deltas='max', t=500,
     plt.tight_layout()
 
     figure_identifier = f'delta_histogram_{cfg_name}_{data_privacy}_{model}_t{t}'
+
     if sort:
         figure_identifier = f'{figure_identifier}_sorted'
+    plt.savefig((FIGS_DIR / figure_identifier).with_suffix('.png'))
+    plt.savefig((FIGS_DIR / figure_identifier).with_suffix('.pdf'))
+
+    return
+
+
+def plot_distance_v_time(cfg_name, model, num_pairs='max', sort=False) -> None:
+    df = dr.VersusTime(cfg_name, model, sort=sort).load()
+    relevant_columns = [x for x in df.columns if 'distance' in x]
+    df = df[['t'] + relevant_columns]
+    df.dropna(axis=0, inplace=True)
+
+    figsize = (4, 3)
+    size = 6
+    fig, axarr = plt.subplots(nrows=1, ncols=1, figsize=figsize)
+
+    t = df['t']
+    which_colours = {'fixinit': em.dp_colours['augment'],
+                     'diffinit': em.dp_colours['augment_diffinit']}
+
+    for which in ['fixinit', 'diffinit']:
+        min_dist = df[f'min_{which}_distance']
+        mean_dist = df[f'mean_{which}_distance']
+        max_dist = df[f'max_{which}_distance']
+        std_dist = df[f'std_{which}_distance']
+        axarr.plot(t, mean_dist, label=which, color=which_colours[which], alpha=0.5)
+        axarr.scatter(t, mean_dist, color=which_colours[which], label='_nolegend_', s=size)
+        axarr.fill_between(t, mean_dist - std_dist, mean_dist + std_dist,
+                           alpha=0.3, label='_nolegend_', color=which_colours[which])
+        axarr.fill_between(t, min_dist, max_dist, alpha=0.1,
+                           label='_nolegend_', color=which_colours[which])
+
+    axarr.legend()
+    axarr.set_ylabel(r'$\|w - w^\prime\|$')
+    axarr.set_xlabel('training steps')
+
+    vis_utils.beautify_axes(np.array([axarr]))
+    plt.tight_layout()
+
+    figure_identifier = f'distance_v_time_{cfg_name}'
     plt.savefig((FIGS_DIR / figure_identifier).with_suffix('.png'))
     plt.savefig((FIGS_DIR / figure_identifier).with_suffix('.pdf'))
 
@@ -319,8 +363,10 @@ def plot_epsilon_distribution(cfg_name, model, t, delta=None, num_pairs='max',
     for ax in axarr:
         if which == 'both':
             ax.legend()
+
         if xlim is not None:
             ax.set_xlim(xlim)
+
         if ylim is not None:
             ax.set_ylim(ylim)
 

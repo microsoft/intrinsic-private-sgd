@@ -435,6 +435,10 @@ class VersusTime(DerivedResult):
     - vali loss
     - theoretical sensitivity
     - empirical sensitivity
+    - for weights w/ different seed:
+        - average distance
+        - min + max
+        - std
     - variability w/out diffinit
     - variability with diffinit
     """
@@ -476,6 +480,14 @@ class VersusTime(DerivedResult):
         empirical_sensitivity_list = [np.nan]*n_T
         variability_fixinit_list = [np.nan]*n_T
         variability_diffinit_list = [np.nan]*n_T
+        min_fixinit_distance_list = [np.nan]*n_T
+        mean_fixinit_distance_list = [np.nan]*n_T
+        max_fixinit_distance_list = [np.nan]*n_T
+        std_fixinit_distance_list = [np.nan]*n_T
+        min_diffinit_distance_list = [np.nan]*n_T
+        mean_diffinit_distance_list = [np.nan]*n_T
+        max_diffinit_distance_list = [np.nan]*n_T
+        std_diffinit_distance_list = [np.nan]*n_T
 
         for i, t in enumerate(t_range):
 
@@ -506,36 +518,53 @@ class VersusTime(DerivedResult):
                                                         data_privacy=self.data_privacy,
                                                         sort=self.sort)
 
+            # distance statistics
+            statistics_fixinit = compute_distance_statistics(self.cfg_name, self.model, t,
+                                                             multivariate=False,
+                                                             diffinit=False,
+                                                             data_privacy=self.data_privacy,
+                                                             sort=self.sort)
+            statistics_diffinit = compute_distance_statistics(self.cfg_name, self.model, t,
+                                                              multivariate=False,
+                                                              diffinit=True,
+                                                              data_privacy=self.data_privacy,
+                                                              sort=self.sort)
+
             # now record everything
             theoretical_sensitivity_list[i] = theoretical_sensitivity
             empirical_sensitivity_list[i] = empirical_sensitivity
             variability_fixinit_list[i] = variability_fixinit
             variability_diffinit_list[i] = variability_diffinit
+            # All the distance statistics
+            min_fixinit_distance_list[i] = statistics_fixinit['min_distance']
+            mean_fixinit_distance_list[i] = statistics_fixinit['mean_distance']
+            max_fixinit_distance_list[i] = statistics_fixinit['max_distance']
+            std_fixinit_distance_list[i] = statistics_fixinit['std_distance']
+            min_diffinit_distance_list[i] = statistics_diffinit['min_distance']
+            mean_diffinit_distance_list[i] = statistics_diffinit['mean_distance']
+            max_diffinit_distance_list[i] = statistics_diffinit['max_distance']
+            std_diffinit_distance_list[i] = statistics_diffinit['std_distance']
 
         # combine everything into a dataframe
         df = pd.DataFrame({'t': t_range,
                            'theoretical_sensitivity': theoretical_sensitivity_list,
                            'empirical_sensitivity': empirical_sensitivity_list,
                            'variability_fixinit': variability_fixinit_list,
-                           'variability_diffinit': variability_diffinit_list})
+                           'variability_diffinit': variability_diffinit_list,
+                           'min_fixinit_distance': min_fixinit_distance_list,
+                           'mean_fixinit_distance': mean_fixinit_distance_list,
+                           'max_fixinit_distance': max_fixinit_distance_list,
+                           'std_fixinit_distance': std_fixinit_distance_list,
+                           'min_diffinit_distance': min_diffinit_distance_list,
+                           'mean_diffinit_distance': mean_diffinit_distance_list,
+                           'max_diffinit_distance': max_diffinit_distance_list,
+                           'std_diffinit_distance': std_diffinit_distance_list})
 
         df.set_index('t', inplace=True)
         # now join the losses...
         losses = AggregatedLoss(self.cfg_name, self.model, iter_range=self.iter_range,
                                 data_privacy=self.data_privacy).load(diffinit=True)
         df = df.join(losses)
-        # now fit the statistics (warning: these are underpowered...)
-        weight_statistics = estimate_statistics_through_training('weights', self.cfg_name,
-                                                                 self.model, replace_index=None,
-                                                                 seed=None, df=None, params=None,
-                                                                 iter_range=self.iter_range, diffinit=True,
-                                                                 sort=self.sort)
-        gradient_statistics = estimate_statistics_through_training('gradients', self.cfg_name,
-                                                                   self.model, replace_index=None,
-                                                                   seed=None, df=None, params=None,
-                                                                   iter_range=self.iter_range, diffinit=True)
-        df = df.join(weight_statistics, how='outer')
-        df = df.join(gradient_statistics, how='outer')
         df.to_csv(path_string)
         print(f'[VersusTime] Saved to {path_string}')
 
@@ -707,6 +736,23 @@ def estimate_sensitivity_empirically(cfg_name, model, t, num_deltas, diffinit=Fa
     return sensitivity
 
 
+def compute_distance_statistics(cfg_name, model, t, num_deltas='max', diffinit=False,
+                                data_privacy='all', multivariate=False,
+                                verbose=True, sort=False):
+    """ pull up the histogram
+    """
+    dh = DeltaHistogram(cfg_name, model, num_deltas, t, data_privacy,
+                        multivariate, sort=sort)
+    dh_data = dh.load(diffinit, generate_if_needed=True, verbose=verbose)
+    vary_seed_deltas = dh_data['vary_r']
+    statistics = dict()
+    statistics['mean_distance'] = np.nanmean(vary_seed_deltas, axis=0)
+    statistics['min_distance'] = np.nanmin(vary_seed_deltas, axis=0)
+    statistics['max_distance'] = np.nanmax(vary_seed_deltas, axis=0)
+    statistics['std_distance'] = np.nanstd(vary_seed_deltas, axis=0)
+
+    return statistics
+
 def get_deltas(cfg_name, iter_range, model,
                vary_seed=True, vary_data=True, params=None, num_deltas=100,
                include_identifiers=False, diffinit=False, data_privacy='all',
@@ -842,8 +888,9 @@ def get_deltas(cfg_name, iter_range, model,
     return deltas, identifiers
 
 
-def estimate_statistics_through_training(what, cfg_name, model, replace_index, seed, df=None,
-                                         params=None, iter_range=(None, None), diffinit=True):
+def estimate_statistics_through_training(what, cfg_name, model, replace_index,
+                                         seed, df=None, params=None, sort=False,
+                                         iter_range=(None, None), diffinit=True):
     """
     Grab a trace file for a model, estimate the alpha value for gradient noise throughout training
     NOTE: All weights taken together as IID (in the list of params supplied)
@@ -855,13 +902,15 @@ def estimate_statistics_through_training(what, cfg_name, model, replace_index, s
 
     if df is None:
         if what == 'gradients':
+            if sort:
+                raise ValueError(sort)
             df = results_utils.get_posterior_samples(cfg_name, model=model, replace_index=replace_index,
                                                      iter_range=iter_range, params=params, diffinit=diffinit,
                                                      what='gradients')
         else:
             print('Getting posterior for weights, seed is irrelevant')
             df = results_utils.get_posterior_samples(cfg_name, model=model, replace_index=replace_index,
-                                                     iter_range=iter_range, params=params, diffinit=diffinit)
+                                                     iter_range=iter_range, params=params, diffinit=diffinit, sort=sort)
 
         if df is False:
             print('ERROR: No data found')

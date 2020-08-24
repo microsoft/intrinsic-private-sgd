@@ -89,10 +89,13 @@ def weight_evolution(cfg_name, model, n_seeds=50, replace_indices=None,
     return
 
 
-def weight_posterior(cfg_name, model, replace_indices=None, t=500, param='#0', overlay_normal=False):
+def weight_posterior(cfg_name, model, replace_indices='random', t=500,
+                     param='#0', sort=False):
     """
-    show posterior of weight for two cfg_names, get all the samples
     """
+    if sort and not model == 'mlp':
+        print(f'WARNING: Sort = True is not implemented/meaningful for model {model}')
+
     iter_range = (t, t+1)
 
     if replace_indices == 'random':
@@ -101,38 +104,38 @@ def weight_posterior(cfg_name, model, replace_indices=None, t=500, param='#0', o
         replace_counts = df['replace'].value_counts()
         replaces = replace_counts[replace_counts > 2].index.values
         replace_indices = np.random.choice(replaces, 2, replace=False)
-    assert len(replace_indices) == 2
-    # now load the data!
-    df_1 = results_utils.get_posterior_samples(cfg_name, iter_range, model,
-                                               replace_index=replace_indices[0],
-                                               params=[param], seeds='all')
-    df_2 = results_utils.get_posterior_samples(cfg_name, iter_range, model,
-                                               replace_index=replace_indices[1],
-                                               params=[param], seeds='all')
-    print(f'Loaded {df_1.shape[0]} and {df_2.shape[0]} samples respectively')
+    elif type(replace_indices) == int:
+        replace_indices = [replace_indices]
+
+    assert type(replace_indices) == list
+    # Set up the plot
     fig, axarr = plt.subplots(nrows=1, ncols=1)
     n_bins = 25
-    sns.distplot(df_1[param], ax=axarr, label='D - ' + str(replace_indices[0]),
-                 kde=True, color='blue', bins=n_bins, norm_hist=True)
-    sns.distplot(df_2[param], ax=axarr, label='D - ' + str(replace_indices[1]),
-                 kde=True, color='red', bins=n_bins, norm_hist=True)
+    # now load the data!
+    for replace_index in replace_indices:
+        df = results_utils.get_posterior_samples(cfg_name, iter_range, model,
+                                                   replace_index=replace_index,
+                                                   params=[param], seeds='all',
+                                                   sort=sort)
+        sns.distplot(df[param], ax=axarr, label=f'D\{replace_index}',
+                     kde=True, bins=n_bins, norm_hist=True)
+#    df_2 = results_utils.get_posterior_samples(cfg_name, iter_range, model,
+#                                               replace_index=replace_indices[1],
+#                                               params=[param], seeds='all',
+#                                               sort=sort)
+#    print(f'Loaded {df_1.shape[0]} and {df_2.shape[0]} samples respectively')
+#    sns.distplot(df_2[param], ax=axarr, label='D - ' + str(replace_indices[1]),
+#                 kde=True, color='red', bins=n_bins, norm_hist=True)
     # show the empirical means
 
-    if overlay_normal:
-        mean_1 = df_1[param].mean()
-        mean_2 = df_2[param].mean()
-        std_1 = df_1[param].std()
-        std_2 = df_2[param].std()
-        normal_1 = np.random.normal(loc=mean_1, scale=std_1, size=1000)
-        normal_2 = np.random.normal(loc=mean_2, scale=std_2, size=1000)
-        sns.kdeplot(normal_1, color='blue', ax=axarr)
-        sns.kdeplot(normal_2, color='red', ax=axarr)
     axarr.set_xlabel('weight ' + param)
     axarr.legend()
     axarr.set_ylabel('# runs')
     vis_utils.beautify_axes(np.array([axarr]))
 
-    plot_identifier = f'weight_posterior_{cfg_name}_{model}_{param}'
+    plot_identifier = f'weight_posterior_{cfg_name}_{param}'
+    if sort:
+        plot_identifier = f'{plot_identifier}_sorted'
     plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.png'))
     plt.savefig((PLOTS_DIR / plot_identifier).with_suffix('.pdf'))
 
