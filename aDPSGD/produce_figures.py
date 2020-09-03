@@ -237,34 +237,67 @@ def plot_delta_histogram(cfg_name: str, model: str, num_deltas='max', t=500,
 
 
 def plot_distance_v_time(cfg_name, model, num_pairs='max', sort=False) -> None:
+    """
+    This will take precedence over the normal sens_var_over_time one
+    """
     df = dr.VersusTime(cfg_name, model, sort=sort).load()
-    relevant_columns = [x for x in df.columns if 'distance' in x]
-    df = df[['t'] + relevant_columns]
-    df.dropna(axis=0, inplace=True)
 
-    figsize = (4, 3)
+    # Get distance (vary seed)
+    distance_columns = [x for x in df.columns if 'distance' in x]
+    df_distance = df[['t'] + distance_columns]
+    df_distance.dropna(axis=0, inplace=True)
+
+    # Get sensitivity (vary data)
+    df_sens = df[['t', 'theoretical_sensitivity', 'empirical_sensitivity']]
+    if model == 'mlp':
+        df_sens.drop(columns='theoretical_sensitivity', inplace=True)
+    else:
+        # discretise the sensitivity
+        ds = [np.nan]*df_sens.shape[0]
+        for i, ts in enumerate(df_sens['theoretical_sensitivity'].values):
+            ds[i] = test_private_model.discretise_theoretical_sensitivity(cfg_name, model, ts)
+        df_sens['theoretical_sensitivity_discretised'] = ds
+    df_sens.dropna(axis=0, inplace=True)
+
+    # Now plot
     size = 6
-    fig, axarr = plt.subplots(nrows=1, ncols=1, figsize=figsize)
+    fig, axarr = plt.subplots(nrows=1, ncols=1, figsize=(4, 2.1))
 
-    t = df['t']
+    # First distance (vary seed)
+    t = df_distance['t']
     which_colours = {'fixinit': em.dp_colours['augment'],
                      'diffinit': em.dp_colours['augment_diffinit']}
+    which_labels = {'fixinit': np.nan,
+                    'diffinit': r'$\Delta_V^{vary}$'}
 
-    for which in ['fixinit', 'diffinit']:
-        min_dist = df[f'min_{which}_distance']
-        mean_dist = df[f'mean_{which}_distance']
-        max_dist = df[f'max_{which}_distance']
-        std_dist = df[f'std_{which}_distance']
-        axarr.plot(t, mean_dist, label=which, color=which_colours[which], alpha=0.5)
+    for which in ['diffinit']:           # not interested in fixinit
+        min_dist = df_distance[f'min_{which}_distance']
+        mean_dist = df_distance[f'mean_{which}_distance']
+        max_dist = df_distance[f'max_{which}_distance']
+        std_dist = df_distance[f'std_{which}_distance']
+        axarr.plot(t, mean_dist, label=which_labels[which], color=which_colours[which], alpha=0.5)
         axarr.scatter(t, mean_dist, color=which_colours[which], label='_nolegend_', s=size)
         axarr.fill_between(t, mean_dist - std_dist, mean_dist + std_dist,
-                           alpha=0.3, label='_nolegend_', color=which_colours[which])
+                           alpha=0.2, label='_nolegend_', color=which_colours[which])
         axarr.fill_between(t, min_dist, max_dist, alpha=0.1,
                            label='_nolegend_', color=which_colours[which])
+    
+    # Now sensitivity (vary data)
+    t = df_sens['t']
+    if 'theoretical_sensitivity_discretised' in df_sens:
+        axarr.plot(t, df_sens['theoretical_sensitivity_discretised'],
+                   label=r'$\hat{\Delta}_S$', alpha=0.5, c=em.dp_colours['bolton'], ls='--')
+    axarr.scatter(t, df_sens['empirical_sensitivity'],
+                  label='_nolegend_', s=size, c=em.dp_colours['bolton'])
+    axarr.plot(t, df_sens['empirical_sensitivity'], label=r'$\hat{\Delta}^*_S$',
+               alpha=0.5, c=em.dp_colours['bolton'])
 
+    # Now save and stuff
     axarr.legend()
     axarr.set_ylabel(r'$\|w - w^\prime\|$')
     axarr.set_xlabel('training steps')
+    xmin, _ = axarr.get_xlim()           # this is a hack for mnist
+    axarr.set_xlim(xmin, t.max())
 
     vis_utils.beautify_axes(np.array([axarr]))
     plt.tight_layout()
