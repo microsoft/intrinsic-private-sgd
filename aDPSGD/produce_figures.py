@@ -236,7 +236,8 @@ def plot_delta_histogram(cfg_name: str, model: str, num_deltas='max', t=500,
     return
 
 
-def plot_distance_v_time(cfg_name, model, num_pairs='max', sort=False) -> None:
+def plot_distance_v_time(cfg_name, model, num_pairs='max', sort=False,
+                         convergence_point=None) -> None:
     """
     This will take precedence over the normal sens_var_over_time one
     """
@@ -281,7 +282,7 @@ def plot_distance_v_time(cfg_name, model, num_pairs='max', sort=False) -> None:
                            alpha=0.2, label='_nolegend_', color=which_colours[which])
         axarr.fill_between(t, min_dist, max_dist, alpha=0.1,
                            label='_nolegend_', color=which_colours[which])
-    
+
     # Now sensitivity (vary data)
     t = df_sens['t']
     if 'theoretical_sensitivity_discretised' in df_sens:
@@ -292,6 +293,9 @@ def plot_distance_v_time(cfg_name, model, num_pairs='max', sort=False) -> None:
     axarr.plot(t, df_sens['empirical_sensitivity'], label=r'$\hat{\Delta}^*_S$',
                alpha=0.5, c=em.dp_colours['bolton'])
 
+    if convergence_point is not None:
+        # add a vertical line
+        axarr.axvline(x=convergence_point, ls='--', alpha=0.5, color='black')
     # Now save and stuff
     axarr.legend()
     axarr.set_ylabel(r'$\|w - w^\prime\|$')

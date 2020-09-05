@@ -103,7 +103,7 @@ def weight_posterior(cfg_name, model, replace_indices='random', t=500,
         df = results_utils.get_available_results(cfg_name, model)
         replace_counts = df['replace'].value_counts()
         replaces = replace_counts[replace_counts > 2].index.values
-        replace_indices = np.random.choice(replaces, 2, replace=False)
+        replace_indices = np.random.choice(replaces, 2, replace=False).tolist()
     elif type(replace_indices) == int:
         replace_indices = [replace_indices]
 
@@ -119,14 +119,6 @@ def weight_posterior(cfg_name, model, replace_indices='random', t=500,
                                                    sort=sort)
         sns.distplot(df[param], ax=axarr, label=f'D\{replace_index}',
                      kde=True, bins=n_bins, norm_hist=True)
-#    df_2 = results_utils.get_posterior_samples(cfg_name, iter_range, model,
-#                                               replace_index=replace_indices[1],
-#                                               params=[param], seeds='all',
-#                                               sort=sort)
-#    print(f'Loaded {df_1.shape[0]} and {df_2.shape[0]} samples respectively')
-#    sns.distplot(df_2[param], ax=axarr, label='D - ' + str(replace_indices[1]),
-#                 kde=True, color='red', bins=n_bins, norm_hist=True)
-    # show the empirical means
 
     axarr.set_xlabel('weight ' + param)
     axarr.legend()

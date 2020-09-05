@@ -38,6 +38,38 @@ def fit_multivariate_normal(X):
     return mean, cov, None, pval
 
 
+def fit_laplace(X):
+    loc = np.median(X)
+    scale = np.mean(np.abs(X) - loc)
+    #Dval_lap, pval_lap = kstest(X, laplace(loc=loc, scale=scale).cdf)
+    Dval_lap, pval_lap = anderson(X, laplace(loc=loc, scale=scale).cdf)         # anderson seems better than kstest, lower variance
+    return loc, scale, Dval_lap, pval_lap
+
+
+def test_laplace():
+    pvals_gauss = []
+    pvals_laplace = []
+    pvals_uniform = []
+    ns = []
+    for r in range(1, 10):
+        for n in [500, 625, 750, 875, 1000, 1500, 2000, 5000]:
+            gauss = np.random.normal(size=n)
+            laplace = np.random.laplace(loc=0, scale=1, size=n)
+            uniform = np.random.uniform(size=n)
+            _, _, _, pval_laplace = fit_laplace(laplace)
+            _, _, _, pval_gauss = fit_laplace(gauss)
+            _, _, _, pval_uniform = fit_laplace(uniform)
+            pvals_gauss.append(pval_gauss)
+            pvals_laplace.append(pval_laplace)
+            pvals_uniform.append(pval_uniform)
+            ns.append(n)
+    df = pd.DataFrame({'pval_gauss': pvals_gauss,
+                       'pval_laplace': pvals_laplace,
+                       'pval_uniform': pvals_uniform,
+                       'n': ns})
+    return df
+
+
 def test_multivariate_normal():
     """ compute pval across grid of N and d for diagonal Gaussian, non-diagonal Gaussian, Laplace """
     max_d = 60  ## the HZ test implementation in pingouin (maybe generally) fails d larger than this...

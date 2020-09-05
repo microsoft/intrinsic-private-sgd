@@ -1194,9 +1194,11 @@ def compute_sens_v_num_deltas(cfg_name, model, t, sort=False):
     return stability_sens
 
 
-def compute_mvn_fit_and_alpha(cfg_name, model, t, diffinit=True, sort=False,
-                              just_on_normal_marginals=False) -> dict:
-    replace_index = results_utils.get_replace_index_with_most_seeds(cfg_name, model, diffinit=diffinit)
+def compute_mvn_laplace_fit_and_alpha(cfg_name, model, t, diffinit=True, sort=False,
+                                      just_on_normal_marginals=False,
+                                      replace_index=None) -> dict:
+    if replace_index is None:
+        replace_index = results_utils.get_replace_index_with_most_seeds(cfg_name, model, diffinit=diffinit)
 
     iter_range = (t, t + 1)
     params = None
@@ -1236,7 +1238,30 @@ def compute_mvn_fit_and_alpha(cfg_name, model, t, diffinit=True, sort=False,
         print(np.mean(p_array), np.std(p_array))
     else:
         _, _, _, p = stats_utils.fit_multivariate_normal(X)
-        
+
     alpha, _ = stats_utils.fit_alpha_stable(X)
     mvn_covariance(X, identifier=f'{cfg_name}_{t}')
+
+    # now for laplace
+    laplace_ps = []
+    for di in range(d):
+        Xd = X[:, di]
+        _, _, _, pval = stats_utils.fit_laplace(Xd)
+        laplace_ps.append(pval)
+    laplace_ps = np.array(laplace_ps)
+    print('without bonferroni...')
+    fraction_of_laplace_vars = np.mean(laplace_ps > 0.05)
+    print(f'\tfraction of laplace vars: {fraction_of_laplace_vars}')
+    sum_of_laplace_vars = np.sum(laplace_ps > 0.05)
+    print(f'\tsum of laplace vars: {sum_of_laplace_vars}')
+    print('with bonferroni...')
+    fraction_of_laplace_vars = np.mean(laplace_ps > 0.05/d)
+    print(f'\tfraction of laplace vars: {fraction_of_laplace_vars}')
+    sum_of_laplace_vars = np.sum(laplace_ps > 0.05/d)
+    print(f'\tsum of laplace vars: {sum_of_laplace_vars}')
+    mean_of_laplace_ps = np.mean(laplace_ps)
+    print(f'mean of laplace ps: {mean_of_laplace_ps}')
+    max_of_laplace_ps = np.max(laplace_ps)
+    print(f'max of laplace ps: {max_of_laplace_ps}')
+
     return {'mvn p': p, 'alpha': alpha}
