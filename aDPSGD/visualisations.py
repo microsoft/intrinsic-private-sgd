@@ -90,13 +90,14 @@ def weight_evolution(cfg_name, model, n_seeds=50, replace_indices=None,
 
 
 def weight_posterior(cfg_name, model, replace_indices='random', t=500,
-                     param='#0', sort=False):
+                     param='#0', sort=False, n_bins=25):
     """
     """
     if sort and not model == 'mlp':
         print(f'WARNING: Sort = True is not implemented/meaningful for model {model}')
 
     iter_range = (t, t+1)
+    nolegend = False
 
     if replace_indices == 'random':
         print('Picking two *random* replace indices for this setting...')
@@ -106,24 +107,26 @@ def weight_posterior(cfg_name, model, replace_indices='random', t=500,
         replace_indices = np.random.choice(replaces, 2, replace=False).tolist()
     elif type(replace_indices) == int:
         replace_indices = [replace_indices]
+        nolegend = True
 
     assert type(replace_indices) == list
     # Set up the plot
-    fig, axarr = plt.subplots(nrows=1, ncols=1)
-    n_bins = 25
+    fig, axarr = plt.subplots(nrows=1, ncols=1, figsize=(4, 2.5))
     # now load the data!
     for replace_index in replace_indices:
         df = results_utils.get_posterior_samples(cfg_name, iter_range, model,
-                                                   replace_index=replace_index,
-                                                   params=[param], seeds='all',
-                                                   sort=sort)
+                                                 replace_index=replace_index,
+                                                 params=[param], seeds='all',
+                                                 sort=sort)
         sns.distplot(df[param], ax=axarr, label=f'D\{replace_index}',
                      kde=True, bins=n_bins, norm_hist=True)
 
     axarr.set_xlabel('weight ' + param)
-    axarr.legend()
+    if not nolegend:
+        axarr.legend()
     axarr.set_ylabel('# runs')
     vis_utils.beautify_axes(np.array([axarr]))
+    plt.tight_layout()
 
     plot_identifier = f'weight_posterior_{cfg_name}_{param}'
     if sort:
