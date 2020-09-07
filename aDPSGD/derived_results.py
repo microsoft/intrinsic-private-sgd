@@ -271,10 +271,16 @@ class AggregatedLoss(DerivedResult):
 
         return
 
-    def load(self, diffinit: bool) -> pd.DataFrame:
-        data = super(AggregatedLoss, self).load(diffinit)
+    def load(self, diffinit: bool, generate_if_needed=False) -> pd.DataFrame:
+        try:
+            data = super(AggregatedLoss, self).load(diffinit)
+        except FileNotFoundError:
+            if generate_if_needed:
+                self.generate(diffinit=diffinit)
+                data = self.load(diffinit=diffinit, generate_if_needed=False)
+            else:
+                raise FileNotFoundError
         data.set_index('t', inplace=True)
-
         return data
 
 
@@ -563,7 +569,7 @@ class VersusTime(DerivedResult):
         df.set_index('t', inplace=True)
         # now join the losses...
         losses = AggregatedLoss(self.cfg_name, self.model, iter_range=self.iter_range,
-                                data_privacy=self.data_privacy).load(diffinit=True)
+                                data_privacy=self.data_privacy).load(diffinit=True, generate_if_needed=True)
         df = df.join(losses)
         df.to_csv(path_string)
         print(f'[VersusTime] Saved to {path_string}')

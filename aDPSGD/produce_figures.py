@@ -250,7 +250,7 @@ def plot_distance_v_time(cfg_name, model, num_pairs='max', sort=False,
 
     # Get sensitivity (vary data)
     df_sens = df[['t', 'theoretical_sensitivity', 'empirical_sensitivity']]
-    if model == 'mlp':
+    if model in ['mlp', 'cnn']:
         df_sens.drop(columns='theoretical_sensitivity', inplace=True)
     else:
         # discretise the sensitivity
