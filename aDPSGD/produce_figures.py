@@ -38,11 +38,14 @@ def generate_plots(cfg_name: str, model: str, t=None, sort=False) -> None:
 
         if t is None:
             t = plot_options['convergence_point']
-        delta_histogram_xlim = plot_options['delta_histogram']['xlim']
-        delta_histogram_ylim = plot_options['delta_histogram']['ylim']
-        epsilon_distribution_xlim = plot_options['epsilon_distribution']['xlim']
-        epsilon_distribution_ylim = plot_options['epsilon_distribution']['ylim']
-        versus_time_acc_lims = plot_options['versus_time']['acc_lim']
+#        delta_histogram_xlim = plot_options['delta_histogram']['xlim']
+        delta_histogram_ymax = plot_options['delta_histogram']['ymax']
+        delta_histogram_ylim = (0, delta_histogram_ymax)
+        delta_histogram_xlim = None
+#        delta_histogram_ylim = plot_options['delta_histogram']['ylim']
+        #epsilon_distribution_xlim = plot_options['epsilon_distribution']['xlim']
+        #epsilon_distribution_ylim = plot_options['epsilon_distribution']['ylim']
+        #versus_time_acc_lims = plot_options['versus_time']['acc_lim']
     except FileNotFoundError:
         assert t is not None
         delta_histogram_xlim = None
@@ -53,16 +56,17 @@ def generate_plots(cfg_name: str, model: str, t=None, sort=False) -> None:
 
     plot_delta_histogram(cfg_name, model, t=t, include_bounds=(model == 'logistic'),
                          xlim=delta_histogram_xlim, ylim=delta_histogram_ylim,
-                         sort=sort)
-    plot_epsilon_distribution(cfg_name, model, t=t,
-                              xlim=epsilon_distribution_xlim,
-                              ylim=epsilon_distribution_ylim,
-                              sort=sort)
-    plot_sens_and_var_over_time(cfg_name, model, iter_range=(0, int(t*1.2)),
-                                acc_lims=versus_time_acc_lims,
-                                sort=sort)
-    plot_stability_of_estimated_values(cfg_name, model, t, sort=sort)
-    plot_distance_v_time(cfg_name, model, sort)
+                         sort=sort, legend=False)
+    #plot_epsilon_distribution(cfg_name, model, t=t,
+    #                          xlim=epsilon_distribution_xlim,
+    #                          ylim=epsilon_distribution_ylim,
+    #                          sort=sort)
+    #plot_sens_and_var_over_time(cfg_name, model, iter_range=(0, int(t*1.2)),
+    #                            acc_lims=versus_time_acc_lims,
+    #                            sort=sort)
+    ##plot_stability_of_estimated_values(cfg_name, model, t, sort=sort)
+    plot_distance_v_time(cfg_name, model, sort, convergence_point=t,
+                         legend=('forest' in cfg_name))
 
     return
 
@@ -145,7 +149,7 @@ def generate_reports(cfg_name: str, model: str, t=None, num_experiments=500) -> 
 def plot_delta_histogram(cfg_name: str, model: str, num_deltas='max', t=500,
                          include_bounds=False, xlim=None, ylim=None,
                          data_privacy='all', multivariate=False,
-                         sort=False) -> None:
+                         sort=False, legend=True) -> None:
 
     if multivariate:
         raise NotImplementedError('Multivariate plotting is not implemented')
@@ -179,17 +183,20 @@ def plot_delta_histogram(cfg_name: str, model: str, num_deltas='max', t=500,
                  color=em.dp_colours['bolton'],
                  label=r'$\Delta_S$',
                  kde=True,
+                 hist_kws={'alpha': 0.45},
                  norm_hist=True)
     print('Plotting varying r... number of deltas:', vary_r.shape[0])
     sns.distplot(vary_r, ax=axarr,
                  color=em.dp_colours['augment'],
                  label=r'$\Delta_V^{fix}$',
                  kde=True,
+                 hist_kws={'alpha': 0.7},
                  norm_hist=True)
     sns.distplot(vary_r_diffinit, ax=axarr,
                  color=em.dp_colours['augment_diffinit'],
                  label=r'$\Delta_V^{vary}$',
                  kde=True,
+                 hist_kws={'alpha': 0.9},
                  norm_hist=True)
 
     print('Plotting varying both... number of deltas:', vary_both.shape[0])
@@ -213,7 +220,10 @@ def plot_delta_histogram(cfg_name: str, model: str, num_deltas='max', t=500,
         wu_bound = test_private_model.compute_wu_bound(lipschitz_constant, t=t, N=N, batch_size=batch_size, eta=lr)
         axarr.axvline(x=wu_bound, ls='--', color=em.dp_colours['bolton'], label=r'$\hat{\Delta}_S$')
 
-    axarr.legend()
+    if legend:
+        axarr.legend()
+    else:
+        axarr.get_legend().remove()
     axarr.set_xlabel(r'$\|w - w^\prime\|$')
     axarr.set_ylabel('density')
 
@@ -237,7 +247,7 @@ def plot_delta_histogram(cfg_name: str, model: str, num_deltas='max', t=500,
 
 
 def plot_distance_v_time(cfg_name, model, num_pairs='max', sort=False,
-                         convergence_point=None) -> None:
+                         convergence_point=None, legend=True) -> None:
     """
     This will take precedence over the normal sens_var_over_time one
     """
@@ -290,14 +300,16 @@ def plot_distance_v_time(cfg_name, model, num_pairs='max', sort=False,
                    label=r'$\hat{\Delta}_S$', alpha=0.5, c=em.dp_colours['bolton'], ls='--')
     axarr.scatter(t, df_sens['empirical_sensitivity'],
                   label='_nolegend_', s=size, c=em.dp_colours['bolton'])
-    axarr.plot(t, df_sens['empirical_sensitivity'], label=r'$\hat{\Delta}^*_S$',
-               alpha=0.5, c=em.dp_colours['bolton'])
+    axarr.plot(t, df_sens['empirical_sensitivity'],
+               label=r'$\hat{\Delta}^*_S$',
+               ls=':', alpha=0.5, c=em.dp_colours['bolton'])
 
     if convergence_point is not None:
         # add a vertical line
         axarr.axvline(x=convergence_point, ls='--', alpha=0.5, color='black')
     # Now save and stuff
-    axarr.legend()
+    if legend:
+        axarr.legend()
     axarr.set_ylabel(r'$\|w - w^\prime\|$')
     axarr.set_xlabel('training steps')
     xmin, _ = axarr.get_xlim()           # this is a hack for mnist

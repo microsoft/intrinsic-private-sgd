@@ -33,10 +33,17 @@ nn_convergence_points = {'cifar10_binary': 2500,
                          'forest': 3500}
 
 dp_colours = {'augment': '#14894e',
+                   'both': 'black',
+                   'augment_diffinit': '#441e85',
+                   'both_diffinit': 'black',
+                   'bolton': '#c3871c'}
+
+## These ones are greyscale friendly
+dp_colours_gs = {'augment': '#2ea71b',
               'both': 'black',
-              'augment_diffinit': '#441e85',
+              'augment_diffinit': '#4a2189',
               'both_diffinit': 'black',
-              'bolton': '#c3871c'}
+              'bolton': '#ca8621'}
 
 
 def get_dataset_name(cfg_name) -> str:
