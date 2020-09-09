@@ -1,0 +1,33 @@
+---
+cifar2_lr_gradtest:
+    convergence_point: 2000
+    delta_histogram:
+        ymax: 9
+cifar2_mlp:
+    convergence_point: 2500
+    delta_histogram:
+        ymax: 0.45
+mnist_binary_lr:
+    convergence_point: 1900
+    delta_histogram:
+        ymax: 14
+mnist_binary_mlp:
+    convergence_point: 4750
+    delta_histogram:
+        ymax: 0.45
+adult_lr:
+    convergence_point: 3400
+    delta_histogram:
+        ymax: 9.5
+adult_mlp:
+    convergence_point: 1850
+    delta_histogram:
+        ymax: 0.6
+forest_lr:
+    convergence_point: 8400
+    delta_histogram:
+        ymax: 6
+forest_mlp:
+    convergence_point: 3500
+    delta_histogram:
+        ymax: 0.55
