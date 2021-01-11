@@ -137,7 +137,7 @@ class DeltaHistogram(DerivedResult):
 
 class UtilityCurve(DerivedResult):
     def __init__(self, cfg_name, model, num_deltas, t, data_privacy='all', metric_to_report='binary_accuracy',
-                 verbose=True, num_experiments=500, multivariate: bool = False):
+                 verbose=True, num_experiments=5000, multivariate: bool = False):
         super(UtilityCurve, self).__init__(cfg_name, model, data_privacy)
         self.num_deltas = num_deltas
         self.num_experiments = num_experiments
@@ -158,7 +158,7 @@ class UtilityCurve(DerivedResult):
             print(f'[UtilityCurve] WARNING: Utility curve has already been generated, file {path_string} exists!')
 
             return
-        epsilons = np.array([0.1, 0.5, 0.625, 0.75, 0.875, 1.0])
+        epsilons = np.array([0.5, 1.0])
         # prepare columns of dataframe
         seed = []
         replace = []
@@ -286,6 +286,7 @@ class AggregatedLoss(DerivedResult):
 
 class SensVar(DerivedResult):
     def __init__(self, cfg_name, model,  t, num_pairs='max', data_privacy='all'):
+        # Note this doesn't support multivar
         super(SensVar, self).__init__(cfg_name, model, data_privacy)
         self.t = t
         self.num_pairs = num_pairs
@@ -449,12 +450,14 @@ class VersusTime(DerivedResult):
     - variability with diffinit
     """
     def __init__(self, cfg_name, model, data_privacy='all',
-                 iter_range=(0, 1000), num_deltas='max', cadence=200, sort=False):
+                 iter_range=(0, 1000), num_deltas='max', cadence=200, sort=False,
+                 multivariate: bool = False):
         super(VersusTime, self).__init__(cfg_name, model, data_privacy)
         self.iter_range = iter_range
         self.num_deltas = num_deltas
         assert None not in self.iter_range
         self.cadence = cadence
+        self.multivariate = multivariate
         self.sort = sort
         self.suffix = '.csv'
 
@@ -463,6 +466,9 @@ class VersusTime(DerivedResult):
 
         if self.sort:
             identifier = f'{identifier}_sorted'
+
+        if self.multivariate:
+            identifier = f'{identifier}_multivar'
 
         return identifier
 
@@ -508,33 +514,50 @@ class VersusTime(DerivedResult):
                                                                      num_deltas=self.num_deltas,
                                                                      diffinit=True,
                                                                      data_privacy=self.data_privacy,
-                                                                     sort=self.sort)
+                                                                     sort=self.sort,
+                                                                     multivariate=self.multivariate)
 
             assert empirical_sensitivity is not None
 
             # variability
             variability_fixinit = estimate_variability(self.cfg_name, self.model, t,
-                                                       multivariate=False,
+                                                       multivariate=self.multivariate,
                                                        diffinit=False,
                                                        data_privacy=self.data_privacy,
                                                        sort=self.sort)
             variability_diffinit = estimate_variability(self.cfg_name, self.model, t,
-                                                        multivariate=False,
+                                                        multivariate=self.multivariate,
                                                         diffinit=True,
                                                         data_privacy=self.data_privacy,
                                                         sort=self.sort)
 
             # distance statistics
             statistics_fixinit = compute_distance_statistics(self.cfg_name, self.model, t,
-                                                             multivariate=False,
+                                                             multivariate=self.multivariate,
                                                              diffinit=False,
                                                              data_privacy=self.data_privacy,
                                                              sort=self.sort)
             statistics_diffinit = compute_distance_statistics(self.cfg_name, self.model, t,
-                                                              multivariate=False,
+                                                              multivariate=self.multivariate,
                                                               diffinit=True,
                                                               data_privacy=self.data_privacy,
                                                               sort=self.sort)
+
+            # If multivariate, flatten ?
+            if self.multivariate:
+                theoretical_sensitivity = np.mean(theoretical_sensitivity)
+                empirical_sensitivity = np.mean(empirical_sensitivity)
+                variability_fixinit = np.mean(variability_fixinit)
+                variability_diffinit = np.mean(variability_diffinit)
+
+                statistics_fixinit['min_distance'] = np.mean(statistics_fixinit['min_distance'])
+                statistics_fixinit['mean_distance'] = np.mean(statistics_fixinit['mean_distance'])
+                statistics_fixinit['max_distance'] = np.mean(statistics_fixinit['max_distance'])
+                statistics_fixinit['std_distance'] = np.mean(statistics_fixinit['std_distance'])
+                statistics_diffinit['min_distance'] = np.mean(statistics_diffinit['min_distance'])
+                statistics_diffinit['mean_distance'] = np.mean(statistics_diffinit['mean_distance'])
+                statistics_diffinit['max_distance'] = np.mean(statistics_diffinit['max_distance'])
+                statistics_diffinit['std_distance'] = np.mean(statistics_diffinit['std_distance'])
 
             # now record everything
             theoretical_sensitivity_list[i] = theoretical_sensitivity
@@ -607,7 +630,7 @@ class Stability(DerivedResult):
         return
 
 
-def generate_derived_results(cfg_name: str, model: str = 'logistic', t: int = None) -> None:
+def generate_derived_results(cfg_name: str, model: str = 'logistic', t: int = None, multivariate: bool = False) -> None:
     if t is None:
         t, valid_frac = find_convergence_point(cfg_name, model, diffinit=True,
                                                tolerance=3, metric='binary_accuracy', data_privacy='all')
@@ -618,20 +641,20 @@ def generate_derived_results(cfg_name: str, model: str = 'logistic', t: int = No
             print(f'Selecting t as convergence point {t}, valid fraction {valid_frac}')
 
     if model == 'mlp':
-        DeltaHistogram(cfg_name, model, t=t, sort=True).generate()
+        DeltaHistogram(cfg_name, model, t=t, sort=True, multivariate=multivariate).generate()
         SensVar(cfg_name, model, t=t, sort=True).generate()
-        Sigmas(cfg_name, model, t=t, sort=True).generate(diffinit=True)
-        VersusTime(cfg_name, model, iter_range=(0, t+200), sort=True).generate()
-        Stability(cfg_name, model, t=t, sort=True).generate()
-
-    DeltaHistogram(cfg_name, model, t=t).generate()
-    AggregatedLoss(cfg_name, model).generate(diffinit=True)
-    AggregatedLoss(cfg_name, model).generate(diffinit=False)
-    SensVar(cfg_name, model, t=t).generate()
-    Sigmas(cfg_name, model, t=t).generate(diffinit=True)
-    VersusTime(cfg_name, model, iter_range=(0, t+200)).generate()
-    Stability(cfg_name, model, t=t).generate()
-    UtilityCurve(cfg_name, model, num_deltas='max', t=t).generate(diffinit=True)
+        Sigmas(cfg_name, model, t=t, sort=True, multivariate=multivariate).generate(diffinit=True)
+        VersusTime(cfg_name, model, iter_range=(0, t+200), sort=True, multivariate=multivariate).generate()
+        Stability(cfg_name, model, t=t, sort=True, multivariate=multivariate).generate()
+    else:
+        DeltaHistogram(cfg_name, model, t=t, multivariate=multivariate).generate()
+        AggregatedLoss(cfg_name, model).generate(diffinit=True)
+        AggregatedLoss(cfg_name, model).generate(diffinit=False)
+        SensVar(cfg_name, model, t=t).generate()
+        Sigmas(cfg_name, model, t=t, multivariate=multivariate).generate(diffinit=True)
+        VersusTime(cfg_name, model, iter_range=(0, t+200), multivariate=multivariate).generate()
+        Stability(cfg_name, model, t=t, multivariate=multivariate).generate()
+        UtilityCurve(cfg_name, model, num_deltas='max', t=t, multivariate=multivariate).generate(diffinit=True)
 
     return
 
@@ -655,7 +678,10 @@ def calculate_epsilon(cfg_name, model, t, use_bound=False, diffinit=True,
             sensitivity = np.nan
 
         if multivariate:
-            sensitivity = np.array([sensitivity]*len(variability))
+            # The overall L2 norm is "sensitivity", so giving each dimension equal contribution (!!!), we get
+            # Each dimension = sens/sqrt(d)
+            assert n_weights == len(variability)
+            sensitivity = np.array([sensitivity/np.sqrt(n_weights)]*n_weights)
     else:
         sensitivity = estimate_sensitivity_empirically(cfg_name, model, t, num_deltas=num_deltas,
                                                        diffinit=diffinit, multivariate=multivariate, verbose=verbose)
@@ -664,7 +690,17 @@ def calculate_epsilon(cfg_name, model, t, use_bound=False, diffinit=True,
         print('variability:', variability)
         print('delta:', delta)
     c = np.sqrt(2 * np.log(1.25/delta))
-    epsilon = c * sensitivity / variability
+    if multivariate:
+        sensitivity = sensitivity.flatten()
+        # We have epsilon ~ sqrt(d) sens / var
+        assert n_weights == len(sensitivity)
+        assert len(variability) == len(sensitivity)
+        epsilon = c * np.sqrt(n_weights) * sensitivity / variability
+        # Now we take the largest
+        print(epsilon)
+        epsilon = max(epsilon)
+    else:
+        epsilon = c * sensitivity / variability
 
     return epsilon
 
@@ -758,6 +794,7 @@ def compute_distance_statistics(cfg_name, model, t, num_deltas='max', diffinit=F
     statistics['std_distance'] = np.nanstd(vary_seed_deltas, axis=0)
 
     return statistics
+
 
 def get_deltas(cfg_name, iter_range, model,
                vary_seed=True, vary_data=True, params=None, num_deltas=100,
@@ -1271,3 +1308,16 @@ def compute_mvn_laplace_fit_and_alpha(cfg_name, model, t, diffinit=True, sort=Fa
     print(f'max of laplace ps: {max_of_laplace_ps}')
 
     return {'mvn p': p, 'alpha': alpha}
+
+
+def cluster_weights():
+    samples = results_utils.get_posterior_samples(self.cfg_name, (self.t, self.t+1),
+                                                  self.model,
+                                                  replace_index=replace_index,
+                                                  params=None, seeds='all',
+                                                  verbose=verbose,
+                                                  diffinit=diffinit,
+                                                  data_privacy=self.data_privacy,
+                                                  num_seeds=self.num_seeds,
+                                                  sort=self.sort)
+    return samples

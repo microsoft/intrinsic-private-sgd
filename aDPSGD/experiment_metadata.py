@@ -2,35 +2,38 @@
 # Define experimenta metadata
 from cfg_utils import load_cfg
 
-dataset_colours = {'cifar10_binary': '#A6373F',
-                   'mnist_binary_pca': '#552B72',
-                   'mnist_binary': '#552B72',       # TODO update
-                   'adult': '#db9302',
-                   'forest': '#3C8D2f'}
+dataset_colours = {'cifar2_lr': '#A6373F',
+                   'cifar2_mlp': '#A6373F',
+                   'mnist_binary_lr': '#552B72',
+                   'mnist_binary_mlp': '#552B72',
+                   'adult_lr': '#db9302',
+                   'adult_mlp': '#db9302',
+                   'forest_lr': '#3C8D2f',
+                   'forest_mlp': '#3C8D2f'}
 
-dataset_names = {'cifar10_binary': 'CIFAR2',
-                 'mnist_binary_pca': 'MNIST-binary',
-                 'mnist_binary': 'MNIST-binary',
-                 'adult': 'Adult',
-                 'forest': 'Forest',
-                 'mnist_square': 'MNIST'}
+dataset_names = {'cifar2_lr': 'CIFAR2',
+                 'cifar2_mlp': 'CIFAR2',
+                 'mnist_binary_lr': 'MNIST-binary',
+                 'mnist_binary_mlp': 'MNIST-binary',
+                 'adult_lr': 'Adult',
+                 'adult_mlp': 'Adult',
+                 'forest_lr': 'Forest',
+                 'forest_mlp': 'Forest',
+                 'mnist_cnn': 'MNIST'}
 
 model_names = {'logistic': 'logistic regression',
                'mlp': 'neural network',
                'cnn': 'CNN'}
 
-lr_convergence_points = {'cifar10_binary': 2000,
-                         'mnist_binary_pca': 1850,
-                         'mnist_binary': 1850,       # TODO update
-                         'adult': 3400,
-                         'forest': 8400,
-                         'cifar2_lr': 100,
-                         'cifar2_lr_gradtest': 200}
+lr_convergence_points = {'cifar2_lr': 2000,
+                         'mnist_binary_lr': 1850,
+                         'adult_lr': 3400,
+                         'forest_lr': 8400}
 
-nn_convergence_points = {'cifar10_binary': 2500,
-                         'mnist_binary_pca': 4750,
-                         'adult': 1850,
-                         'forest': 3500}
+nn_convergence_points = {'cifar2_mlp': 2500,
+                         'mnist_binary_mlp': 4750,
+                         'adult_mlp': 1850,
+                         'forest_mlp': 3500}
 
 dp_colours = {'augment': '#14894e',
                    'both': 'black',
