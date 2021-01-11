@@ -149,7 +149,7 @@ class Logger(object):
 
 
 def build_model(architecture: str, input_size: int, output_size: int,
-                task_type: str, hidden_size: int, init_path, t=None, **kwargs) -> 'Model':
+                task_type: str, hidden_size: int=None, init_path: str = None, t=None, **kwargs) -> 'Model':
     """
     Wrapper around defining the model architecture
     """
@@ -163,6 +163,10 @@ def build_model(architecture: str, input_size: int, output_size: int,
         model = CNN(input_size=input_size, output_size=output_size,
                     task_type=task_type, init_path=init_path,
                     hidden_size=hidden_size, t=t)
+    elif architecture == 'cnn_cifar':
+        model = CNN_CIFAR(input_size=input_size, output_size=output_size,
+                          task_type=task_type, init_path=init_path, 
+                          hidden_size=hidden_size, t=t)
     else:
         raise ValueError(architecture)
     return model
@@ -308,7 +312,7 @@ class Model(K.Sequential):
         list_of_weights = self.unflatten_weights(weights_at_t)
         self.set_weights(list_of_weights)
 
-#    @tf.function
+    @tf.function
     def compute_metrics(self, X, y, metric_functions):
         predictions = self(X)
         results = []
@@ -428,6 +432,59 @@ class CNN(Model):
         else:
             raise ValueError(self.task_type)
         self.add(Dense(self.output_size, activation=activation))
+
+
+class CNN_CIFAR(Model):
+    """
+    Replicating the CNN referenced in the Papernot paper (Making the Shoe Fit: Architectures, Initializations, and Tuning for Learning with Privacy) for pretraining on CIFAR100
+    We will pretrain all on CIFAR100, then fine-tune the last (LR) or two last (MLP) layers for CIFAR10
+    """
+    def __init__(self, input_size, output_size, task_type, init_path, hidden_size, t):
+        super(CNN_CIFAR, self).__init__(input_size=input_size, init_path=init_path, t=t)
+        self.output_size = output_size
+        self.task_type = task_type
+        self.hidden_size = hidden_size
+
+        # input validation
+        if len(self.input_size) < 1:
+            print('ERROR: CNN is not designed to take flat inputs!')
+            raise ValueError(self.input_size)
+        elif len(self.input_size) == 2:
+            print('WARNING: Expecting full RGB!')
+            raise ValueError(self.input_size)
+        elif len(self.input_size) == 3:
+            pass
+        else:
+            raise ValueError(self.input_size)
+        self.build()
+
+    def define_layers(self):
+        self.add(Conv2D(filters=32, kernel_size=3, padding='valid',
+                        input_shape=self.input_size, activation='relu'))
+        self.add(MaxPooling2D(pool_size=(2, 2)))
+        self.add(Conv2D(filters=64, kernel_size=3, activation='relu', padding='valid'))
+        self.add(MaxPooling2D(pool_size=(2, 2)))
+        self.add(Conv2D(filters=128, kernel_size=3, activation='relu'))
+        self.add(Flatten())
+        self.add(Dense(1024, activation='relu'))
+        self.add(Dense(self.hidden_size, activation='relu'))
+        if self.task_type == 'classification':
+            activation = 'softmax'
+        elif self.task_type == 'binary':
+            activation = 'sigmoid'
+        elif self.task_type == 'regression':
+            activation = 'linear'
+        else:
+            raise ValueError(self.task_type)
+        self.add(Dense(self.output_size, activation=activation))
+
+    def prep_for_finetuning(self, n_trainable: int = 2):
+        # Freeze everything
+        for layer in self.layers:
+            layer.trainable = False
+        for layer in self.layers[-n_trainable:]:
+            print(f'Unfreezing layer {layer}')
+            layer.trainable = True
 
 
 def prep_for_training(model: 'Model', seed: int, optimizer_settings: dict, task_type: str, set_seeds: bool = True) -> None:

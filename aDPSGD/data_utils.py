@@ -101,6 +101,9 @@ def load_data(options, replace_index):
                                                         data_privacy=data_privacy,
                                                         project=project,
                                                         pca=pca)
+    elif data_type == 'cifar100':
+        # No options here
+        x_train, y_train, x_test, y_test = load_cifar100()
     elif data_type == 'forest':
         x_train, y_train, x_test, y_test = load_forest(data_privacy=data_privacy)
     elif data_type == 'adult':
@@ -483,6 +486,46 @@ def load_cifar10(binary=False, enforce_max_norm=False, flatten=True,
             x_test = np.where(test_norms > 1, x_test/test_norms, x_test)
             assert np.all(np.abs(np.linalg.norm(x_train, axis=axis) - 1) < 1e-6)
             assert np.all(np.abs(np.linalg.norm(x_test, axis=axis) - 1) < 1e-6)
+
+        data = {'x_train': x_train,
+                'x_test': x_test,
+                'y_train': y_train,
+                'y_test': y_test}
+
+        np.save(dataset_string, data)
+        print('Saved data to', dataset_string)
+
+    return x_train, y_train, x_test, y_test
+
+
+def load_cifar100():
+    """
+    We only use CIFAR100 for pretraining a CNN for CIFAR10, so we don't need to
+    be able to flatten, etc.
+    """
+    dataset_identifier = 'cifar100.npy'
+    dataset_string = os.path.join('data', dataset_identifier)
+    try:
+        data = np.load(dataset_string, allow_pickle=True).item()
+        x_train = data['x_train']
+        x_test = data['x_test']
+        y_train = data['y_train']
+        y_test = data['y_test']
+        print('Loaded data from', dataset_string)
+    except FileNotFoundError:
+        print('Couldn\'t load data from', dataset_string)
+        cifar100 = datasets.cifar100
+        (x_train, y_train), (x_test, y_test) = cifar100.load_data()
+        ipdb.set_trace()
+        y_train = y_train[:, 0]
+        y_test = y_test[:, 0]
+
+        # typical normalisation
+        x_train, x_test = x_train/255.0, x_test/255.0
+
+        # keeping it not-flat
+        assert len(x_train.shape) == 4
+        assert len(x_test.shape) == 4
 
         data = {'x_train': x_train,
                 'x_test': x_test,
