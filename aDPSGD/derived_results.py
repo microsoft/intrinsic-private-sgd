@@ -633,7 +633,7 @@ class Stability(DerivedResult):
 def generate_derived_results(cfg_name: str, model: str = 'logistic', t: int = None, multivariate: bool = False) -> None:
     if t is None:
         t, valid_frac = find_convergence_point(cfg_name, model, diffinit=True,
-                                               tolerance=3, metric='binary_accuracy', data_privacy='all')
+                                               tolerance=3, metric='binary_crossentropy', data_privacy='all')
 
         if valid_frac < 0.5:
             raise ValueError(f'Convergence point not good, valid fraction: {valid_frac}')

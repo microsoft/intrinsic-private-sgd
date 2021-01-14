@@ -164,8 +164,7 @@ def build_model(architecture: str, input_size: int, output_size: int,
                     task_type=task_type, init_path=init_path,
                     hidden_size=hidden_size, t=t)
     elif architecture == 'cnn_cifar':
-        model = CNN_CIFAR(input_size=input_size, output_size=output_size,
-                          task_type=task_type, init_path=init_path, 
+        model = CNN_CIFAR(input_size=input_size, init_path=init_path,
                           hidden_size=hidden_size, t=t)
     else:
         raise ValueError(architecture)
@@ -312,7 +311,7 @@ class Model(K.Sequential):
         list_of_weights = self.unflatten_weights(weights_at_t)
         self.set_weights(list_of_weights)
 
-    @tf.function
+    #@tf.function
     def compute_metrics(self, X, y, metric_functions):
         predictions = self(X)
         results = []
@@ -439,11 +438,12 @@ class CNN_CIFAR(Model):
     Replicating the CNN referenced in the Papernot paper (Making the Shoe Fit: Architectures, Initializations, and Tuning for Learning with Privacy) for pretraining on CIFAR100
     We will pretrain all on CIFAR100, then fine-tune the last (LR) or two last (MLP) layers for CIFAR10
     """
-    def __init__(self, input_size, output_size, task_type, init_path, hidden_size, t):
+    def __init__(self, input_size, init_path, hidden_size, t):
         super(CNN_CIFAR, self).__init__(input_size=input_size, init_path=init_path, t=t)
-        self.output_size = output_size
-        self.task_type = task_type
-        self.hidden_size = hidden_size
+        # We fix these because we will override them with real values during finetuning
+        self.output_size = 100
+        self.task_type = 'classification'
+        self.hidden_size = hidden_size       # Keep hidden size variable to facilitate a bit of HP opt
 
         # input validation
         if len(self.input_size) < 1:
@@ -466,7 +466,9 @@ class CNN_CIFAR(Model):
         self.add(MaxPooling2D(pool_size=(2, 2)))
         self.add(Conv2D(filters=128, kernel_size=3, activation='relu'))
         self.add(Flatten())
-        self.add(Dense(1024, activation='relu'))
+        self.add(Dense(190, activation='relu'))
+        self.add(Dense(50, activation='relu'))
+        # this is the MLP layer basically
         self.add(Dense(self.hidden_size, activation='relu'))
         if self.task_type == 'classification':
             activation = 'softmax'
@@ -476,15 +478,8 @@ class CNN_CIFAR(Model):
             activation = 'linear'
         else:
             raise ValueError(self.task_type)
+        # This layer will be stripped away
         self.add(Dense(self.output_size, activation=activation))
-
-    def prep_for_finetuning(self, n_trainable: int = 2):
-        # Freeze everything
-        for layer in self.layers:
-            layer.trainable = False
-        for layer in self.layers[-n_trainable:]:
-            print(f'Unfreezing layer {layer}')
-            layer.trainable = True
 
 
 def prep_for_training(model: 'Model', seed: int, optimizer_settings: dict, task_type: str, set_seeds: bool = True) -> None:

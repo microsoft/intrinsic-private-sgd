@@ -2,26 +2,13 @@
 # This is the script which runs the experiment! (trains a model!)
 
 import argparse
-from pathlib import Path
 from time import time
 from tensorflow.keras.backend import clear_session
 
 from model_utils import build_model, prep_for_training, train_model
 from data_utils import load_data
 from results_utils import ExperimentIdentifier
-from cfg_utils import load_cfg
-
-
-def get_model_init_path(cfg, diffinit):
-    if diffinit:
-        init_path = None
-    else:
-        architecture = cfg['model']['architecture']
-        cfg_name = cfg['cfg_name']
-        init_path = f'{architecture}_{cfg_name}_init.h5'
-        init_path = (Path('./models') / init_path).resolve()
-
-    return init_path
+from cfg_utils import load_cfg, get_model_init_path
 
 
 def run_single_experiment(cfg, diffinit, seed, replace_index):

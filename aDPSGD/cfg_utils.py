@@ -2,6 +2,7 @@
 
 import yaml
 import os
+from pathlib import Path
 
 
 def check_cfg_for_consistency(cfg, verbose=False):
@@ -31,3 +32,15 @@ def load_cfg(cfg_identifier):
     cfg['cfg_name'] = cfg_name
     check_cfg_for_consistency(cfg)
     return cfg
+
+
+def get_model_init_path(cfg, diffinit):
+    if diffinit:
+        init_path = None
+    else:
+        architecture = cfg['model']['architecture']
+        cfg_name = cfg['cfg_name']
+        init_path = f'{architecture}_{cfg_name}_init.h5'
+        init_path = (Path('./models') / init_path).resolve()
+
+    return init_path
