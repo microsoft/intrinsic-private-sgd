@@ -9,13 +9,13 @@ model:
     output_size: 100
     hidden_size: 16
 training:
-    n_epochs: 100
+    n_epochs: 2
     batch_size: 64
     optimization_algorithm:
-        name: SGD
-        learning_rate: 0.1
+        name: adam
+        learning_rate: 0.001
 logging:
-    cadence: 500
+    cadence: 5000
     save_weights: false
     save_gradients: false
     sample_minibatch_gradients: false

@@ -21,11 +21,21 @@ class Logger(object):
         self.logging_cadence = cadence
         self.logging_counter = tf.Variable(initial_value=0, name='logging_counter', trainable=False, dtype=tf.int32)                 # This needs to be a tf.Variable so we can tf.print it later
         self.batch_size = batch_size
-        self.X_train = X_train
-        self.X_vali = X_vali
-        self.y_train = y_train
-        self.y_vali = y_vali
+        # DEBUG
+        # only use a subset of the (for testing) data to keep it quicker/smaller
         self.N = X_train.shape[0]
+        if self.N > 10000:
+            self.X_train = X_train[:10000]
+            self.y_train = y_train[:10000]
+        else:
+            self.X_train = X_train
+            self.y_train = y_train
+        if X_vali.shape[0] > 5000:
+            self.X_vali = X_vali[:5000]
+            self.y_vali = y_vali[:5000]
+        else:
+            self.X_vali = X_vali
+            self.y_vali = y_vali
 
         self.metric_names = self.model.metric_names
 
@@ -133,8 +143,14 @@ class Logger(object):
         if self.logging_counter % self.logging_cadence == 0:
             self.log_model(X=self.X_train, y=self.y_train, minibatch_id='ALL',
                            save_weights=self.save_weights, save_gradients=self.save_gradients)
+            ## DEBUG
+            for mf in self.metric_functions:
+                mf.reset_states()
             self.log_model(X=self.X_vali, y=self.y_vali, minibatch_id='VALI',
                            save_weights=False, save_gradients=False)
+            ## DEBUG
+            for mf in self.metric_functions:
+                mf.reset_states()
             if self.sample_gradients:
                 self.sample_gradients()
         self.logging_counter.assign_add(1)
@@ -234,6 +250,8 @@ class Model(K.Sequential):
         with tf.GradientTape() as tape:
             y_pred = self(x, training=True)
             loss = self.loss_function(y, y_pred)
+            # DEBUG adding loss due to regularization
+            loss += sum(self.losses)
 
         trainable_vars = self.trainable_variables
         gradients = tape.gradient(loss, trainable_vars)
@@ -459,17 +477,26 @@ class CNN_CIFAR(Model):
         self.build()
 
     def define_layers(self):
+        reg_strength = 0.005
         self.add(Conv2D(filters=32, kernel_size=3, padding='valid',
-                        input_shape=self.input_size, activation='relu'))
+                        input_shape=self.input_size, activation='relu',
+                        kernel_regularizer=K.regularizers.l2(reg_strength*0.1),
+                        bias_regularizer=K.regularizers.l2(reg_strength*0.1)))
         self.add(MaxPooling2D(pool_size=(2, 2)))
-        self.add(Conv2D(filters=64, kernel_size=3, activation='relu', padding='valid'))
+        self.add(Conv2D(filters=64, kernel_size=3, activation='relu', padding='valid',
+                        kernel_regularizer=K.regularizers.l2(reg_strength*0.1),
+                        bias_regularizer=K.regularizers.l2(reg_strength*0.1)))
         self.add(MaxPooling2D(pool_size=(2, 2)))
-        self.add(Conv2D(filters=128, kernel_size=3, activation='relu'))
+        self.add(Conv2D(filters=128, kernel_size=3, activation='relu',
+                        kernel_regularizer=K.regularizers.l2(reg_strength),
+                        bias_regularizer=K.regularizers.l2(reg_strength)))
         self.add(Flatten())
-        self.add(Dense(190, activation='relu'))
-        self.add(Dense(50, activation='relu'))
+        self.add(Dense(1024, activation='relu',
+                       kernel_regularizer=K.regularizers.l2(reg_strength),
+                       bias_regularizer=K.regularizers.l2(reg_strength)))
+      #  self.add(Dense(50, activation='tanh'))
         # this is the MLP layer basically
-        self.add(Dense(self.hidden_size, activation='relu'))
+      #  self.add(Dense(self.hidden_size, activation='relu'))
         if self.task_type == 'classification':
             activation = 'softmax'
         elif self.task_type == 'binary':
@@ -490,9 +517,13 @@ def prep_for_training(model: 'Model', seed: int, optimizer_settings: dict, task_
     # set up the optimizer
     if optimizer_settings['name'] == 'SGD':
         lr = optimizer_settings['learning_rate']
-        sgd = K.optimizers.SGD(lr=lr, decay=0, momentum=0, nesterov=False)
+        opt = K.optimizers.SGD(lr=lr, decay=0, momentum=0, nesterov=False)
+    elif optimizer_settings['name'] == 'adam':
+        print('WARNING: Adam was selected, just so you know...')
+        lr = optimizer_settings['learning_rate']
+        opt = K.optimizers.Adam(learning_rate=lr)
     else:
-        raise NotImplementedError('Only SGD is implemented currently')
+        raise NotImplementedError('Only SGD and Adam are implemented currently')
     # set up the loss
     if task_type == 'classification':
         loss = K.losses.SparseCategoricalCrossentropy()
@@ -505,7 +536,7 @@ def prep_for_training(model: 'Model', seed: int, optimizer_settings: dict, task_
         metric_names = ['binary_crossentropy', 'binary_accuracy']
     else:
         raise ValueError(task_type)
-    model.optimizer = sgd
+    model.optimizer = opt
     model.loss_function = loss
     model.metric_names = metric_names
 

@@ -559,24 +559,15 @@ def load_cifar10_pretrain(binary=False, enforce_max_norm=False):
             assert set(y_train) == {1, 0}
             assert set(y_test) == {1, 0}
 
-        # typical normalisation
-        x_train, x_test = x_train/255.0, x_test/255.0
-
         if enforce_max_norm:
-            if len(x_train.shape) == 2:
-                axis = (1)
-                train_norms = np.linalg.norm(x_train, axis=axis).reshape(-1, 1)
-                test_norms = np.linalg.norm(x_test, axis=axis).reshape(-1, 1)
-            elif len(x_train.shape) == 4:
-                axis = (1, 2)
-                train_norms = np.linalg.norm(x_train, axis=axis).reshape(-1, 1, 1, 1)
-                test_norms = np.linalg.norm(x_test, axis=axis).reshape(-1, 1, 1, 1)
-            else:
-                raise ValueError(x_train.shape)
+            assert len(x_train.shape) == 2
+            train_norms = np.linalg.norm(x_train, axis=1).reshape(-1, 1)
+            test_norms = np.linalg.norm(x_test, axis=1).reshape(-1, 1)
             x_train = np.where(train_norms > 1, x_train/train_norms, x_train)
             x_test = np.where(test_norms > 1, x_test/test_norms, x_test)
-            assert np.all(np.abs(np.linalg.norm(x_train, axis=axis) - 1) < 1e-6)
-            assert np.all(np.abs(np.linalg.norm(x_test, axis=axis) - 1) < 1e-6)
+            # Don't need an abs because it just neesd to be BELOW 1, not equal to q
+            assert np.all(np.linalg.norm(x_train, axis=1) - 1 < 1e-6)
+            assert np.all(np.linalg.norm(x_test, axis=1) - 1 < 1e-6)
 
         data = {'x_train': x_train,
                 'x_test': x_test,
@@ -840,7 +831,7 @@ def compute_distance_for_pairs(data_type, pairs):
     return distances
 
 
-def preprocess_CIFAR10_with_pretrained_model(t=50000, seed=111, force_rerun: bool = False):
+def preprocess_CIFAR10_with_pretrained_model(t=50000, seed=999, force_rerun: bool = False):
     """ Will select t (convergence point of CIFAR100 model) and seed (for identification) elsewhere """
     if Path(CIFAR10_PRETRAIN_PATH).exists():
         print('WARNING: CIFAR10 has already been preprocessed!')
@@ -853,16 +844,24 @@ def preprocess_CIFAR10_with_pretrained_model(t=50000, seed=111, force_rerun: boo
     # Use the OG cifar10 - this is a preprocessing step
     cifar10 = datasets.cifar10
     (x_train, y_train), (x_test, y_test) = cifar10.load_data()
+
     y_train = y_train[:, 0]
     y_test = y_test[:, 0]
+
+    # 32 bit floats to make tensorflow happy
+    x_train = np.float32(x_train)
+    x_test = np.float32(x_test)
+    # normalisation as per cifar100
+    x_train, x_test = x_train/255.0, x_test/255.0
 
     # Load the model
     cfg = load_cfg('cifar100_pretrain')
     init_path = (Path('./traces') / 'cifar100_pretrain' / f'cnn_cifar.replace_NA.seed_{seed}.weights.csv').resolve()
     # Now build the model
     model = build_model(**cfg['model'], init_path=init_path, t=t)
+    ipdb.set_trace()
     # Now cut off layers by making an intermediate model
-    model_stem = Model(inputs=model.input, outputs=model.layers[-3].output)
+    model_stem = Model(inputs=model.input, outputs=model.layers[-2].output)
 
     # Now, run the data through it
     x_train_transf = model_stem(x_train)
