@@ -69,7 +69,7 @@ def get_dataset_size(data_cfg):
             N = 10397
         else:
             N = 54000
-    elif name == 'cifar10':
+    elif name in ['cifar10', 'cifar10_pretrain']:
         if data_cfg['binary']:
             N = 9000
         else:
