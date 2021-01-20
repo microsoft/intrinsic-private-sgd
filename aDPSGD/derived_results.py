@@ -1028,11 +1028,17 @@ def find_convergence_point_for_single_experiment(cfg_name, model, replace_index,
     loss = loss.pivot(index='t', columns='minibatch_id', values=metric)
     vali_loss = loss['VALI']
     delta_vali = vali_loss - vali_loss.shift()
-    # was there a decrease at that time point? (1 if yes --> good)
-    decrease = (delta_vali < 0)
+    if 'accuracy' in metric:
+        # we check for INCREASES
+        change = (delta_vali > 0)
+        change_type = 'increase'
+    else:
+        # was there a decrease at that time point? (1 if yes --> good)
+        change = (delta_vali < 0)
+        change_type = 'decrease'
     counter = 0
 
-    for t, dec in decrease.items():
+    for t, dec in change.items():
         if not dec:
             counter += 1
         else:
@@ -1044,7 +1050,7 @@ def find_convergence_point_for_single_experiment(cfg_name, model, replace_index,
             break
     else:
         if verbose:
-            print(f'Did not find instance of validation loss failing to decrease for {tolerance} steps - returning nan')
+            print(f'Did not find instance of validation loss failing to {change_type} for {tolerance} steps - returning nan')
         convergence_point = np.nan
 
     return convergence_point

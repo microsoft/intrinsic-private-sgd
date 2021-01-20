@@ -287,3 +287,48 @@ def discretise_theoretical_sensitivity(cfg_name, model, theoretical_sensitivity)
     discretised_sensitivity = 2 * discrete_k * L * lr / batch_size
 
     return discretised_sensitivity
+
+
+def load_model_and_data_at_time(cfg_name: str, seed: int, replace_index: int, t: int, diffinit: bool = False):
+    cfg = load_cfg(cfg_name)
+    exp = ExperimentIdentifier(cfg_name=cfg_name, seed=seed, replace_index=replace_index, diffinit=diffinit, model=cfg['model']['architecture'])
+    weights_path = exp.path_stub().with_name(exp.path_stub().name + '.weights.csv')
+    print(weights_path)
+    model = model_utils.build_model(**cfg['model'], init_path=weights_path, t=t)
+    # Now for the data
+    _, _, x_vali, y_vali, x_test, y_test = data_utils.load_data(cfg['data'], replace_index=replace_index)
+    # Compute accuracy
+    model_preds = model(x_vali).numpy()
+    return model, model_preds, y_vali
+
+
+def recompute_performance_for_model(cfg_name: str, seed: int, replace_index: int, diffinit: bool = False, max_t: int = 10000, cadence: int = 500):
+    from sklearn.metrics import log_loss
+    cfg = load_cfg(cfg_name)
+    exp = ExperimentIdentifier(cfg_name=cfg_name, seed=seed, replace_index=replace_index, diffinit=diffinit, model=cfg['model']['architecture'])
+    weights_path = exp.path_stub().with_name(exp.path_stub().name + '.weights.csv')
+    print(weights_path)
+    # Now for the data
+    x_train, y_train, x_vali, y_vali, x_test, y_test = data_utils.load_data(cfg['data'], replace_index=replace_index)
+    # Time steps...
+    time_steps = np.arange(0, max_t + 1, cadence)
+    print(time_steps)
+    for t in time_steps:
+        try:
+            model = model_utils.build_model(**cfg['model'], init_path=weights_path, t=t)
+        except ValueError:
+            print(f'Out of time steps at t = {t}?')
+            break
+        # evaluate
+        yhat_train = model(x_train).numpy().flatten()
+        accuracy_train = ((yhat_train > 0.5)*1 == y_train).mean()
+        ce_train = log_loss(y_train, yhat_train)
+        print(f'{t},ALL,{ce_train},{accuracy_train}')
+        yhat_vali = model(x_vali).numpy().flatten()
+        accuracy_vali = ((yhat_vali > 0.5)*1 == y_vali).mean()
+        ce_vali = log_loss(y_vali, yhat_vali)
+        print(f'{t},VALI,{ce_vali},{accuracy_vali}')
+        yhat_test = model(x_test).numpy().flatten()
+        accuracy_test = ((yhat_test > 0.5)*1 == y_test).mean()
+        ce_test = log_loss(y_test, yhat_test)
+        print(f'{t},TEST,{ce_test},{accuracy_test}')

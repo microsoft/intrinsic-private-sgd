@@ -511,7 +511,7 @@ def visualise_fits(cfg_name, model, replace_index, seed, save=True, params=None)
 def visualise_trace(cfg_names, models, replaces, seeds, privacys, save=True,
                     include_batches=False, iter_range=(None, None),
                     include_convergence=True, diffinit=False, convergence_tolerance=3,
-                    include_vali=True, labels=None) -> None:
+                    include_vali=True, labels=None, figsize=None) -> None:
     """
     Show the full training set loss as well as the gradient (at our element) over training
     """
@@ -558,7 +558,9 @@ def visualise_trace(cfg_names, models, replaces, seeds, privacys, save=True,
     print('Visualising trace of', identifiers, 'with metrics', metrics)
 
     nrows = len(metrics)
-    fig, axarr = plt.subplots(nrows=nrows, ncols=1, sharex='col', figsize=(4, 3.2))
+    if figsize is None:
+        figsize=(4, 3.2)
+    fig, axarr = plt.subplots(nrows=nrows, ncols=1, sharex='col', figsize=figsize)
 
     if nrows == 1:
         axarr = np.array([axarr])

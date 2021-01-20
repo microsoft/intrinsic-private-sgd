@@ -21,21 +21,11 @@ class Logger(object):
         self.logging_cadence = cadence
         self.logging_counter = tf.Variable(initial_value=0, name='logging_counter', trainable=False, dtype=tf.int32)                 # This needs to be a tf.Variable so we can tf.print it later
         self.batch_size = batch_size
-        # DEBUG
-        # only use a subset of the (for testing) data to keep it quicker/smaller
         self.N = X_train.shape[0]
-        if self.N > 10000:
-            self.X_train = X_train[:10000]
-            self.y_train = y_train[:10000]
-        else:
-            self.X_train = X_train
-            self.y_train = y_train
-        if X_vali.shape[0] > 5000:
-            self.X_vali = X_vali[:5000]
-            self.y_vali = y_vali[:5000]
-        else:
-            self.X_vali = X_vali
-            self.y_vali = y_vali
+        self.X_train = X_train
+        self.y_train = y_train
+        self.X_vali = X_vali
+        self.y_vali = y_vali
 
         self.metric_names = self.model.metric_names
 
@@ -589,3 +579,11 @@ def define_metric_functions(metric_names):
         else:
             raise ValueError(metric)
     return metric_functions
+
+
+def load_model_at_time(cfg_name: str, seed:int, replace_index: int, t: int, diffinit: bool = False) -> Model:
+    cfg = load_cfg(cfg_name)
+    exp = ExperimentIdentifier(cfg_name=cfg_name, seed=seed, replace_index=replace_index, diffinit=diffinit)
+    init_path = str(exp.path_stub()) + '.weights.csv'
+    model = build_model(**cfg['model'], init_path=init_path, t=t)
+    return model
