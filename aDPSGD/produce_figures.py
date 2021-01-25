@@ -3,15 +3,11 @@
 # It relies on e.g. statistics computed across experiments - "derived results"
 
 import numpy as np
-import re
 import test_private_model
 import derived_results as dr
 import experiment_metadata as em
 import vis_utils
-import data_utils
 import matplotlib.pyplot as plt
-from matplotlib import cm
-from matplotlib.colors import to_rgba
 from pathlib import Path
 import seaborn as sns
 import yaml
@@ -54,9 +50,9 @@ def generate_plots(cfg_name: str, model: str, t=None, sort=False) -> None:
     plot_delta_histogram(cfg_name, model, t=t, include_bounds=(model == 'logistic'),
                          xlim=delta_histogram_xlim, ylim=delta_histogram_ylim,
                          sort=sort, legend=False)
-    plot_stability_of_estimated_values(cfg_name, model, t, sort=sort)
     plot_distance_v_time(cfg_name, model, sort, convergence_point=t,
                          legend=('forest' in cfg_name))
+    plot_stability_of_estimated_values(cfg_name, model, t)
 
     return
 
@@ -303,7 +299,7 @@ def plot_distance_v_time(cfg_name, model, num_pairs='max', sort=False,
     axarr.set_ylabel(r'$\|w - w^\prime\|$')
     axarr.set_xlabel('training steps')
     xmin, _ = axarr.get_xlim()           # this is a hack for mnist
-    axarr.set_xlim(xmin, t.max())
+    axarr.set_xlim(xmin, 1.05 * t.max())
 
     vis_utils.beautify_axes(np.array([axarr]))
     plt.tight_layout()

@@ -620,7 +620,7 @@ class Stability(DerivedResult):
 
             return
 
-        sigma_df = compute_sigma_v_num_seeds(self.cfg_name, self.model, self.t, sort=self.sort)
+        sigma_df = compute_sigma_v_num_seeds(self.cfg_name, self.model, self.t)
         sens_df = compute_sens_v_num_deltas(self.cfg_name, self.model, self.t, sort=self.sort)
         stability_dict = {'sigma': sigma_df,
                           'sens': sens_df}
@@ -645,7 +645,7 @@ def generate_derived_results(cfg_name: str, model: str = 'logistic', t: int = No
         SensVar(cfg_name, model, t=t, sort=True).generate()
         Sigmas(cfg_name, model, t=t, sort=True, multivariate=multivariate).generate(diffinit=True)
         VersusTime(cfg_name, model, iter_range=(0, t+200), sort=True, multivariate=multivariate).generate()
-        Stability(cfg_name, model, t=t, sort=True, multivariate=multivariate).generate()
+        Stability(cfg_name, model, t=t, sort=True).generate()
     else:
         DeltaHistogram(cfg_name, model, t=t, multivariate=multivariate).generate()
         AggregatedLoss(cfg_name, model).generate(diffinit=True)
@@ -653,7 +653,7 @@ def generate_derived_results(cfg_name: str, model: str = 'logistic', t: int = No
         SensVar(cfg_name, model, t=t).generate()
         Sigmas(cfg_name, model, t=t, multivariate=multivariate).generate(diffinit=True)
         VersusTime(cfg_name, model, iter_range=(0, t+200), multivariate=multivariate).generate()
-        Stability(cfg_name, model, t=t, multivariate=multivariate).generate()
+        Stability(cfg_name, model, t=t).generate()
         UtilityCurve(cfg_name, model, num_deltas='max', t=t, multivariate=multivariate).generate(diffinit=True)
 
     return

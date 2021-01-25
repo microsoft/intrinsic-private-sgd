@@ -3,6 +3,10 @@ cifar2_lr_gradtest:
     convergence_point: 2000
     delta_histogram:
         ymax: 9
+cifar2_pretrain_lr:
+    convergence_point: 1000
+    delta_histogram:
+        ymax: 9
 cifar2_mlp:
     convergence_point: 2500
     delta_histogram:
