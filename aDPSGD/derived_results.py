@@ -641,11 +641,11 @@ def generate_derived_results(cfg_name: str, model: str = 'logistic', t: int = No
             print(f'Selecting t as convergence point {t}, valid fraction {valid_frac}')
 
     if model == 'mlp':
-        DeltaHistogram(cfg_name, model, t=t, sort=True, multivariate=multivariate).generate()
-        SensVar(cfg_name, model, t=t, sort=True).generate()
-        Sigmas(cfg_name, model, t=t, sort=True, multivariate=multivariate).generate(diffinit=True)
-        VersusTime(cfg_name, model, iter_range=(0, t+200), sort=True, multivariate=multivariate).generate()
-        Stability(cfg_name, model, t=t, sort=True).generate()
+        DeltaHistogram(cfg_name, model, t=t, sort=False, multivariate=multivariate).generate()
+        SensVar(cfg_name, model, t=t).generate()
+        Sigmas(cfg_name, model, t=t, sort=False, multivariate=multivariate).generate(diffinit=True)
+        VersusTime(cfg_name, model, iter_range=(0, t+200), sort=False, multivariate=multivariate).generate()
+        Stability(cfg_name, model, t=t, sort=False).generate()
     else:
         DeltaHistogram(cfg_name, model, t=t, multivariate=multivariate).generate()
         AggregatedLoss(cfg_name, model).generate(diffinit=True)
