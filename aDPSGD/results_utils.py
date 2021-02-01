@@ -284,7 +284,7 @@ def get_available_results(cfg_name: str, model: str, replace_index: int = None, 
     return df
 
 
-def get_posterior_samples(cfg_name, iter_range, model='linear', replace_index=None,
+def get_posterior_samples(cfg_name, iter_range, model='logistic', replace_index=None,
                           params=None, seeds='all', num_seeds='max', verbose=True,
                           diffinit=False, data_privacy='all', what='weights', sort=False):
     """
@@ -343,3 +343,28 @@ def get_posterior_samples(cfg_name, iter_range, model='linear', replace_index=No
         # remove reference to minibatchs samples
         samples = samples[samples['minibatch_id'].str.contains('minibatch_sample')].drop(columns='minibatch_id')
     return samples
+
+
+def get_posterior_from_all_datasets(cfg_name, iter_range, model='logistic',
+                                    params=None, seeds='all', num_seeds='max', verbose=True,
+                                    diffinit=False, data_privacy='all',
+                                    what='weights', sort=False) -> pd.DataFrame:
+    """
+    This loops over get_posterior, for all replace indices
+    """
+    results = get_available_results(cfg_name, model, replace_index=None, seed=None, diffinit=diffinit)
+    replace_indices = results['replace'].unique()
+    all_dfs = []
+    for replace_index in replace_indices:
+        print(f'Replace index: {replace_index}')
+        replace_samples = get_posterior_samples(cfg_name, iter_range, model=model,
+                                                replace_index=replace_index,
+                                                params=params, seeds=seeds,
+                                                num_seeds=num_seeds, verbose=verbose,
+                                                diffinit=diffinit,
+                                                data_privacy=data_privacy, what=what, sort=sort)
+        if replace_samples is not False:
+            replace_samples['replace_index'] = replace_index
+            all_dfs.append(replace_samples)
+    df = pd.concat(all_dfs)
+    return df

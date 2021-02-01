@@ -2,6 +2,7 @@
 # It relies on e.g. statistics computed across experiments - "derived results"
 
 import numpy as np
+import pandas as pd
 import vis_utils
 import matplotlib.pyplot as plt
 from matplotlib import cm
@@ -11,8 +12,8 @@ import seaborn as sns
 import statsmodels.api as sm
 import re
 import ipdb
+import umap
 import test_private_model
-import data_utils
 import results_utils
 import derived_results as dr
 import experiment_metadata as em
@@ -118,7 +119,7 @@ def weight_posterior(cfg_name, model, replace_indices='random', t=500,
                                                  replace_index=replace_index,
                                                  params=[param], seeds='all',
                                                  sort=sort)
-        sns.distplot(df[param], ax=axarr, label=f'D\{replace_index}',
+        sns.distplot(df[param], ax=axarr, label=f'{replace_index}',
                      kde=True, bins=n_bins, norm_hist=True)
 
     axarr.set_xlabel('weight ' + param)
@@ -523,7 +524,7 @@ def visualise_trace(cfg_names, models, replaces, seeds, privacys, save=True,
         include_batches = False
 
     if labels is None:
-        labels =[f'{x["cfg_name"]}-{x["model"]}-{x["replace"]}-{x["seed"]}' for x in identifiers]
+        labels = [f'{x["cfg_name"]}-{x["model"]}-{x["replace"]}-{x["seed"]}' for x in identifiers]
     else:
         assert len(labels) == len(identifiers)
     loss_list = []
@@ -559,7 +560,7 @@ def visualise_trace(cfg_names, models, replaces, seeds, privacys, save=True,
 
     nrows = len(metrics)
     if figsize is None:
-        figsize=(4, 3.2)
+        figsize = (4, 3.2)
     fig, axarr = plt.subplots(nrows=nrows, ncols=1, sharex='col', figsize=figsize)
 
     if nrows == 1:
@@ -738,7 +739,7 @@ def visually_compare_distributions(cfg_name, model, replace_index, seed, df=None
 
 def visualise_weight_trajectory(cfg_name, identifiers, df=None, save=True,
                                 iter_range=(None, None), params=['#4', '#2'],
-                                include_optimum=False, include_autocorrelation=False, diffinit=False) -> None:
+                                include_autocorrelation=False, diffinit=False) -> None:
     """
     """
     df_list = []
@@ -765,10 +766,6 @@ def visualise_weight_trajectory(cfg_name, identifiers, df=None, save=True,
         for df in df_list:
             assert p in df.columns
 
-    if include_optimum:
-        # hack!
-        optimum, hessian = data_utils.solve_with_linear_regression(cfg_name)
-
     if include_autocorrelation:
         ncols = 2
     else:
@@ -785,8 +782,6 @@ def visualise_weight_trajectory(cfg_name, identifiers, df=None, save=True,
             firstcol[i].plot(df['t'], df[p], c=color, alpha=0.75, label='_nolegend_')
             firstcol[i].set_ylabel('param: ' + str(p))
 
-            if include_optimum:
-                firstcol[i].axhline(y=optimum[int(p[1:])], ls='--', color='red', alpha=0.5)
         firstcol[0].set_title('weight trajectory')
         firstcol[-1].set_xlabel('training steps')
         firstcol[0].legend()
@@ -986,3 +981,62 @@ def sens_v_var_per_parameter(cfg_name, model, t, diffinit=True) -> None:
 
     plt.savefig(PLOTS_DIR / f'per_param_sens_v_var_{cfg_name}_t{t}.png')
     return
+
+
+def plot_umap(embedded, labels, identifier: str, xlim=None, ylim=None) -> None:
+    assert 'replace_index' in labels.columns
+    assert 'seed' in labels.columns
+
+    fig, axarr = plt.subplots(nrows=2, ncols=1, figsize=(3, 5), sharex=True)
+    size = 5
+    axarr[0].set_title('Coloured by dataset')
+    axarr[0].scatter(embedded[:, 0], embedded[:, 1], c=labels['replace_index'], cmap='Spectral', s=size, alpha=0.5)
+    axarr[1].set_title('Coloured by random seed')
+    axarr[1].scatter(embedded[:, 0], embedded[:, 1], c=labels['seed'], cmap='Spectral', s=size, alpha=0.5)
+    vis_utils.beautify_axes(axarr)
+
+    if xlim is not None:
+        for ax in axarr:
+            ax.set_xlim(xlim)
+    if ylim is not None:
+        for ax in axarr:
+            ax.set_ylim(ylim)
+
+    plt.savefig(PLOTS_DIR / f'{identifier}.png')
+    return
+
+
+def umap_on_weights(cfg_name, model, t, diffinit=False, xlim=None, ylim=None) -> None:
+    print(f'Loading all the weights at time {t}')
+    temp_path = PLOTS_DIR / 'temp_data' / f'umap_{cfg_name}_{t}_diffinit{diffinit}.csv'
+    try:
+        df = pd.read_csv(temp_path)
+        print('Loaded a temp file of weights')
+    except FileNotFoundError:
+        df = results_utils.get_posterior_from_all_datasets(cfg_name, iter_range=(t, t+1),
+                                                           model=model, what='weights',
+                                                           verbose=False,
+                                                           diffinit=diffinit, sort=False)
+        df.to_csv(temp_path)
+
+    if cfg_name == 'mnist_binary_lr':
+        # subsample replace indices 4350 and 5669 - or filter to "normal" seeds
+        normal_seeds = df.loc[df['replace_index'] == 4831]['seed'].unique()
+        df_new = df.loc[df['seed'].isin(normal_seeds)]
+        print(f'Subsampled down to {df_new.shape[0]} examples, from {df.shape[0]}')
+        df = df_new
+
+    weights = df.drop(columns=['t', 'seed', 'replace_index']).values
+    labels = df[['seed', 'replace_index']]
+
+    print('checking counts for replace index and seeds..')
+    print(labels['replace_index'].value_counts())
+    print(labels['seed'].value_counts())
+
+    reducer = umap.UMAP()
+    print(f'Data size: {weights.shape}')
+    print('UMAPping!')
+    embedded = reducer.fit_transform(weights)
+
+    identifier = f'umap_{cfg_name}_t{t}_diffinit{diffinit}'
+    plot_umap(embedded, labels, identifier, xlim=xlim, ylim=ylim)

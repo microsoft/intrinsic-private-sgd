@@ -27,7 +27,7 @@ model_names = {'logistic': 'logistic regression',
 
 lr_convergence_points = {'cifar2_lr': 2000,
                          'cifar2_pretrain_lr': 1000,
-                         'mnist_binary_lr': 1850,
+                         'mnist_binary_lr': 1900,
                          'adult_lr': 3400,
                          'forest_lr': 8400}
 
