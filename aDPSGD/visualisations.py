@@ -923,7 +923,6 @@ def mvn_covariance(X, identifier: str = '') -> None:
 def multivariate_normal_test_vis(df, logscale: bool = False) -> None:
     fig, axarr = plt.subplots(nrows=3, ncols=1, sharex=True)
     axarr[-1].set_xlabel('N')
-    ns = df['n'].unique()
     ds = df['d'].unique()
     colours = cm.viridis(np.linspace(0, 1, len(ds)))
     for i, d in enumerate(ds):
