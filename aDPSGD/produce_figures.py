@@ -7,11 +7,13 @@ import test_private_model
 import derived_results as dr
 import experiment_metadata as em
 import vis_utils
+from visualisations import fit_pval_histogram
 import matplotlib.pyplot as plt
 from pathlib import Path
 import seaborn as sns
 import yaml
 
+import ipdb
 
 plt.switch_backend('Agg')
 params = {'font.family': 'sans-serif',
@@ -57,11 +59,11 @@ def generate_plots(cfg_name: str, model: str, t=None, sort=False) -> None:
     return
 
 
-def generate_reports(cfg_name: str, model: str, t=None, num_experiments=500) -> None:
+def generate_reports(cfg_name: str, model: str, t=None, num_experiments=500, include_utility: bool = False) -> None:
     print('\n')
     print(f'Report for {cfg_name} with {model} at {t}')
     print('\n')
-    res = dr.compute_mvn_fit_and_alpha(cfg_name, model, t, diffinit=True)
+    res = dr.compute_mvn_laplace_fit_and_alpha(cfg_name, model, t, diffinit=True)
     p = res['mvn p']
     alpha = res['alpha']
     print(f'Fit of MVN: \t\t\t\t{p}')
@@ -98,36 +100,37 @@ def generate_reports(cfg_name: str, model: str, t=None, num_experiments=500) -> 
     print(f'Epsilon using empirical sensitivity: \t{epsilon_empirical}')
     print('')
 
-    perf_theoretical_eps1 = dr.accuracy_at_eps(cfg_name, model, t, use_bound=True,
-                                               epsilon=1, num_experiments=num_experiments)
-    perf_empirical_eps1 = dr.accuracy_at_eps(cfg_name, model, t, use_bound=False,
-                                             epsilon=1, num_experiments=num_experiments)
-    perf_theoretical_eps05 = dr.accuracy_at_eps(cfg_name, model, t, use_bound=True,
-                                                epsilon=0.5, num_experiments=num_experiments)
-    perf_empirical_eps05 = dr.accuracy_at_eps(cfg_name, model, t, use_bound=False,
-                                              epsilon=0.5, num_experiments=num_experiments)
-    print(f'Noiseless performance: \t\t\t{perf_theoretical_eps1["noiseless"]}')
-    print('')
+    if include_utility:
+        perf_theoretical_eps1 = dr.accuracy_at_eps(cfg_name, model, t, use_bound=True,
+                                                   epsilon=1, num_experiments=num_experiments)
+        perf_empirical_eps1 = dr.accuracy_at_eps(cfg_name, model, t, use_bound=False,
+                                                 epsilon=1, num_experiments=num_experiments)
+        perf_theoretical_eps05 = dr.accuracy_at_eps(cfg_name, model, t, use_bound=True,
+                                                    epsilon=0.5, num_experiments=num_experiments)
+        perf_empirical_eps05 = dr.accuracy_at_eps(cfg_name, model, t, use_bound=False,
+                                                  epsilon=0.5, num_experiments=num_experiments)
+        print(f'Noiseless performance: \t\t\t{perf_theoretical_eps1["noiseless"]}')
+        print('')
 
-    print('Performance at epsilon = 1...')
-    print('\tWith theoretical sensitivity:')
-    print(f'\t\tBolton: \t\t{perf_theoretical_eps1["bolton"]}')
-    print(f'\t\taDPSGD (fixinit): \t{perf_theoretical_eps1["acc"]}')
-    print(f'\t\taDPSGD (diffinit): \t{perf_theoretical_eps1["acc_diffinit"]}')
-    print('\tWith empirical sensitivity:')
-    print(f'\t\tBolton: \t\t{perf_empirical_eps1["bolton"]}')
-    print(f'\t\taDPSGD (fixinit): \t{perf_empirical_eps1["acc"]}')
-    print(f'\t\taDPSGD (diffinit): \t{perf_empirical_eps1["acc_diffinit"]}')
+        print('Performance at epsilon = 1...')
+        print('\tWith theoretical sensitivity:')
+        print(f'\t\tBolton: \t\t{perf_theoretical_eps1["bolton"]}')
+        print(f'\t\taDPSGD (fixinit): \t{perf_theoretical_eps1["acc"]}')
+        print(f'\t\taDPSGD (diffinit): \t{perf_theoretical_eps1["acc_diffinit"]}')
+        print('\tWith empirical sensitivity:')
+        print(f'\t\tBolton: \t\t{perf_empirical_eps1["bolton"]}')
+        print(f'\t\taDPSGD (fixinit): \t{perf_empirical_eps1["acc"]}')
+        print(f'\t\taDPSGD (diffinit): \t{perf_empirical_eps1["acc_diffinit"]}')
 
-    print('Performance at epsilon = 0.5...')
-    print('\tWith theoretical sensitivity:')
-    print(f'\t\tBolton: \t\t{perf_theoretical_eps05["bolton"]}')
-    print(f'\t\taDPSGD (fixinit): \t{perf_theoretical_eps05["acc"]}')
-    print(f'\t\taDPSGD (diffinit): \t{perf_theoretical_eps05["acc_diffinit"]}')
-    print('\tWith empirical sensitivity:')
-    print(f'\t\tBolton: \t\t{perf_empirical_eps05["bolton"]}')
-    print(f'\t\taDPSGD (fixinit): \t{perf_empirical_eps05["acc"]}')
-    print(f'\t\taDPSGD (diffinit): \t{perf_empirical_eps05["acc_diffinit"]}')
+        print('Performance at epsilon = 0.5...')
+        print('\tWith theoretical sensitivity:')
+        print(f'\t\tBolton: \t\t{perf_theoretical_eps05["bolton"]}')
+        print(f'\t\taDPSGD (fixinit): \t{perf_theoretical_eps05["acc"]}')
+        print(f'\t\taDPSGD (diffinit): \t{perf_theoretical_eps05["acc_diffinit"]}')
+        print('\tWith empirical sensitivity:')
+        print(f'\t\tBolton: \t\t{perf_empirical_eps05["bolton"]}')
+        print(f'\t\taDPSGD (fixinit): \t{perf_empirical_eps05["acc"]}')
+        print(f'\t\taDPSGD (diffinit): \t{perf_empirical_eps05["acc_diffinit"]}')
 
     return
 
@@ -169,20 +172,20 @@ def plot_delta_histogram(cfg_name: str, model: str, num_deltas='max', t=500,
                  color=em.dp_colours['bolton'],
                  label=r'$\Delta_S$',
                  kde=True,
-                 hist_kws={'alpha': 0.45},
+                 # hist_kws={'alpha': 0.45},
                  norm_hist=True)
     print('Plotting varying r... number of deltas:', vary_r.shape[0])
     sns.distplot(vary_r, ax=axarr,
                  color=em.dp_colours['augment'],
                  label=r'$\Delta_V^{fix}$',
                  kde=True,
-                 hist_kws={'alpha': 0.7},
+                 # hist_kws={'alpha': 0.7},
                  norm_hist=True)
     sns.distplot(vary_r_diffinit, ax=axarr,
                  color=em.dp_colours['augment_diffinit'],
                  label=r'$\Delta_V^{vary}$',
                  kde=True,
-                 hist_kws={'alpha': 0.9},
+                 #                 hist_kws={'alpha': 0.9},
                  norm_hist=True)
 
     print('Plotting varying both... number of deltas:', vary_both.shape[0])
@@ -209,7 +212,8 @@ def plot_delta_histogram(cfg_name: str, model: str, num_deltas='max', t=500,
     if legend:
         axarr.legend()
     else:
-        axarr.get_legend().remove()
+        if axarr.get_legend():
+            axarr.get_legend().remove()
     axarr.set_xlabel(r'$\|w - w^\prime\|$')
     axarr.set_ylabel('density')
 
@@ -395,10 +399,10 @@ def overlay_pval_plot(model='logistic', xlim=None, n_experiments=50,
 
     for ds in cfg_names:
         print(ds)
-        log_pvals, n_params = vis_utils.fit_pval_histogram(what=what, dataset=ds, model=model,
-                                                           t=convergence_points[ds],
-                                                           n_experiments=n_experiments,
-                                                           plot=False)
+        log_pvals, n_params = fit_pval_histogram(what=what, cfg_name=ds, model=model,
+                                                 t=convergence_points[ds],
+                                                 n_experiments=n_experiments,
+                                                 plot=False)
         sns.distplot(log_pvals, kde=True, bins=min(100, int(len(log_pvals)*0.25)),
                      ax=axarr, color=em.dataset_colours[ds], norm_hist=True,
                      label=em.get_dataset_name(ds),

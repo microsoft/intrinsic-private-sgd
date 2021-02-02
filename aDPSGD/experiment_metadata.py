@@ -4,6 +4,8 @@ from cfg_utils import load_cfg
 
 dataset_colours = {'cifar2_lr': '#A6373F',
                    'cifar2_mlp': '#A6373F',
+                   'cifar2_pretrain_lr': '#A6373F',
+                   'cifar2_pretrain_mlp': '#A6373F',
                    'mnist_binary_lr': '#552B72',
                    'mnist_binary_mlp': '#552B72',
                    'adult_lr': '#db9302',
@@ -13,6 +15,8 @@ dataset_colours = {'cifar2_lr': '#A6373F',
 
 dataset_names = {'cifar2_lr': 'CIFAR2',
                  'cifar2_mlp': 'CIFAR2',
+                 'cifar2_pretrain_lr': 'CIFAR2',
+                 'cifar2_pretrain_mlp': 'CIFAR2',
                  'mnist_binary_lr': 'MNIST-binary',
                  'mnist_binary_mlp': 'MNIST-binary',
                  'adult_lr': 'Adult',
@@ -38,10 +42,10 @@ nn_convergence_points = {'cifar2_mlp': 2500,
                          'forest_mlp': 3500}
 
 dp_colours = {'augment': '#14894e',
-                   'both': 'black',
-                   'augment_diffinit': '#441e85',
-                   'both_diffinit': 'black',
-                   'bolton': '#c3871c'}
+              'both': 'black',
+              'augment_diffinit': '#441e85',
+              'both_diffinit': 'black',
+              'bolton': '#c3871c'}
 
 ## These ones are greyscale friendly
 dp_colours_gs = {'augment': '#2ea71b',
@@ -106,6 +110,8 @@ def get_n_weights(cfg):
             n_weights = 817
         elif dataset_name == 'cifar10':
             n_weights = 521
+        elif dataset_name == 'cifar10_pretrain':
+            n_weights = 661
 
     return n_weights
 

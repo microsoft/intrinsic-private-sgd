@@ -17,6 +17,7 @@ import test_private_model
 import results_utils
 import derived_results as dr
 import experiment_metadata as em
+from sklearn.cluster import KMeans
 
 plt.switch_backend('Agg')
 params = {'font.family': 'sans-serif',
@@ -986,13 +987,28 @@ def plot_umap(embedded, labels, identifier: str, xlim=None, ylim=None) -> None:
     assert 'replace_index' in labels.columns
     assert 'seed' in labels.columns
 
-    fig, axarr = plt.subplots(nrows=2, ncols=1, figsize=(3, 5), sharex=True)
+    fig, axarr = plt.subplots(nrows=1, ncols=2, figsize=(4.5, 2.1), sharey=True)
     size = 5
-    axarr[0].set_title('Coloured by dataset')
-    axarr[0].scatter(embedded[:, 0], embedded[:, 1], c=labels['replace_index'], cmap='Spectral', s=size, alpha=0.5)
-    axarr[1].set_title('Coloured by random seed')
-    axarr[1].scatter(embedded[:, 0], embedded[:, 1], c=labels['seed'], cmap='Spectral', s=size, alpha=0.5)
+    cmap1 = 'plasma'
+    cmap2 = 'viridis'
+#    axarr[0].set_title('UMAP on weights')
+    s1 = axarr[0].scatter(embedded[:, 0], embedded[:, 1], c=labels['replace_index'], cmap=cmap1, s=size, alpha=0.4)
+    cbar1 = fig.colorbar(s1, ax=axarr[0], fraction=0.046, pad=0.04)
+    cbar1.set_ticks([])
+    cbar1.outline.set_visible(False)
+    cbar1.set_label('perturbed dataset', rotation=270, labelpad=10)
+
+    s2 = axarr[1].scatter(embedded[:, 0], embedded[:, 1], c=labels['seed'], cmap=cmap2, s=size, alpha=0.4)
+    cbar2 = fig.colorbar(s2, ax=axarr[1], fraction=0.046, pad=0.04)
+    cbar2.set_ticks([])
+    cbar2.outline.set_visible(False)
+    cbar2.set_label('random seed', rotation=270, labelpad=10)
     vis_utils.beautify_axes(axarr)
+
+    for ax in axarr:
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])
+        ax.set_aspect(1)
 
     if xlim is not None:
         for ax in axarr:
@@ -1001,11 +1017,16 @@ def plot_umap(embedded, labels, identifier: str, xlim=None, ylim=None) -> None:
         for ax in axarr:
             ax.set_ylim(ylim)
 
+    plt.tight_layout()
+
     plt.savefig(PLOTS_DIR / f'{identifier}.png')
+    plt.savefig(PLOTS_DIR / f'{identifier}.pdf')
     return
 
 
-def umap_on_weights(cfg_name, model, t, diffinit=False, xlim=None, ylim=None) -> None:
+def umap_on_weights(cfg_name, model, t, diffinit=False, xlim=None, ylim=None,
+                    n_neighbors=15, min_dist=0.1, n_components=2, metric='euclidean',
+                    n_clusters: int = None, synthetic: bool = False) -> None:
     print(f'Loading all the weights at time {t}')
     temp_path = PLOTS_DIR / 'temp_data' / f'umap_{cfg_name}_{t}_diffinit{diffinit}.csv'
     try:
@@ -1028,14 +1049,62 @@ def umap_on_weights(cfg_name, model, t, diffinit=False, xlim=None, ylim=None) ->
     weights = df.drop(columns=['t', 'seed', 'replace_index']).values
     labels = df[['seed', 'replace_index']]
 
-    print('checking counts for replace index and seeds..')
-    print(labels['replace_index'].value_counts())
-    print(labels['seed'].value_counts())
+    identifier = f'umap_{cfg_name}_t{t}_diffinit{diffinit}'
 
-    reducer = umap.UMAP()
+    # debug
+    if synthetic:
+        print('Replacing data with something synthetic!')
+        synthetic = np.zeros_like(weights)
+        seed_means = np.random.normal(size=(len(labels['seed'].unique()), weights.shape[1]))
+        seed_means_map = dict(zip(labels['seed'].unique(), seed_means))
+        replace_means = np.random.normal(size=(len(labels['replace_index'].unique()), weights.shape[1]))
+        replace_means_map = dict(zip(labels['replace_index'].unique(), replace_means))
+        alpha = 0.502
+        for i in range(weights.shape[0]):
+            synthetic[i] = alpha * seed_means_map[labels.iloc[i]['seed']] + (1 - alpha) * replace_means_map[labels.iloc[i]['replace_index']] + np.random.normal(scale=0.1)
+        weights = synthetic
+        identifier = 'umap_synthetic'
+
+    if metric == 'hamming':
+        print('Binarising weights!')
+        print('Positiev weights --> 1')
+        weights = (weights > 0) * 1
+
+    print('checking counts for replace index and seeds..')
+    print(labels['replace_index'].value_counts().max())
+    print(labels['seed'].value_counts().max())
+
+    fit = umap.UMAP(
+                    n_neighbors=n_neighbors,
+                    min_dist=min_dist,
+                    n_components=n_components,
+                    metric=metric
+                    )
     print(f'Data size: {weights.shape}')
     print('UMAPping!')
-    embedded = reducer.fit_transform(weights)
+    embedded = fit.fit_transform(weights)
 
-    identifier = f'umap_{cfg_name}_t{t}_diffinit{diffinit}'
     plot_umap(embedded, labels, identifier, xlim=xlim, ylim=ylim)
+
+    if n_clusters is None:
+        max_seeds = labels.seed.value_counts().max()
+        max_replaces = labels.replace_index.value_counts().max()
+        n_clusters = max(max_seeds, max_replaces)
+        print(f'Using n clusters: {n_clusters}')
+
+    print('Performing clustering...')
+    kmeans = KMeans(n_clusters=n_clusters)
+    preds = kmeans.fit_predict(weights)
+    labels['cluster'] = preds
+
+    seeds_per_cluster = labels.groupby('cluster').apply(lambda x: len(x['seed'].unique()))
+    print(f'Seeds per cluster: max: {seeds_per_cluster.max()}, mean: {seeds_per_cluster.mean()}, min: {seeds_per_cluster.min()}')
+
+    clusters_per_seed = labels.groupby('seed').apply(lambda x: len(x['cluster'].unique()))
+    print(f'clusters per seed: max: {clusters_per_seed.max()}, mean: {clusters_per_seed.mean()}, min: {clusters_per_seed.min()}')
+
+    replaces_per_cluster = labels.groupby('cluster').apply(lambda x: len(x['replace_index'].unique()))
+    print(f'Replaces per cluster: max: {replaces_per_cluster.max()}, mean: {replaces_per_cluster.mean()}, min: {replaces_per_cluster.min()}')
+
+    clusters_per_replace = labels.groupby('replace_index').apply(lambda x: len(x['cluster'].unique()))
+    print(f'clusters per replace: max: {clusters_per_replace.max()}, mean: {clusters_per_replace.mean()}, min: {clusters_per_replace.min()}')
