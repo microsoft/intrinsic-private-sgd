@@ -55,18 +55,6 @@ dp_colours_gs = {'augment': '#2ea71b',
               'bolton': '#ca8621'}
 
 
-def get_dataset_name(cfg_name) -> str:
-    cfg = load_cfg(cfg_name)
-    data_name = cfg['data']['name']
-    if 'cifar' in data_name:
-        if cfg['data']['binary']:
-            return 'CIFAR2'
-        else:
-            return 'CIFAR10'
-    else:
-        raise NotImplementedError
-
-
 def get_dataset_size(data_cfg):
     """ Note that this is the size of the training dataset """
     name = data_cfg['name']

@@ -384,53 +384,13 @@ def fit_pval_histogram(what, cfg_name, model, t, n_experiments=3, diffinit=False
     """
     histogram of p-values (across parameters-?) for a given model etc.
     """
+
     assert what in ['weights', 'gradients']
-    # set some stuff up
-    iter_range = (t, t + 1)
     fig, axarr = plt.subplots(nrows=1, ncols=1, figsize=(3.5, 2.1))
     pval_colour = '#b237c4'
-    # sample experiments
-    df = results_utils.get_available_results(cfg_name, model, diffinit=diffinit)
-    replace_indices = df['replace'].unique()
-    replace_indices = np.random.choice(replace_indices, n_experiments, replace=False)
-    print('Looking at replace indices...', replace_indices)
-    all_pvals = []
-
-    for i, replace_index in enumerate(replace_indices):
-        experiment = results_utils.ExperimentIdentifier(cfg_name, model, replace_index, seed, diffinit)
-
-        if what == 'gradients':
-            print('Loading gradients...')
-            df = experiment.load_gradients(noise=True, iter_range=iter_range, params=None)
-            second_col = df.columns[1]
-        elif what == 'weights':
-            df = results_utils.get_posterior_samples(cfg_name, iter_range=iter_range,
-                                                     model=model, replace_index=replace_index,
-                                                     params=None, seeds='all')
-            second_col = df.columns[1]
-        params = df.columns[2:]
-        n_params = len(params)
-        print(n_params)
-
-        if n_params < 50:
-            print('ERROR: Insufficient parameters for this kind of visualisation, please try something else')
-
-            return False
-        print('Identified', n_params, 'parameters, proceeding with analysis')
-        p_vals = np.zeros(shape=(n_params))
-
-        for j, p in enumerate(params):
-            print('getting fit for parameter', p)
-            df_fit = dr.estimate_statistics_through_training(what=what, cfg_name=None,
-                                                             model=None, replace_index=None,
-                                                             seed=None,
-                                                             df=df.loc[:, ['t', second_col, p]],
-                                                             params=None, iter_range=None)
-            p_vals[j] = df_fit.loc[t, 'norm_p']
-            del df_fit
-        log_pvals = np.log(p_vals)
-        all_pvals.append(log_pvals)
-    log_pvals = np.concatenate(all_pvals)
+    log_pvals, n_params = dr.get_pvals(what=what, cfg_name=cfg_name,
+                                       model=model, t=t, n_experiments=n_experiments,
+                                       diffinit=diffinit)
 
     if xlim is not None:
         # remove values below the limit

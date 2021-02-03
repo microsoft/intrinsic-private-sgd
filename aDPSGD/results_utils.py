@@ -6,6 +6,8 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from experiment_metadata import get_dataset_size, get_input_hidden_size
+from typing import Tuple
+import derived_results
 import ipdb
 
 TRACES_DIR = './traces/'
@@ -368,3 +370,55 @@ def get_posterior_from_all_datasets(cfg_name, iter_range, model='logistic',
             all_dfs.append(replace_samples)
     df = pd.concat(all_dfs)
     return df
+
+
+def get_pvals(what, cfg_name, model, t, n_experiments=3, diffinit=False) -> Tuple[np.ndarray, int]:
+    """
+    load weights/gradients and compute p-vals for them, then return them
+    """
+    assert what in ['weights', 'gradients']
+    # set some stuff up
+    iter_range = (t, t + 1)
+    # sample experiments
+    df = get_available_results(cfg_name, model, diffinit=diffinit)
+    replace_indices = df['replace'].unique()
+    replace_indices = np.random.choice(replace_indices, n_experiments, replace=False)
+    print('Looking at replace indices...', replace_indices)
+    all_pvals = []
+
+    for i, replace_index in enumerate(replace_indices):
+        experiment = ExperimentIdentifier(cfg_name, model, replace_index, seed=1, diffinit=diffinit)
+
+        if what == 'gradients':
+            print('Loading gradients...')
+            df = experiment.load_gradients(noise=True, iter_range=iter_range, params=None)
+            second_col = df.columns[1]
+        elif what == 'weights':
+            df = get_posterior_samples(cfg_name, iter_range=iter_range,
+                                       model=model, replace_index=replace_index,
+                                       params=None, seeds='all')
+            second_col = df.columns[1]
+        params = df.columns[2:]
+        n_params = len(params)
+        print(n_params)
+
+        if n_params < 50:
+            print('ERROR: Insufficient parameters for this kind of visualisation, please try something else')
+
+            return False
+        print('Identified', n_params, 'parameters, proceeding with analysis')
+        p_vals = np.zeros(shape=(n_params))
+
+        for j, p in enumerate(params):
+            print('getting fit for parameter', p)
+            df_fit = derived_results.estimate_statistics_through_training(what=what, cfg_name=None,
+                                                                          model=None, replace_index=None,
+                                                                          seed=None,
+                                                                          df=df.loc[:, ['t', second_col, p]],
+                                                                          params=None, iter_range=None)
+            p_vals[j] = df_fit.loc[t, 'norm_p']
+            del df_fit
+        log_pvals = np.log(p_vals)
+        all_pvals.append(log_pvals)
+    log_pvals = np.concatenate(all_pvals)
+    return log_pvals, n_params

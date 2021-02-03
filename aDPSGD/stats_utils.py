@@ -9,6 +9,7 @@ from scipy.stats import kstest, laplace, shapiro, anderson, invwishart
 
 smaller_N = 10000  # due to memory errors
 
+
 def fit_alpha_stable(X):
     N = X.shape[0]
     # copied from umut

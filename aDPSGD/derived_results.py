@@ -7,6 +7,7 @@ import ipdb
 import abc
 import numpy as np
 import pandas as pd
+from typing import Tuple
 from scipy.stats import ttest_rel
 import test_private_model
 import results_utils
@@ -933,17 +934,17 @@ def get_deltas(cfg_name, iter_range, model,
 
 def estimate_statistics_through_training(what, cfg_name, model, replace_index,
                                          seed, df=None, params=None, sort=False,
-                                         iter_range=(None, None), diffinit=True):
+                                         iter_range=(None, None), diffinit=True,
+                                         include_mvn: bool = True):
     """
     Grab a trace file for a model, estimate the alpha value for gradient noise throughout training
     NOTE: All weights taken together as IID (in the list of params supplied)
     """
     assert what in ['gradients', 'weights']
 
-    if replace_index is None:
-        replace_index = results_utils.get_replace_index_with_most_seeds(cfg_name, model, diffinit=diffinit)
-
     if df is None:
+        if replace_index is None:
+            replace_index = results_utils.get_replace_index_with_most_seeds(cfg_name, model, diffinit=diffinit)
         if what == 'gradients':
             if sort:
                 raise ValueError(sort)
@@ -959,6 +960,9 @@ def estimate_statistics_through_training(what, cfg_name, model, replace_index,
             print('ERROR: No data found')
 
             return False
+
+    if include_mvn:
+        assert df.shape[1] > 2
 
     # now go through the iterations
     iterations = df['t'].unique()
@@ -984,12 +988,13 @@ def estimate_statistics_through_training(what, cfg_name, model, replace_index,
         alpha, fit = stats_utils.fit_alpha_stable(X)
         df_fits.loc[t, 'alpha'] = alpha
         df_fits.loc[t, 'alpha_fit'] = fit
-        # fit multivariate gaussian - dont record the params since they don't fit...
-        _, _, _, p = stats_utils.fit_multivariate_normal(X)
-        df_fits.loc[t, 'mvnorm_mu'] = np.nan
-        df_fits.loc[t, 'mvnorm_sigma'] = np.nan
-        df_fits.loc[t, 'mvnorm_W'] = np.nan
-        df_fits.loc[t, 'mvnorm_p'] = p
+        if include_mvn:
+            # fit multivariate gaussian - dont record the params since they don't fit...
+            _, _, _, p = stats_utils.fit_multivariate_normal(X)
+            df_fits.loc[t, 'mvnorm_mu'] = np.nan
+            df_fits.loc[t, 'mvnorm_sigma'] = np.nan
+            df_fits.loc[t, 'mvnorm_W'] = np.nan
+            df_fits.loc[t, 'mvnorm_p'] = p
         # Now flatten and look at univariate distributions
         X_flat = X.reshape(-1, 1)
         df_fits['N_flat'] = X_flat.shape[0]
@@ -1316,14 +1321,55 @@ def compute_mvn_laplace_fit_and_alpha(cfg_name, model, t, diffinit=True, sort=Fa
     return {'mvn p': p, 'alpha': alpha}
 
 
-def cluster_weights():
-    samples = results_utils.get_posterior_samples(self.cfg_name, (self.t, self.t+1),
-                                                  self.model,
-                                                  replace_index=replace_index,
-                                                  params=None, seeds='all',
-                                                  verbose=verbose,
-                                                  diffinit=diffinit,
-                                                  data_privacy=self.data_privacy,
-                                                  num_seeds=self.num_seeds,
-                                                  sort=self.sort)
-    return samples
+def get_pvals(what, cfg_name, model, t, n_experiments=3, diffinit=False) -> Tuple[np.ndarray, int]:
+    """
+    load weights/gradients and compute p-vals for them, then return them
+    """
+    assert what in ['weights', 'gradients']
+    # set some stuff up
+    iter_range = (t, t + 1)
+    # sample experiments
+    df = results_utils.get_available_results(cfg_name, model, diffinit=diffinit)
+    replace_indices = df['replace'].unique()
+    replace_indices = np.random.choice(replace_indices, n_experiments, replace=False)
+    print('Looking at replace indices...', replace_indices)
+    all_pvals = []
+
+    for i, replace_index in enumerate(replace_indices):
+        print(cfg_name)
+        experiment = results_utils.ExperimentIdentifier(cfg_name, model, replace_index, seed=1, diffinit=diffinit)
+
+        if what == 'gradients':
+            print('Loading gradients...')
+            df = experiment.load_gradients(noise=True, iter_range=iter_range, params=None)
+            second_col = df.columns[1]
+        elif what == 'weights':
+            df = results_utils.get_posterior_samples(cfg_name, iter_range=iter_range,
+                                                     model=model, replace_index=replace_index,
+                                                     params=None, seeds='all')
+            second_col = df.columns[1]
+        params = df.columns[2:]
+        n_params = len(params)
+        print(n_params)
+
+        if n_params < 50:
+            print('ERROR: Insufficient parameters for this kind of visualisation, please try something else')
+
+            return False
+        print('Identified', n_params, 'parameters, proceeding with analysis')
+        p_vals = np.zeros(shape=(n_params))
+
+        for j, p in enumerate(params):
+            print('getting fit for parameter', p)
+            df_fit = estimate_statistics_through_training(what=what, cfg_name=None,
+                                                          model=None, replace_index=None,
+                                                          seed=None,
+                                                          df=df.loc[:, ['t', second_col, p]],
+                                                          params=None, iter_range=None,
+                                                          include_mvn=False)
+            p_vals[j] = df_fit.loc[t, f'{what}_norm_p']
+            del df_fit
+        log_pvals = np.log(p_vals)
+        all_pvals.append(log_pvals)
+    log_pvals = np.concatenate(all_pvals)
+    return log_pvals, n_params

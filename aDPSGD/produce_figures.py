@@ -7,13 +7,10 @@ import test_private_model
 import derived_results as dr
 import experiment_metadata as em
 import vis_utils
-from visualisations import fit_pval_histogram
 import matplotlib.pyplot as plt
 from pathlib import Path
 import seaborn as sns
 import yaml
-
-import ipdb
 
 plt.switch_backend('Agg')
 params = {'font.family': 'sans-serif',
@@ -45,9 +42,6 @@ def generate_plots(cfg_name: str, model: str, t=None, sort=False) -> None:
         assert t is not None
         delta_histogram_xlim = None
         delta_histogram_ylim = None
-        epsilon_distribution_xlim = None
-        epsilon_distribution_ylim = None
-        versus_time_acc_lims = None
 
     plot_delta_histogram(cfg_name, model, t=t, include_bounds=(model == 'logistic'),
                          xlim=delta_histogram_xlim, ylim=delta_histogram_ylim,
@@ -332,7 +326,7 @@ def plot_stability_of_estimated_values(cfg_name, model, t) -> None:
     axarr.axhline(y=sigma_we_use, ls='--', c=em.dp_colours['augment_diffinit'], alpha=0.4)
     axarr.set_xlabel('number of random seeds')
     axarr.set_ylabel(r'estimated $\sigma_i(\mathcal{D})$')
-    axarr.set_title(em.get_dataset_name(cfg_name) + ' (' + em.model_names[model] + ')')
+    axarr.set_title(em.dataset_names[cfg_name] + ' (' + em.model_names[model] + ')')
     upper_y = 1.05*max(np.max(sigma_v_seed['sigma']), sigma_we_use)
     lower_y = 0.95*np.min(sigma_v_seed['sigma'])
     axarr.set_ylim(lower_y, upper_y)
@@ -360,7 +354,7 @@ def plot_stability_of_estimated_values(cfg_name, model, t) -> None:
     axarr.set_ylabel('estimated sensitivity')
     axarr.set_ylim(0, None)
     axarr.set_xscale('log')
-    axarr.set_title(em.get_dataset_name(cfg_name) + ' (' + em.model_names[model] + ')')
+    axarr.set_title(em.dataset_names[cfg_name] + ' (' + em.model_names[model] + ')')
     vis_utils.beautify_axes(np.array([axarr]))
     plt.tight_layout()
 
@@ -375,7 +369,7 @@ def plot_stability_of_estimated_values(cfg_name, model, t) -> None:
 
 
 def overlay_pval_plot(model='logistic', xlim=None, n_experiments=50,
-                      cfg_names=None, ylim=None) -> None:
+                      cfg_names=None, ylim=None, diffinit=True) -> None:
     """
     want to overlay pvals from the four datasets in one plot
     """
@@ -398,14 +392,13 @@ def overlay_pval_plot(model='logistic', xlim=None, n_experiments=50,
     vertical_lines_we_already_have = set()
 
     for ds in cfg_names:
-        print(ds)
-        log_pvals, n_params = fit_pval_histogram(what=what, cfg_name=ds, model=model,
-                                                 t=convergence_points[ds],
-                                                 n_experiments=n_experiments,
-                                                 plot=False)
+        log_pvals, n_params = dr.get_pvals(what=what, cfg_name=ds, model=model,
+                                           t=convergence_points[ds],
+                                           n_experiments=n_experiments,
+                                           diffinit=diffinit)
         sns.distplot(log_pvals, kde=True, bins=min(100, int(len(log_pvals)*0.25)),
                      ax=axarr, color=em.dataset_colours[ds], norm_hist=True,
-                     label=em.get_dataset_name(ds),
+                     label=em.dataset_names[ds],
                      kde_kws={'alpha': 0.6})
 
         if n_params not in vertical_lines_we_already_have:
