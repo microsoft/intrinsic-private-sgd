@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 from typing import Tuple
 from scipy.stats import ttest_rel
-import test_private_model
+from test_private_model import test_model_with_noise, compute_wu_bound
 import results_utils
 import stats_utils
 import experiment_metadata as em
@@ -185,7 +185,7 @@ class UtilityCurve(DerivedResult):
                     continue
 
                 for eps in epsilons:
-                    results = test_private_model.test_model_with_noise(cfg_name=self.cfg_name,
+                    results = test_model_with_noise(cfg_name=self.cfg_name,
                                                                        replace_index=exp_replace,
                                                                        seed=exp_seed, t=self.t, epsilon=eps,
                                                                        delta=None,
@@ -505,7 +505,7 @@ class VersusTime(DerivedResult):
         for i, t in enumerate(t_range):
 
             if self.model == 'logistic':
-                theoretical_sensitivity = test_private_model.compute_wu_bound(L, t=t, N=N,
+                theoretical_sensitivity = compute_wu_bound(L, t=t, N=N,
                                                                               batch_size=batch_size, eta=lr)
             else:
                 theoretical_sensitivity = np.nan
@@ -661,44 +661,63 @@ def generate_derived_results(cfg_name: str, model: str = 'logistic', t: int = No
 
 
 def calculate_epsilon(cfg_name, model, t, use_bound=False, diffinit=True,
-                      num_deltas='max', multivariate=False, verbose=True):
+                      num_deltas='max', multivariate=False, verbose=True,
+                      take_sigma_as_min: bool = False,
+                      take_sens_as_fixed: bool = False):
     """
     just get the intrinsic epsilon
     """
     task, batch_size, lr, n_weights, N = em.get_experiment_details(cfg_name, model)
     delta = 1.0/(N**2)
-    variability = estimate_variability(cfg_name, model, t,
-                                       multivariate=multivariate,
-                                       diffinit=diffinit, verbose=verbose)
+    if take_sigma_as_min:
+        variability = estimate_variability(cfg_name, model, t,
+                                           multivariate=True,
+                                           diffinit=diffinit, verbose=verbose)
+        variability = np.min(variability)
+    else:
+        variability = estimate_variability(cfg_name, model, t,
+                                           multivariate=multivariate,
+                                           diffinit=diffinit, verbose=verbose)
 
     if use_bound:
         if model == 'logistic':
-            sensitivity = test_private_model.compute_wu_bound(lipschitz_constant=np.sqrt(2), t=t, N=N,
+            sensitivity = compute_wu_bound(lipschitz_constant=np.sqrt(2), t=t, N=N,
                                                               batch_size=batch_size, eta=lr, verbose=verbose)
         else:
             sensitivity = np.nan
 
-        if multivariate:
+        if multivariate and not take_sens_as_fixed:
             # The overall L2 norm is "sensitivity", so giving each dimension equal contribution (!!!), we get
             # Each dimension = sens/sqrt(d)
             assert n_weights == len(variability)
             sensitivity = np.array([sensitivity/np.sqrt(n_weights)]*n_weights)
     else:
-        sensitivity = estimate_sensitivity_empirically(cfg_name, model, t, num_deltas=num_deltas,
-                                                       diffinit=diffinit, multivariate=multivariate, verbose=verbose)
+        if take_sens_as_fixed:
+            sensitivity = estimate_sensitivity_empirically(cfg_name, model, t, num_deltas=num_deltas,
+                                                           diffinit=diffinit, multivariate=False, verbose=verbose)
+        else:
+            sensitivity = estimate_sensitivity_empirically(cfg_name, model, t, num_deltas=num_deltas,
+                                                           diffinit=diffinit, multivariate=multivariate, verbose=verbose)
     if verbose:
         print('sensitivity:', sensitivity)
         print('variability:', variability)
         print('delta:', delta)
     c = np.sqrt(2 * np.log(1.25/delta))
     if multivariate:
-        sensitivity = sensitivity.flatten()
-        # We have epsilon ~ sqrt(d) sens / var
-        assert n_weights == len(sensitivity)
-        assert len(variability) == len(sensitivity)
-        epsilon = c * np.sqrt(n_weights) * sensitivity / variability
+        if take_sens_as_fixed:
+            # we are not doing the multivariate thing and don't need the factor of root n
+            epsilon = c * sensitivity / variability
+        if not take_sens_as_fixed:
+            sensitivity = sensitivity.flatten()
+            # We have epsilon ~ sqrt(d) sens / var
+            assert n_weights == len(sensitivity)
+            if not take_sigma_as_min:
+                assert len(variability) == len(sensitivity)
+            epsilon = c * np.sqrt(n_weights) * sensitivity / variability
         # Now we take the largest
         print(epsilon)
+        print(min(variability), max(variability))
+        print(min(epsilon), max(epsilon))
         epsilon = max(epsilon)
     else:
         epsilon = c * sensitivity / variability
@@ -893,6 +912,7 @@ def get_deltas(cfg_name, iter_range, model,
         assert ((wp['replace'].astype(int).values - w['replace'].astype(int).values) == 0).mean() == 1
 
     deltas = [0]*num_deltas
+    _, _, _, n_weights, _ = em.get_experiment_details(cfg_name, model)
 
     for i in range(num_deltas):
         replace_index = w.iloc[i]['replace']
@@ -906,7 +926,10 @@ def get_deltas(cfg_name, iter_range, model,
             # the first column is the time-step
         else:
             print('WARNING: Missing data for (seed, replace) = (', seed, replace_index, ')')
-            w_weights = np.array([np.nan])
+            if multivariate:
+                w_weights = np.array([np.nan] * n_weights)
+            else:
+                w_weights = np.array([np.nan])
         replace_index_p = wp.iloc[i]['replace']
         seed_p = wp.iloc[i]['seed']
 
@@ -917,7 +940,10 @@ def get_deltas(cfg_name, iter_range, model,
                                             verbose=False, sort=sort).values[:, 1:]
         else:
             print('WARNING: Missing data for (seed, replace) = (', seed_p, replace_index_p, ')')
-            wp_weights = np.array([np.nan])
+            if multivariate:
+                wp_weights = np.array([np.nan] * n_weights)
+            else:
+                wp_weights = np.array([np.nan])
 
         if multivariate:
             delta = np.abs(w_weights - wp_weights)
@@ -929,91 +955,8 @@ def get_deltas(cfg_name, iter_range, model,
     identifiers = np.array(list(zip(w_identifiers, wp_identifiers)))
 
     deltas = np.array(deltas)
+
     return deltas, identifiers
-
-
-def estimate_statistics_through_training(what, cfg_name, model, replace_index,
-                                         seed, df=None, params=None, sort=False,
-                                         iter_range=(None, None), diffinit=True,
-                                         include_mvn: bool = True):
-    """
-    Grab a trace file for a model, estimate the alpha value for gradient noise throughout training
-    NOTE: All weights taken together as IID (in the list of params supplied)
-    """
-    assert what in ['gradients', 'weights']
-
-    if df is None:
-        if replace_index is None:
-            replace_index = results_utils.get_replace_index_with_most_seeds(cfg_name, model, diffinit=diffinit)
-        if what == 'gradients':
-            if sort:
-                raise ValueError(sort)
-            df = results_utils.get_posterior_samples(cfg_name, model=model, replace_index=replace_index,
-                                                     iter_range=iter_range, params=params, diffinit=diffinit,
-                                                     what='gradients')
-        else:
-            print('Getting posterior for weights, seed is irrelevant')
-            df = results_utils.get_posterior_samples(cfg_name, model=model, replace_index=replace_index,
-                                                     iter_range=iter_range, params=params, diffinit=diffinit, sort=sort)
-
-        if df is False:
-            print('ERROR: No data found')
-
-            return False
-
-    if include_mvn:
-        assert df.shape[1] > 2
-
-    # now go through the iterations
-    iterations = df['t'].unique()
-    # store the results in this dataframe
-    df_fits = pd.DataFrame(index=iterations)
-    df_fits.index.name = 't'
-    df_fits['N'] = np.nan
-    df_fits['alpha'] = np.nan
-    df_fits['alpha_fit'] = np.nan
-
-    for t in iterations:
-        df_t = df.loc[df['t'] == t, :]
-        # zero it out by seed
-        if what == 'gradients':
-            seed_means = df_t.groupby('seed').transform('mean')
-            df_t = (df_t - seed_means).drop(columns=['seed', 't'])
-            X = df_t.values
-        else:
-            X = df_t.iloc[:, 2:].values
-            X = X - X.mean(axis=0)
-        df_fits['N'] = X.shape[0]
-        # fit alpha_stable
-        alpha, fit = stats_utils.fit_alpha_stable(X)
-        df_fits.loc[t, 'alpha'] = alpha
-        df_fits.loc[t, 'alpha_fit'] = fit
-        if include_mvn:
-            # fit multivariate gaussian - dont record the params since they don't fit...
-            _, _, _, p = stats_utils.fit_multivariate_normal(X)
-            df_fits.loc[t, 'mvnorm_mu'] = np.nan
-            df_fits.loc[t, 'mvnorm_sigma'] = np.nan
-            df_fits.loc[t, 'mvnorm_W'] = np.nan
-            df_fits.loc[t, 'mvnorm_p'] = p
-        # Now flatten and look at univariate distributions
-        X_flat = X.reshape(-1, 1)
-        df_fits['N_flat'] = X_flat.shape[0]
-        # fit univariate gaussian
-        mu, sigma, W, p = stats_utils.fit_normal(X_flat)
-        df_fits.loc[t, 'norm_mu'] = mu
-        df_fits.loc[t, 'norm_sigma'] = sigma
-        df_fits.loc[t, 'norm_W'] = W
-        df_fits.loc[t, 'norm_p'] = p
-        # fit laplace
-        loc, scale, D, p = stats_utils.fit_laplace(X_flat)
-        df_fits.loc[t, 'lap_loc'] = loc
-        df_fits.loc[t, 'lap_scale'] = scale
-        df_fits.loc[t, 'lap_D'] = D
-        df_fits.loc[t, 'lap_p'] = p
-
-    # Attach what the fit was on
-    df_fits.columns = [f'{what}_{x}' for x in df_fits.columns]
-    return df_fits
 
 
 def find_convergence_point_for_single_experiment(cfg_name, model, replace_index,
@@ -1361,12 +1304,12 @@ def get_pvals(what, cfg_name, model, t, n_experiments=3, diffinit=False) -> Tupl
 
         for j, p in enumerate(params):
             print('getting fit for parameter', p)
-            df_fit = estimate_statistics_through_training(what=what, cfg_name=None,
-                                                          model=None, replace_index=None,
-                                                          seed=None,
-                                                          df=df.loc[:, ['t', second_col, p]],
-                                                          params=None, iter_range=None,
-                                                          include_mvn=False)
+            df_fit = stats_utils.estimate_statistics_through_training(what=what, cfg_name=None,
+                                                                      model=None, replace_index=None,
+                                                                      seed=None,
+                                                                      df=df.loc[:, ['t', second_col, p]],
+                                                                      params=None, iter_range=None,
+                                                                      include_mvn=False)
             p_vals[j] = df_fit.loc[t, f'{what}_norm_p']
             del df_fit
         log_pvals = np.log(p_vals)

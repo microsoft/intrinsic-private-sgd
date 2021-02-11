@@ -7,7 +7,7 @@ import pandas as pd
 from pathlib import Path
 from experiment_metadata import get_dataset_size, get_input_hidden_size
 from typing import Tuple
-import derived_results
+from stats_utils import estimate_statistics_through_training
 import ipdb
 
 TRACES_DIR = './traces/'
@@ -411,11 +411,11 @@ def get_pvals(what, cfg_name, model, t, n_experiments=3, diffinit=False) -> Tupl
 
         for j, p in enumerate(params):
             print('getting fit for parameter', p)
-            df_fit = derived_results.estimate_statistics_through_training(what=what, cfg_name=None,
-                                                                          model=None, replace_index=None,
-                                                                          seed=None,
-                                                                          df=df.loc[:, ['t', second_col, p]],
-                                                                          params=None, iter_range=None)
+            df_fit = estimate_statistics_through_training(what=what, cfg_name=None,
+                                                          model=None, replace_index=None,
+                                                          seed=None,
+                                                          df=df.loc[:, ['t', second_col, p]],
+                                                          params=None, iter_range=None)
             p_vals[j] = df_fit.loc[t, 'norm_p']
             del df_fit
         log_pvals = np.log(p_vals)

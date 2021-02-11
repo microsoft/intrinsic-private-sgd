@@ -6,6 +6,7 @@ import pandas as pd
 import ipdb
 from ping import multivariate_normality
 from scipy.stats import kstest, laplace, shapiro, anderson, invwishart
+import results_utils
 
 smaller_N = 10000  # due to memory errors
 
@@ -245,3 +246,87 @@ def uni_sigma_bound(sensitivity=0.3, delta=1e-5, epsilon=1):
     bound = c*sensitivity/epsilon
     print(f'c is {c}')
     print(f'bound is {bound}')
+
+
+def estimate_statistics_through_training(what, cfg_name, model, replace_index,
+                                         seed, df=None, params=None, sort=False,
+                                         iter_range=(None, None), diffinit=True,
+                                         include_mvn: bool = True):
+    """
+    Grab a trace file for a model, estimate the alpha value for gradient noise throughout training
+    NOTE: All weights taken together as IID (in the list of params supplied)
+    """
+    assert what in ['gradients', 'weights']
+
+    if df is None:
+        if replace_index is None:
+            replace_index = results_utils.get_replace_index_with_most_seeds(cfg_name, model, diffinit=diffinit)
+        if what == 'gradients':
+            if sort:
+                raise ValueError(sort)
+            df = results_utils.get_posterior_samples(cfg_name, model=model, replace_index=replace_index,
+                                                     iter_range=iter_range, params=params, diffinit=diffinit,
+                                                     what='gradients')
+        else:
+            print('Getting posterior for weights, seed is irrelevant')
+            df = results_utils.get_posterior_samples(cfg_name, model=model, replace_index=replace_index,
+                                                     iter_range=iter_range, params=params, diffinit=diffinit, sort=sort)
+
+        if df is False:
+            print('ERROR: No data found')
+
+            return False
+
+    if include_mvn:
+        assert df.shape[1] > 2
+
+    # now go through the iterations
+    iterations = df['t'].unique()
+    # store the results in this dataframe
+    df_fits = pd.DataFrame(index=iterations)
+    df_fits.index.name = 't'
+    df_fits['N'] = np.nan
+    df_fits['alpha'] = np.nan
+    df_fits['alpha_fit'] = np.nan
+
+    for t in iterations:
+        df_t = df.loc[df['t'] == t, :]
+        # zero it out by seed
+        if what == 'gradients':
+            seed_means = df_t.groupby('seed').transform('mean')
+            df_t = (df_t - seed_means).drop(columns=['seed', 't'])
+            X = df_t.values
+        else:
+            X = df_t.iloc[:, 2:].values
+            X = X - X.mean(axis=0)
+        df_fits['N'] = X.shape[0]
+        # fit alpha_stable
+        alpha, fit = fit_alpha_stable(X)
+        df_fits.loc[t, 'alpha'] = alpha
+        df_fits.loc[t, 'alpha_fit'] = fit
+        if include_mvn:
+            # fit multivariate gaussian - dont record the params since they don't fit...
+            _, _, _, p = fit_multivariate_normal(X)
+            df_fits.loc[t, 'mvnorm_mu'] = np.nan
+            df_fits.loc[t, 'mvnorm_sigma'] = np.nan
+            df_fits.loc[t, 'mvnorm_W'] = np.nan
+            df_fits.loc[t, 'mvnorm_p'] = p
+        # Now flatten and look at univariate distributions
+        X_flat = X.reshape(-1, 1)
+        df_fits['N_flat'] = X_flat.shape[0]
+        # fit univariate gaussian
+        mu, sigma, W, p = fit_normal(X_flat)
+        df_fits.loc[t, 'norm_mu'] = mu
+        df_fits.loc[t, 'norm_sigma'] = sigma
+        df_fits.loc[t, 'norm_W'] = W
+        df_fits.loc[t, 'norm_p'] = p
+        # fit laplace
+        loc, scale, D, p = fit_laplace(X_flat)
+        df_fits.loc[t, 'lap_loc'] = loc
+        df_fits.loc[t, 'lap_scale'] = scale
+        df_fits.loc[t, 'lap_D'] = D
+        df_fits.loc[t, 'lap_p'] = p
+
+    # Attach what the fit was on
+    df_fits.columns = [f'{what}_{x}' for x in df_fits.columns]
+    return df_fits
