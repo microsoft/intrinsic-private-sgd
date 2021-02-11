@@ -7,7 +7,7 @@ import pandas as pd
 from pathlib import Path
 from experiment_metadata import get_dataset_size, get_input_hidden_size
 from typing import Tuple
-from stats_utils import estimate_statistics_through_training
+# from stats_utils import estimate_statistics_through_training
 import ipdb
 
 TRACES_DIR = './traces/'

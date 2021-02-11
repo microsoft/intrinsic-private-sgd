@@ -13,7 +13,6 @@ import statsmodels.api as sm
 import re
 import ipdb
 import umap
-import test_private_model
 import results_utils
 import derived_results as dr
 import experiment_metadata as em
@@ -798,57 +797,6 @@ def compare_posteriors_with_different_data(cfg_name, model, t, replace_indices, 
     return
 
 
-def delta_over_time(cfg_name, model, identifier_pair, iter_range, include_bound=False) -> None:
-    """
-    """
-    assert len(identifier_pair) == 2
-    replace_1, seed_1 = identifier_pair[0]['replace'], identifier_pair[0]['seed']
-    replace_2, seed_2 = identifier_pair[1]['replace'], identifier_pair[1]['seed']
-    experiment_1 = results_utils.ExperimentIdentifier(cfg_name, model, replace_1, seed_1)
-    experiment_2 = results_utils.ExperimentIdentifier(cfg_name, model, replace_2, seed_2)
-    samples_1 = experiment_1.load_weights(iter_range=iter_range)
-    samples_2 = experiment_2.load_weights(iter_range=iter_range)
-    gradients_1 = experiment_1.load_gradients(noise=False, iter_range=iter_range)
-    gradients_2 = experiment_2.load_gradients(noise=False, iter_range=iter_range)
-    # align the time-points
-    samples_1.set_index('t', inplace=True)
-    samples_2.set_index('t', inplace=True)
-    gradients_1.set_index('t', inplace=True)
-    gradients_2.set_index('t', inplace=True)
-    gradients_1 = gradients_1.loc[gradients_1['minibatch_id'] == 'ALL', :]
-    gradients_2 = gradients_2.loc[gradients_2['minibatch_id'] == 'ALL', :]
-    gradients_1.drop(columns='minibatch_id', inplace=True)
-    gradients_2.drop(columns='minibatch_id', inplace=True)
-    assert np.all(samples_1.index == samples_2.index)
-    assert np.all(gradients_1.index == gradients_2.index)
-    delta = np.linalg.norm(samples_1 - samples_2, axis=1)
-    gradnorm_1 = np.linalg.norm(gradients_1, axis=1)
-    gradnorm_2 = np.linalg.norm(gradients_2, axis=1)
-    t = samples_1.index
-    # now visualise
-    fig, axarr = plt.subplots(nrows=3, ncols=1)
-    axarr[0].plot(t, delta, alpha=0.5)
-    axarr[0].scatter(t, delta, s=4)
-    axarr[0].set_ylabel('|| w - w\' ||')
-
-    if include_bound:
-        assert model == 'logistic'
-        _, batch_size, eta, _, N = em.get_experiment_details(cfg_name, model)
-        L = np.sqrt(2)
-        bound = np.zeros(len(t))
-
-        for i, ti in enumerate(t):
-            bound[i] = test_private_model.compute_wu_bound(L, ti, N, batch_size, eta, verbose=False)
-        axarr[0].plot(t, bound)
-    axarr[1].plot(t, gradnorm_1)
-    axarr[2].plot(t, gradnorm_2)
-    axarr[1].axhline(y=L, ls='--')
-    axarr[2].axhline(y=L, ls='--')
-    vis_utils.beautify_axes(axarr)
-
-    return
-
-
 def sensitivity_v_variability(cfg_name, model, t, num_pairs, diffinit=False) -> None:
     try:
         df = dr.SensVar(cfg_name, model, t=t, num_pairs=num_pairs).load(diffinit=diffinit)
@@ -891,7 +839,7 @@ def multivariate_normal_test_vis(df, logscale: bool = False) -> None:
         for j, label in enumerate(['pval_diagonal_gauss', 'pval_nondiag_gauss', 'pval_laplace']):
             val_mean = df_d[[label, 'n']].groupby('n').mean()
             val_std = df_d[[label, 'n']].groupby('n').std()
-            uh = axarr[j].plot(val_mean.index, val_mean.values[:, 0], color=colours[i], label=d)
+            axarr[j].plot(val_mean.index, val_mean.values[:, 0], color=colours[i], label=d)
             axarr[j].fill_between(val_mean.index, (val_mean - val_std).values[:, 0], (val_mean + val_std).values[:, 0], color=colours[i], alpha=0.1)
     fig.colorbar(plt.cm.ScalarMappable(plt.Normalize(vmin=min(ds), vmax=max(ds)), cmap='viridis'),
                  ax=axarr, label='dimension', drawedges=False, ticks=ds)
