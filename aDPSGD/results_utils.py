@@ -15,7 +15,8 @@ TRACES_DIR = './traces/'
 
 class ExperimentIdentifier(object):
     def __init__(self, cfg_name=None, model=None, replace_index=None, seed=None,
-                 diffinit=True, data_privacy='all', traces_dir=TRACES_DIR):
+                 diffinit=True, data_privacy='all', traces_dir=TRACES_DIR,
+                 do_output_perturbation: bool = False):
         self.cfg_name = cfg_name
         self.model = model
         self.replace_index = replace_index
@@ -23,6 +24,8 @@ class ExperimentIdentifier(object):
         self.diffinit = diffinit
         self.data_privacy = data_privacy
         self.traces_dir = Path(traces_dir)
+        self.do_output_perturbation = do_output_perturbation
+        self.output_perturbation_scale = 5 # TODO
 
     def init_from_cfg(self, cfg):
         self.cfg_name = cfg['cfg_name']
@@ -149,6 +152,20 @@ class ExperimentIdentifier(object):
                 print(f'Loaded and sorted weights from {path}')
             else:
                 print(f'Loaded weights from {path}')
+
+        if self.do_output_perturbation:
+            # Set the seed
+            np.random.seed(self.seed)
+            # The weights columns are t, then the rest of the weights
+            n_weights = df.shape[1] - 1
+            # Note we add the same noise at every point during training
+            # This is technically incorrect as the output perturbation scale should scale
+            # With the number of iterations,
+            # However so long as the output_perturbation_scale corresponds to
+            # the timestep we are analysing, the output perturbation will work as required
+            noise = np.random.normal(size=n_weights, scale=self.output_perturbation_scale)
+            # Add it on - pandas/numpy should handle the broadcasting here
+            df.iloc[:, 1:] += noise
 
         return df
 
@@ -288,7 +305,8 @@ def get_available_results(cfg_name: str, model: str, replace_index: int = None, 
 
 def get_posterior_samples(cfg_name, iter_range, model='logistic', replace_index=None,
                           params=None, seeds='all', num_seeds='max', verbose=True,
-                          diffinit=False, data_privacy='all', what='weights', sort=False):
+                          diffinit=False, data_privacy='all', what='weights', sort=False,
+                          do_output_perturbation: bool = False):
     """
     grab the values of the weights of [params] at [at_time] for all the available seeds from identifier_stub
     """
@@ -310,7 +328,9 @@ def get_posterior_samples(cfg_name, iter_range, model='logistic', replace_index=
         print(f'Loading {what} from seeds: {available_seeds} in range {iter_range}')
     samples = []
 
-    base_experiment = ExperimentIdentifier(cfg_name, model, replace_index, diffinit=diffinit, data_privacy=data_privacy)
+    base_experiment = ExperimentIdentifier(cfg_name, model, replace_index,
+                                           diffinit=diffinit, data_privacy=data_privacy,
+                                           do_output_perturbation=do_output_perturbation)
 
     for i, s in enumerate(available_seeds):
         base_experiment.seed = s

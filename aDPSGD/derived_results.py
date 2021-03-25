@@ -9,11 +9,11 @@ import numpy as np
 import pandas as pd
 from typing import Tuple
 from scipy.stats import ttest_rel
-from test_private_model import test_model_with_noise, compute_wu_bound
+#from test_private_model import test_model_with_noise, compute_wu_bound
 import results_utils
 import stats_utils
 import experiment_metadata as em
-from visualisations import mvn_covariance
+# from visualisations import mvn_covariance
 
 
 class DerivedResult(object):
@@ -67,16 +67,18 @@ class DeltaHistogram(DerivedResult):
     Distribution of etc
     """
     def __init__(self, cfg_name, model, num_deltas='max', t=500,
-                 data_privacy='all', multivariate=False, sort=False):
+                 data_privacy='all', multivariate=False, sort=False,
+                 do_output_perturbation: bool = False):
         super(DeltaHistogram, self).__init__(cfg_name, model, data_privacy)
         self.num_deltas = num_deltas
         self.t = t
         self.multivariate = multivariate
         self.sort = sort
         self.suffix = '.npy'
+        self.do_output_perturbation = do_output_perturbation
 
     def identifier(self, diffinit: bool) -> str:
-        identifier = f'delta_histogram_nd{self.num_deltas}_t{self.t}{"_diffinit"*diffinit}{"_multivar"*self.multivariate}'
+        identifier = f'delta_histogram_nd{self.num_deltas}_t{self.t}{"_diffinit"*diffinit}{"_multivar"*self.multivariate}{"_PERTURBED" * self.do_output_perturbation}'
 
         if self.sort:
             identifier = f'{identifier}_sorted'
@@ -106,7 +108,8 @@ class DeltaHistogram(DerivedResult):
                                                      diffinit=diffinit,
                                                      data_privacy=self.data_privacy,
                                                      multivariate=self.multivariate,
-                                                     sort=self.sort)
+                                                     sort=self.sort,
+                                                     do_output_perturbation=self.do_output_perturbation)
             # vary-S
             vary_S, identifiers_S = get_deltas(self.cfg_name, iter_range=(self.t, self.t+1),
                                                model=self.model,
@@ -115,7 +118,8 @@ class DeltaHistogram(DerivedResult):
                                                diffinit=diffinit,
                                                data_privacy=self.data_privacy,
                                                multivariate=self.multivariate,
-                                               sort=self.sort)
+                                               sort=self.sort,
+                                               do_output_perturbation=self.do_output_perturbation)
             # vary-r
             vary_r, identifiers_r = get_deltas(self.cfg_name, iter_range=(self.t, self.t+1),
                                                model=self.model,
@@ -123,7 +127,8 @@ class DeltaHistogram(DerivedResult):
                                                num_deltas=self.num_deltas, diffinit=diffinit,
                                                data_privacy=self.data_privacy,
                                                multivariate=self.multivariate,
-                                               sort=self.sort)
+                                               sort=self.sort,
+                                               do_output_perturbation=self.do_output_perturbation)
 
             # now save
             delta_histogram_data = {'vary_both': vary_both,
@@ -355,17 +360,18 @@ class Sigmas(DerivedResult):
     As for estimating the sensitivity, we want to grab a bunch of posteriors and estimate the variability
     """
     def __init__(self, cfg_name, model, t, num_replaces='max', num_seeds='max',
-                 data_privacy='all', multivariate=False, sort=False):
+                 data_privacy='all', sort=False,
+                 do_output_perturbation: bool = False):
         super(Sigmas, self).__init__(cfg_name, model, data_privacy)
         self.num_replaces = num_replaces
         self.num_seeds = num_seeds
         self.t = t
-        self.multivariate = multivariate
         self.sort = sort
         self.suffix = '.npy'
+        self.do_output_perturbation = do_output_perturbation
 
     def identifier(self, diffinit: bool) -> str:
-        identifier = f'sigmas_t{self.t}_ns{self.num_seeds}{"_diffinit"*diffinit}{"_multivar"*self.multivariate}'
+        identifier = f'sigmas_t{self.t}_ns{self.num_seeds}{"_diffinit"*diffinit}{_"PERTURBED" * self.do_output_perturbation}'
 
         if self.sort:
             identifier = f'{identifier}_sorted'
@@ -393,6 +399,7 @@ class Sigmas(DerivedResult):
             print(f'[Sigmas] Estimating variability across {len(replaces)} datasets!')
             print('Warning: this can be slow...')
         sigmas = []
+        used_replaces = []
 
         if not self.num_replaces == 'max' and self.num_replaces < len(replaces):
             replaces = np.random.choice(replaces, self.num_replaces, replace=False)
@@ -408,25 +415,28 @@ class Sigmas(DerivedResult):
                                                           diffinit=diffinit,
                                                           data_privacy=self.data_privacy,
                                                           num_seeds=self.num_seeds,
-                                                          sort=self.sort)
+                                                          sort=self.sort,
+                                                          do_output_perturbation=self.do_output_perturbation)
             try:
                 params = samples.columns[2:]
 
-                if self.multivariate:
-                    this_sigma = samples.std(axis=0)
-                    this_sigma = this_sigma[params]
-                else:
-                    params_vals = samples[params].values
-                    params_norm = params_vals - params_vals.mean(axis=0)
-                    params_flat = params_norm.flatten()
-                    this_sigma = np.std(params_flat)
+                this_sigma = samples.std(axis=0)
+                this_sigma = this_sigma[params]
+                #else:
+                #    params_vals = samples[params].values
+                #    params_norm = params_vals - params_vals.mean(axis=0)
+                #    params_flat = params_norm.flatten()
+                #    this_sigma = np.std(params_flat)
+                sigmas.append(this_sigma)
+                used_replaces.append(replace_index)
             except AttributeError:
                 print(f'WARNING: data from {replace_index} is bad - skipping')
                 assert samples is False
-                this_sigma = np.nan
-            sigmas.append(this_sigma)
+                # Don\'t append anything
+                #this_sigma = np.nan
+            #sigmas.append(this_sigma)
         sigmas = np.array(sigmas)
-        sigmas_data = {'sigmas': sigmas, 'replaces': replaces}
+        sigmas_data = {'sigmas': sigmas, 'replaces': used_replaces}
 
         if not ephemeral:
             np.save(path_string, sigmas_data)
@@ -505,8 +515,7 @@ class VersusTime(DerivedResult):
         for i, t in enumerate(t_range):
 
             if self.model == 'logistic':
-                theoretical_sensitivity = compute_wu_bound(L, t=t, N=N,
-                                                                              batch_size=batch_size, eta=lr)
+                theoretical_sensitivity = compute_wu_bound(L, t=t, N=N, batch_size=batch_size, eta=lr)
             else:
                 theoretical_sensitivity = np.nan
 
@@ -631,7 +640,9 @@ class Stability(DerivedResult):
         return
 
 
-def generate_derived_results(cfg_name: str, model: str = 'logistic', t: int = None, multivariate: bool = False) -> None:
+def generate_derived_results(cfg_name: str, model: str = 'logistic', t: int = None,
+                             multivariate: bool = False,
+                             do_output_perturbation: bool = False) -> None:
     if t is None:
         t, valid_frac = find_convergence_point(cfg_name, model, diffinit=True,
                                                tolerance=3, metric='binary_crossentropy', data_privacy='all')
@@ -642,20 +653,23 @@ def generate_derived_results(cfg_name: str, model: str = 'logistic', t: int = No
             print(f'Selecting t as convergence point {t}, valid fraction {valid_frac}')
 
     if model == 'mlp':
+        assert not do_output_perturbation
         DeltaHistogram(cfg_name, model, t=t, sort=False, multivariate=multivariate).generate()
-        SensVar(cfg_name, model, t=t).generate()
-        Sigmas(cfg_name, model, t=t, sort=False, multivariate=multivariate).generate(diffinit=True)
-        VersusTime(cfg_name, model, iter_range=(0, t+200), sort=False, multivariate=multivariate).generate()
+        Sigmas(cfg_name, model, t=t, sort=False).generate(diffinit=True)
         Stability(cfg_name, model, t=t, sort=False).generate()
+        VersusTime(cfg_name, model, iter_range=(0, t+200), sort=False, multivariate=multivariate).generate()
+        SensVar(cfg_name, model, t=t).generate()
     else:
+        if do_output_perturbation:
+            output_pertubation_scale = 5
         DeltaHistogram(cfg_name, model, t=t, multivariate=multivariate).generate()
         AggregatedLoss(cfg_name, model).generate(diffinit=True)
         AggregatedLoss(cfg_name, model).generate(diffinit=False)
-        SensVar(cfg_name, model, t=t).generate()
-        Sigmas(cfg_name, model, t=t, multivariate=multivariate).generate(diffinit=True)
-        VersusTime(cfg_name, model, iter_range=(0, t+200), multivariate=multivariate).generate()
+        Sigmas(cfg_name, model, t=t).generate(diffinit=True)
         Stability(cfg_name, model, t=t).generate()
-        UtilityCurve(cfg_name, model, num_deltas='max', t=t, multivariate=multivariate).generate(diffinit=True)
+        SensVar(cfg_name, model, t=t).generate()
+        VersusTime(cfg_name, model, iter_range=(0, t+200), multivariate=multivariate).generate()
+        # UtilityCurve(cfg_name, model, num_deltas='max', t=t, multivariate=multivariate).generate(diffinit=True)
 
     return
 
@@ -682,7 +696,7 @@ def calculate_epsilon(cfg_name, model, t, use_bound=False, diffinit=True,
     if use_bound:
         if model == 'logistic':
             sensitivity = compute_wu_bound(lipschitz_constant=np.sqrt(2), t=t, N=N,
-                                                              batch_size=batch_size, eta=lr, verbose=verbose)
+                                           batch_size=batch_size, eta=lr, verbose=verbose)
         else:
             sensitivity = np.nan
 
@@ -819,7 +833,8 @@ def compute_distance_statistics(cfg_name, model, t, num_deltas='max', diffinit=F
 def get_deltas(cfg_name, iter_range, model,
                vary_seed=True, vary_data=True, params=None, num_deltas=100,
                include_identifiers=False, diffinit=False, data_privacy='all',
-               multivariate=False, verbose=False, sort=False):
+               multivariate=False, verbose=False, sort=False,
+               do_output_perturbation: bool = False):
     """
     collect samples of weights from experiments on cfg_name+model, varying:
     - seed (vary_seed)
@@ -918,7 +933,9 @@ def get_deltas(cfg_name, iter_range, model,
         replace_index = w.iloc[i]['replace']
         seed = w.iloc[i]['seed']
 
-        exp = results_utils.ExperimentIdentifier(cfg_name, model, replace_index, seed, diffinit, data_privacy)
+        exp = results_utils.ExperimentIdentifier(cfg_name, model, replace_index, seed,
+                                                 diffinit, data_privacy,
+                                                 do_output_perturbation=do_output_perturbation)
 
         if exp.exists():
             w_weights = exp.load_weights(iter_range=iter_range, params=params,
@@ -933,7 +950,9 @@ def get_deltas(cfg_name, iter_range, model,
         replace_index_p = wp.iloc[i]['replace']
         seed_p = wp.iloc[i]['seed']
 
-        exp_p = results_utils.ExperimentIdentifier(cfg_name, model, replace_index_p, seed_p, diffinit, data_privacy)
+        exp_p = results_utils.ExperimentIdentifier(cfg_name, model, replace_index_p, seed_p,
+                                                   diffinit, data_privacy,
+                                                   do_output_perturbation=do_output_perturbation)
 
         if exp_p.exists():
             wp_weights = exp_p.load_weights(iter_range=iter_range, params=params,
@@ -1100,7 +1119,7 @@ def estimate_variability(cfg_name, model, t, multivariate=False, diffinit=False,
     """
     This just pulls up the Sigmas result, and potentially subsets
     """
-    sigmas_result = Sigmas(cfg_name, model, t, num_replaces, num_seeds, data_privacy, multivariate, sort=sort)
+    sigmas_result = Sigmas(cfg_name, model, t, num_replaces, num_seeds, data_privacy, sort=sort)
 
     if ephemeral:
         sigmas_data = sigmas_result.generate(diffinit, verbose=False, ephemeral=True)
@@ -1117,18 +1136,23 @@ def estimate_variability(cfg_name, model, t, multivariate=False, diffinit=False,
     else:
         assert type(num_replaces) == int
 
-        if num_replaces > len(sigmas):
-            if verbose:
+        if num_replaces >= len(sigmas):
+            if verbose and num_replaces > len(sigmas):
                 print(f'WARNING: Can\'t select {num_replaces} sigmas, falling back to max ({len(sigmas)})')
             sigmas = sigmas
         else:
             if verbose:
                 print(f'Sampling {num_replaces} random sigmas')
-            sigmas = np.random.choice(sigmas, num_replaces, replace=False)
+            n_sigmas = len(sigmas)
+            sampled_sigmas = np.random.choice(n_sigmas, num_replaces, replace=False)
+            sigmas = sigmas[sampled_sigmas]
 
     if verbose:
         print('Estimated variability using', len(sigmas[~np.isnan(sigmas)]), 'replaces')
     estimated_variability = np.nanmin(sigmas, axis=0)
+
+    if not multivariate:
+        estimated_variability = np.min(estimated_variability)
 
     return estimated_variability
 
@@ -1237,7 +1261,7 @@ def compute_mvn_laplace_fit_and_alpha(cfg_name, model, t, diffinit=True, sort=Fa
         _, _, _, p = stats_utils.fit_multivariate_normal(X)
 
     alpha, _ = stats_utils.fit_alpha_stable(X)
-    mvn_covariance(X, identifier=f'{cfg_name}_{t}')
+    # mvn_covariance(X, identifier=f'{cfg_name}_{t}')
 
     # now for laplace
     laplace_ps = []
@@ -1280,7 +1304,8 @@ def get_pvals(what, cfg_name, model, t, n_experiments=3, diffinit=False) -> Tupl
 
     for i, replace_index in enumerate(replace_indices):
         print(cfg_name)
-        experiment = results_utils.ExperimentIdentifier(cfg_name, model, replace_index, seed=1, diffinit=diffinit)
+        experiment = results_utils.ExperimentIdentifier(cfg_name, model, replace_index,
+                                                        seed=1, diffinit=diffinit)
 
         if what == 'gradients':
             print('Loading gradients...')
@@ -1316,3 +1341,24 @@ def get_pvals(what, cfg_name, model, t, n_experiments=3, diffinit=False) -> Tupl
         all_pvals.append(log_pvals)
     log_pvals = np.concatenate(all_pvals)
     return log_pvals, n_params
+
+
+def compute_wu_bound(lipschitz_constant, t, N, batch_size, eta, verbose=True):
+    """
+    This is a temporary hack due to circular import isssues
+    """
+    # k is the number of time you went through the data
+    batches_per_epoch = N // batch_size
+    # t is the number of batches
+    n_epochs = t / batches_per_epoch
+
+    if n_epochs < 1:
+        if verbose:
+            print('WARNING: <1 pass competed')
+        # TODO: make sure we can treat k like this
+    l2_sensitivity = 2 * n_epochs * lipschitz_constant * eta / batch_size
+
+    if verbose:
+        print('[test_private_model] Bound on L2 sensitivity:', l2_sensitivity)
+
+    return l2_sensitivity

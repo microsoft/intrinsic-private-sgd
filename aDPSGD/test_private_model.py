@@ -8,7 +8,7 @@ import ipdb
 import data_utils
 import model_utils
 from results_utils import ExperimentIdentifier
-import derived_results
+from derived_results import estimate_variability, estimate_sensitivity_empirically
 import experiment_metadata as em
 from run_experiment import load_cfg
 
@@ -28,7 +28,7 @@ def get_target_noise_for_model(cfg_name: str, model: str, t: int, epsilon, delta
         print('[test] Target noise:', target_sigma)
 
     # without different initiaisation
-    intrinsic_noise = derived_results.estimate_variability(cfg_name, model, t,
+    intrinsic_noise = estimate_variability(cfg_name, model, t,
                                                            multivariate=multivariate,
                                                            diffinit=False)
 
@@ -43,7 +43,7 @@ def get_target_noise_for_model(cfg_name: str, model: str, t: int, epsilon, delta
         print('[augment_sgd] Hurray! Essentially no noise required!')
 
     # noise using different initialisation
-    intrinsic_noise_diffinit = derived_results.estimate_variability(cfg_name, model, t,
+    intrinsic_noise_diffinit = estimate_variability(cfg_name, model, t,
                                                                     multivariate=multivariate,
                                                                     diffinit=True)
 
@@ -107,7 +107,7 @@ def test_model_with_noise(cfg_name, replace_index, seed, t,
     else:
         # compute sensitivity empirically!
         # diffinit set to False beacuse it doesn't make a differnce
-        sensitivity = derived_results.estimate_sensitivity_empirically(cfg_name, model, t,
+        sensitivity = estimate_sensitivity_empirically(cfg_name, model, t,
                                                                        num_deltas=num_deltas,
                                                                        diffinit=False,
                                                                        data_privacy=data_privacy,
