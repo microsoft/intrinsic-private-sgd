@@ -10,6 +10,7 @@ import pandas as pd
 from typing import Tuple
 from scipy.stats import ttest_rel
 #from test_private_model import test_model_with_noise, compute_wu_bound
+from noise_utils import compute_wu_bound
 import results_utils
 import stats_utils
 import experiment_metadata as em
@@ -83,6 +84,7 @@ class DeltaHistogram(DerivedResult):
         if self.sort:
             identifier = f'{identifier}_sorted'
 
+        print(f'Identifier: {identifier}')
         return identifier
 
     def generate(self, diffinit: bool = True) -> None:
@@ -357,8 +359,7 @@ class SensVar(DerivedResult):
 
 class Sigmas(DerivedResult):
     """
-    As for estimating the sensitivity, we want to grab a bunch of posteriors and estimate the variability
-    """
+    As for estimating the sensitivity, we want to grab a bunch of posteriors and estimate the variability """
     def __init__(self, cfg_name, model, t, num_replaces='max', num_seeds='max',
                  data_privacy='all', sort=False,
                  do_output_perturbation: bool = False):
@@ -371,7 +372,7 @@ class Sigmas(DerivedResult):
         self.do_output_perturbation = do_output_perturbation
 
     def identifier(self, diffinit: bool) -> str:
-        identifier = f'sigmas_t{self.t}_ns{self.num_seeds}{"_diffinit"*diffinit}{_"PERTURBED" * self.do_output_perturbation}'
+        identifier = f'sigmas_t{self.t}_ns{self.num_seeds}{"_diffinit"*diffinit}{"_PERTURBED" * self.do_output_perturbation}'
 
         if self.sort:
             identifier = f'{identifier}_sorted'
@@ -661,11 +662,11 @@ def generate_derived_results(cfg_name: str, model: str = 'logistic', t: int = No
         SensVar(cfg_name, model, t=t).generate()
     else:
         if do_output_perturbation:
-            output_pertubation_scale = 5
-        DeltaHistogram(cfg_name, model, t=t, multivariate=multivariate).generate()
+            print('WARNING: Output perturbation is only implemented for DeltaHistogram and Sigmas!')
+        DeltaHistogram(cfg_name, model, t=t, multivariate=multivariate, do_output_perturbation=do_output_perturbation).generate()
         AggregatedLoss(cfg_name, model).generate(diffinit=True)
         AggregatedLoss(cfg_name, model).generate(diffinit=False)
-        Sigmas(cfg_name, model, t=t).generate(diffinit=True)
+        Sigmas(cfg_name, model, t=t, do_output_perturbation=do_output_perturbation).generate(diffinit=True)
         Stability(cfg_name, model, t=t).generate()
         SensVar(cfg_name, model, t=t).generate()
         VersusTime(cfg_name, model, iter_range=(0, t+200), multivariate=multivariate).generate()
@@ -677,7 +678,8 @@ def generate_derived_results(cfg_name: str, model: str = 'logistic', t: int = No
 def calculate_epsilon(cfg_name, model, t, use_bound=False, diffinit=True,
                       num_deltas='max', multivariate=False, verbose=True,
                       take_sigma_as_min: bool = False,
-                      take_sens_as_fixed: bool = False):
+                      take_sens_as_fixed: bool = False,
+                      do_output_perturbation: bool = False):
     """
     just get the intrinsic epsilon
     """
@@ -686,12 +688,14 @@ def calculate_epsilon(cfg_name, model, t, use_bound=False, diffinit=True,
     if take_sigma_as_min:
         variability = estimate_variability(cfg_name, model, t,
                                            multivariate=True,
-                                           diffinit=diffinit, verbose=verbose)
+                                           diffinit=diffinit, verbose=verbose,
+                                           do_output_perturbation=do_output_perturbation)
         variability = np.min(variability)
     else:
         variability = estimate_variability(cfg_name, model, t,
                                            multivariate=multivariate,
-                                           diffinit=diffinit, verbose=verbose)
+                                           diffinit=diffinit, verbose=verbose,
+                                           do_output_perturbation=do_output_perturbation)
 
     if use_bound:
         if model == 'logistic':
@@ -708,10 +712,14 @@ def calculate_epsilon(cfg_name, model, t, use_bound=False, diffinit=True,
     else:
         if take_sens_as_fixed:
             sensitivity = estimate_sensitivity_empirically(cfg_name, model, t, num_deltas=num_deltas,
-                                                           diffinit=diffinit, multivariate=False, verbose=verbose)
+                                                           diffinit=diffinit, multivariate=False,
+                                                           verbose=verbose,
+                                                           do_output_perturbation=do_output_perturbation)
         else:
             sensitivity = estimate_sensitivity_empirically(cfg_name, model, t, num_deltas=num_deltas,
-                                                           diffinit=diffinit, multivariate=multivariate, verbose=verbose)
+                                                           diffinit=diffinit, multivariate=multivariate,
+                                                           verbose=verbose,
+                                                           do_output_perturbation=do_output_perturbation)
     if verbose:
         print('sensitivity:', sensitivity)
         print('variability:', variability)
@@ -802,10 +810,13 @@ def accuracy_at_eps(cfg_name, model, t, use_bound=False, num_experiments=500,
 
 def estimate_sensitivity_empirically(cfg_name, model, t, num_deltas, diffinit=False,
                                      data_privacy='all', multivariate=False,
-                                     verbose=True, sort=False):
+                                     verbose=True, sort=False,
+                                     do_output_perturbation: bool = False):
     """ pull up the histogram
     """
-    delta_histogram_data = DeltaHistogram(cfg_name, model, num_deltas, t, data_privacy, multivariate, sort=sort).load(diffinit, generate_if_needed=True, verbose=verbose)
+    delta_histogram_data = DeltaHistogram(cfg_name, model, num_deltas, t,
+                                          data_privacy, multivariate, sort=sort,
+                                          do_output_perturbation=do_output_perturbation).load(diffinit, generate_if_needed=True, verbose=verbose)
     vary_data_deltas = delta_histogram_data['vary_S']
     sensitivity = np.nanmax(vary_data_deltas, axis=0)
 
@@ -1115,11 +1126,13 @@ def compute_pairwise_sens_and_var(cfg_name, model, t, replace_indices,
 
 def estimate_variability(cfg_name, model, t, multivariate=False, diffinit=False,
                          data_privacy='all', num_replaces='max', num_seeds='max',
-                         ephemeral=False, verbose=True, sort=False):
+                         ephemeral=False, verbose=True, sort=False,
+                         do_output_perturbation: bool = False):
     """
     This just pulls up the Sigmas result, and potentially subsets
     """
-    sigmas_result = Sigmas(cfg_name, model, t, num_replaces, num_seeds, data_privacy, sort=sort)
+    sigmas_result = Sigmas(cfg_name, model, t, num_replaces, num_seeds,
+                           data_privacy, sort=sort, do_output_perturbation=do_output_perturbation)
 
     if ephemeral:
         sigmas_data = sigmas_result.generate(diffinit, verbose=False, ephemeral=True)
@@ -1341,24 +1354,3 @@ def get_pvals(what, cfg_name, model, t, n_experiments=3, diffinit=False) -> Tupl
         all_pvals.append(log_pvals)
     log_pvals = np.concatenate(all_pvals)
     return log_pvals, n_params
-
-
-def compute_wu_bound(lipschitz_constant, t, N, batch_size, eta, verbose=True):
-    """
-    This is a temporary hack due to circular import isssues
-    """
-    # k is the number of time you went through the data
-    batches_per_epoch = N // batch_size
-    # t is the number of batches
-    n_epochs = t / batches_per_epoch
-
-    if n_epochs < 1:
-        if verbose:
-            print('WARNING: <1 pass competed')
-        # TODO: make sure we can treat k like this
-    l2_sensitivity = 2 * n_epochs * lipschitz_constant * eta / batch_size
-
-    if verbose:
-        print('[test_private_model] Bound on L2 sensitivity:', l2_sensitivity)
-
-    return l2_sensitivity

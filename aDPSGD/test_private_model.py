@@ -29,8 +29,8 @@ def get_target_noise_for_model(cfg_name: str, model: str, t: int, epsilon, delta
 
     # without different initiaisation
     intrinsic_noise = estimate_variability(cfg_name, model, t,
-                                                           multivariate=multivariate,
-                                                           diffinit=False)
+                                           multivariate=multivariate,
+                                           diffinit=False)
 
     if np.any(intrinsic_noise < target_sigma):
         noise_to_add = compute_additional_noise(target_sigma, intrinsic_noise)
@@ -44,8 +44,8 @@ def get_target_noise_for_model(cfg_name: str, model: str, t: int, epsilon, delta
 
     # noise using different initialisation
     intrinsic_noise_diffinit = estimate_variability(cfg_name, model, t,
-                                                                    multivariate=multivariate,
-                                                                    diffinit=True)
+                                                    multivariate=multivariate,
+                                                    diffinit=True)
 
     if np.any(intrinsic_noise_diffinit < target_sigma):
         noise_to_add_diffinit = compute_additional_noise(target_sigma, intrinsic_noise_diffinit)
@@ -108,10 +108,10 @@ def test_model_with_noise(cfg_name, replace_index, seed, t,
         # compute sensitivity empirically!
         # diffinit set to False beacuse it doesn't make a differnce
         sensitivity = estimate_sensitivity_empirically(cfg_name, model, t,
-                                                                       num_deltas=num_deltas,
-                                                                       diffinit=False,
-                                                                       data_privacy=data_privacy,
-                                                                       multivariate=multivariate)
+                                                       num_deltas=num_deltas,
+                                                       diffinit=False,
+                                                       data_privacy=data_privacy,
+                                                       multivariate=multivariate)
 
     if sensitivity is False:
         print('ERROR: Empirical sensitivity not available.')

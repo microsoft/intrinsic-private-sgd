@@ -1,16 +1,30 @@
 #!/usr/bin/env ipython
 # author: stephanie hyland
-# purpose: Scripts for manipulating experimental results (e.g. mostly loading!)
-
+# purpose: Scripts for manipulating experimental results (e.g. mostly loading!) import numpy as np import pandas as pd
+from pathlib import Path
+from experiment_metadata import get_dataset_size, get_input_hidden_size, lr_convergence_points, get_experiment_details
+from noise_utils import compute_wu_bound
+from typing import Tuple
 import numpy as np
 import pandas as pd
-from pathlib import Path
-from experiment_metadata import get_dataset_size, get_input_hidden_size
-from typing import Tuple
 # from stats_utils import estimate_statistics_through_training
 import ipdb
 
 TRACES_DIR = './traces/'
+
+
+def define_output_perturbation_scale(cfg_name: str, target_epsilon=1) -> float:
+    """ hack!!! """
+    t = lr_convergence_points[cfg_name]
+    # Must be LR
+    assert '_lr' in cfg_name
+    _, batch_size, lr, _, N = get_experiment_details(cfg_name, 'logistic')
+    lipschitz_constant = np.sqrt(2)
+    sensitivity = compute_wu_bound(lipschitz_constant, t=t, N=N, batch_size=batch_size, eta=lr, verbose=False)
+    delta = 1 / (N ** 2)
+    c = np.sqrt(2 * np.log(1.25 / delta)) + 1e-6
+    sigma = c * (sensitivity / target_epsilon)
+    return sigma
 
 
 class ExperimentIdentifier(object):
@@ -25,7 +39,9 @@ class ExperimentIdentifier(object):
         self.data_privacy = data_privacy
         self.traces_dir = Path(traces_dir)
         self.do_output_perturbation = do_output_perturbation
-        self.output_perturbation_scale = 5 # TODO
+        if self.do_output_perturbation:
+            self.output_perturbation_scale = define_output_perturbation_scale(self.cfg_name)
+            print(f'Using output perturbation scale of {self.output_perturbation_scale}')
 
     def init_from_cfg(self, cfg):
         self.cfg_name = cfg['cfg_name']
