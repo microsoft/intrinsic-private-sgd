@@ -1,0 +1,23 @@
+---
+data:
+    name: adult
+    binary: true
+model:
+    architecture: mlp
+    task_type: binary
+    input_size: 100
+    output_size: 1
+    hidden_size: 8
+training:
+    n_epochs: 8
+    batch_size: 32
+    optimization_algorithm:
+        name: SGD
+        learning_rate: 0.5
+logging:
+    cadence: 50
+    save_weights: true
+    save_gradients: false
+    sample_minibatch_gradients: false
+    n_gradients: 0
+...
