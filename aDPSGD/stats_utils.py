@@ -4,7 +4,7 @@
 import numpy as np
 import pandas as pd
 import ipdb
-from ping import multivariate_normality
+from pingouin import multivariate_normality
 from scipy.stats import kstest, laplace, shapiro, anderson, invwishart
 import results_utils
 
