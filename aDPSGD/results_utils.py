@@ -2,7 +2,7 @@
 # author: stephanie hyland
 # purpose: Scripts for manipulating experimental results (e.g. mostly loading!) import numpy as np import pandas as pd
 from pathlib import Path
-from experiment_metadata import get_dataset_size, get_input_hidden_size, lr_convergence_points, get_experiment_details
+from experiment_metadata import get_input_hidden_size, lr_convergence_points, get_experiment_details
 from noise_utils import compute_wu_bound
 from typing import Tuple
 import numpy as np
@@ -246,37 +246,6 @@ class ExperimentIdentifier(object):
             df = df.loc[df['t'] <= iter_range[1], :]
 
         return df
-
-
-def get_grid_to_run(cfg, num_seeds, num_replaces):
-    exp = ExperimentIdentifier()
-    exp.init_from_cfg(cfg)
-    grid_path = exp.derived_path_stub() / 'grid.csv'
-    try:
-        grid = pd.read_csv(grid_path)
-        print(f'Loaded grid seeds and replace indices from {grid_path}')
-        seeds = grid[grid['what'] == 'seed']['value']
-        replaces = grid[grid['what'] == 'replace_index']['value']
-    except FileNotFoundError:
-        seeds = []
-        replaces = []
-    if len(seeds) < num_seeds:
-        candidate_seeds = [x for x in range(99999) if x not in seeds]
-        new_seeds = np.random.choice(candidate_seeds, num_seeds - len(seeds), replace=False)
-        seeds = np.concatenate([seeds, new_seeds])
-    if len(replaces) < num_replaces:
-        N = get_dataset_size(cfg['data'])
-        candidate_replaces = [x for x in range(N) if x not in replaces]
-        new_replaces = np.random.choice(candidate_replaces, num_replaces - len(replaces))
-        replaces = np.concatenate([replaces, new_replaces])
-    seeds = np.int32(seeds)
-    replaces = np.int32(replaces)
-    what = ['seed']*len(seeds) + ['replace_index']*len(replaces)
-    values = np.concatenate([seeds, replaces])
-    grid = pd.DataFrame({'value': values, 'what': what})
-    grid.to_csv(grid_path, index=False)
-    print(f'Saved grid seeds and replace indices to {grid_path}')
-    return seeds, replaces
 
 
 def get_replace_index_with_most_seeds(cfg_name: str, model: str, diffinit: bool = False) -> int:

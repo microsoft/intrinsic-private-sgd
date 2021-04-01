@@ -1354,3 +1354,37 @@ def get_pvals(what, cfg_name, model, t, n_experiments=3, diffinit=False) -> Tupl
         all_pvals.append(log_pvals)
     log_pvals = np.concatenate(all_pvals)
     return log_pvals, n_params
+
+
+def check_offdiagonal(cfg_name: str, model: str, t: int) -> None:
+    diffinit = True
+    sort = False
+    replace_index = results_utils.get_replace_index_with_most_seeds(cfg_name, model, diffinit=diffinit)
+
+    iter_range = (t, t + 1)
+    params = None
+    df = results_utils.get_posterior_samples(cfg_name, model=model,
+                                             replace_index=replace_index,
+                                             iter_range=iter_range,
+                                             params=params, diffinit=diffinit,
+                                             what='weights',
+                                             sort=sort)
+    df = df.loc[df['t'] == t, :].drop(columns=['t', 'seed'])
+    X = df.values
+    d = X.shape[1]
+
+    cov = np.cov(X.T)
+    cor = np.corrcoef(X.T)
+    assert cov.shape == (d, d)
+    assert cor.shape == (d, d)
+    offdiag_cov = cov - np.diag(np.diag(cov))
+    offdiag_cor = cor - np.diag(np.diag(cor))
+
+    cov_vals = np.abs(offdiag_cov[np.triu_indices(d)])
+    cor_vals = np.abs(offdiag_cor[np.triu_indices(d)])
+
+    print(f'cov mean: {np.mean(cov_vals)}')
+    print(f'cov median: {np.median(cov_vals)}')
+
+    print(f'cor mean: {np.mean(cor_vals)}')
+    print(f'cor median: {np.median(cor_vals)}')
