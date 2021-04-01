@@ -11,7 +11,8 @@ from itertools import product
 from model_utils import build_model, prep_for_training, train_model
 from data_utils import load_data
 from results_utils import ExperimentIdentifier, get_available_results
-from cfg_utils import load_cfg, get_model_init_path, get_dataset_size
+from cfg_utils import load_cfg, get_model_init_path
+from experiment_metadata import get_dataset_size
 
 
 def find_gaps_in_grid(cfg) -> list:
@@ -26,6 +27,7 @@ def find_gaps_in_grid(cfg) -> list:
     xtab_miss = np.where(xtab < 2)
     missing_pairs = [(x[0], x[1]) for x in np.array(xtab_miss).T]
     print(f'Identified {len(missing_pairs)} missing pairs:\n{missing_pairs}')
+    print('WARNING: This might be a large number!')
     return missing_pairs
 
 
@@ -52,7 +54,7 @@ def propose_seeds_and_replaces(cfg, num_seeds, num_replaces) -> list:
     return pairs
 
 
-def add_new_seeds_to_grid(cfg, num_seeds) -> list:
+def add_new_seeds_to_grid(cfg, num_seeds: int, num_replaces: int) -> list:
     """
     Specifically run more seeds.
     First get existing seeds and replaces.
@@ -61,50 +63,22 @@ def add_new_seeds_to_grid(cfg, num_seeds) -> list:
     df = get_available_results(cfg['cfg_name'], cfg['model']['architecture'],
                                replace_index=None, seed=None, diffinit=True)
     known_seeds = df['seed'].unique()
-    known_replaces = df['replace'].unique()
+    replaces_with_counts = df['replace'].value_counts()
+    num_known_replaces = replaces_with_counts.shape[0]
+    if num_replaces > num_known_replaces:
+        print(f'Asked for {num_replaces} replaces but only {num_known_replaces} known- taking these.')
+        replaces = df['replace'].unique()
+    else:
+        print(f'Asked for {num_replaces} and there are {num_known_replaces} so we are taking the top ones.')
+        # this is to enrich a smaller set of replaces with seeds
+        replaces = replaces_with_counts.iloc[:num_replaces].index
+        print(f'These are: {replaces}')
 
     candidate_seeds = [x for x in range(99999) if x not in known_seeds]
     new_seeds = np.random.choice(candidate_seeds, num_seeds, replace=False)
 
-    pairs = list(product(new_seeds, known_replaces))
+    pairs = list(product(new_seeds, replaces))
     return pairs
-
-
-def get_grid_to_run(cfg, num_seeds, num_replaces):
-    # Get existing results - we will add to these
-    df = get_available_results(cfg['cfg_name'], cfg['model']['architecture'],
-                               replace_index=None, seed=None, diffinit=True)
-    known_seeds = df['seed'].unique()
-    known_replaces = df['replace'].unique()
-
-    exp = ExperimentIdentifier()
-    exp.init_from_cfg(cfg)
-    grid_path = exp.derived_path_stub() / 'grid.csv'
-    try:
-        grid = pd.read_csv(grid_path)
-        print(f'Loaded grid seeds and replace indices from {grid_path}')
-        seeds = grid[grid['what'] == 'seed']['value']
-        replaces = grid[grid['what'] == 'replace_index']['value']
-    except FileNotFoundError:
-        seeds = []
-        replaces = []
-    if len(seeds) < num_seeds:
-        candidate_seeds = [x for x in range(99999) if x not in seeds]
-        new_seeds = np.random.choice(candidate_seeds, num_seeds - len(seeds), replace=False)
-        seeds = np.concatenate([seeds, new_seeds])
-    if len(replaces) < num_replaces:
-        N = get_dataset_size(cfg['data'])
-        candidate_replaces = [x for x in range(N) if x not in replaces]
-        new_replaces = np.random.choice(candidate_replaces, num_replaces - len(replaces))
-        replaces = np.concatenate([replaces, new_replaces])
-    seeds = np.int32(seeds)
-    replaces = np.int32(replaces)
-    what = ['seed']*len(seeds) + ['replace_index']*len(replaces)
-    values = np.concatenate([seeds, replaces])
-#    grid = pd.DataFrame({'value': values, 'what': what})
-#    grid.to_csv(grid_path, index=False)
-#    print(f'Saved grid seeds and replace indices to {grid_path}')
-    return seeds, replaces
 
 
 def run_single_experiment(cfg, diffinit, seed, replace_index):

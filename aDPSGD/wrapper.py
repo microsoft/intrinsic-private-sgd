@@ -6,18 +6,17 @@ from derived_results import generate_derived_results
 from produce_figures import generate_plots, generate_reports
 
 
-def run_sweep(cfg, num_seeds, num_replaces, fill_in_gaps: bool = False):
+def run_sweep(cfg, num_seeds, num_replaces, fill_in_gaps: bool = False, add_seeds: bool = False):
     print('Running sweep!')
     if fill_in_gaps:
         print('Flag fill_in_gaps provided as True - not running any *new* seeds or replaces!')
         pairs = find_gaps_in_grid(cfg)
+    elif add_seeds:
+        print('Adding seeds!')
+        pairs = add_new_seeds_to_grid(cfg, num_seeds, num_replaces)
     else:
-        if num_replaces == 0:
-            print('Num replaces set as 0 -- purely running new seeds!')
-            pairs = add_new_seeds_to_grid(cfg, num_seeds)
-        else:
-            print(f'Running {num_seeds} new seeds and {num_replaces} new replaces!')
-            pairs = propose_seeds_and_replaces(cfg, num_seeds, num_replaces)
+        print(f'Running {num_seeds} new seeds and {num_replaces} new replaces!')
+        pairs = propose_seeds_and_replaces(cfg, num_seeds, num_replaces)
 
     print(f'Note! We are about to run {len(pairs)} experiments.')
     for seed, replace_index in pairs:
@@ -59,13 +58,14 @@ if __name__ == '__main__':
     parser.add_argument('--num_seeds', type=int, help='Number of seeds to run', default=100)
     parser.add_argument('--num_replaces', type=int, help='Number of replace indices to run', default=100)
     parser.add_argument('--fill_in_gaps', type=bool, help='Whether to fill in gaps in the grid', default=False)
+    parser.add_argument('--add_seeds', type=bool, help='Whether we are simply adding seeds', default=False)
     # --- these options are for switch == derive
     parser.add_argument('--t', type=int, help='Time point at which to run derived experiments', default=None)
     args = parser.parse_args()
     cfg = load_cfg(args.cfg)
 
     if args.switch == 'sweep':
-        run_sweep(cfg, args.num_seeds, args.num_replaces)
+        run_sweep(cfg, args.num_seeds, args.num_replaces, args.fill_in_gaps, args.add_seeds)
     elif args.switch == 'derive':
         run_generate_derived_results(cfg, args.t)
     elif args.switch == 'figures':

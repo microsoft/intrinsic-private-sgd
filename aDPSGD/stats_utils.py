@@ -4,7 +4,7 @@
 import numpy as np
 import pandas as pd
 import ipdb
-from pingouin import multivariate_normality
+# from pingouin import multivariate_normality
 from scipy.stats import kstest, laplace, shapiro, anderson, invwishart
 import results_utils
 
@@ -26,6 +26,7 @@ def fit_alpha_stable(X):
 
 
 def fit_multivariate_normal(X):
+    from pingouin import multivariate_normality
     try:
         _, pval = multivariate_normality(X, alpha=.05)
     except MemoryError:
