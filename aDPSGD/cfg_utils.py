@@ -1,8 +1,8 @@
 #!/usr/bin/env ipython
-# This is the script which runs the experiment! (trains a model!)
 
 import yaml
 import os
+from pathlib import Path
 
 
 def check_cfg_for_consistency(cfg, verbose=False):
@@ -28,8 +28,19 @@ def load_cfg(cfg_identifier):
         cfg_name = cfg_identifier.rstrip('.yaml')
     else:
         cfg_name = cfg_identifier
-    # cfg = yaml.safe_load(open(os.path.join('cfgs', args.cfg + '.yaml')))
     cfg = yaml.load(open(os.path.join('cfgs', cfg_identifier + '.yaml')))
     cfg['cfg_name'] = cfg_name
     check_cfg_for_consistency(cfg)
     return cfg
+
+
+def get_model_init_path(cfg, diffinit):
+    if diffinit:
+        init_path = None
+    else:
+        architecture = cfg['model']['architecture']
+        cfg_name = cfg['cfg_name']
+        init_path = f'{architecture}_{cfg_name}_init.h5'
+        init_path = (Path('./models') / init_path).resolve()
+
+    return init_path

@@ -8,7 +8,7 @@ import ipdb
 import data_utils
 import model_utils
 from results_utils import ExperimentIdentifier
-import derived_results
+from derived_results import estimate_variability, estimate_sensitivity_empirically
 import experiment_metadata as em
 from run_experiment import load_cfg
 
@@ -28,9 +28,9 @@ def get_target_noise_for_model(cfg_name: str, model: str, t: int, epsilon, delta
         print('[test] Target noise:', target_sigma)
 
     # without different initiaisation
-    intrinsic_noise = derived_results.estimate_variability(cfg_name, model, t,
-                                                           multivariate=multivariate,
-                                                           diffinit=False)
+    intrinsic_noise = estimate_variability(cfg_name, model, t,
+                                           multivariate=multivariate,
+                                           diffinit=False)
 
     if np.any(intrinsic_noise < target_sigma):
         noise_to_add = compute_additional_noise(target_sigma, intrinsic_noise)
@@ -43,9 +43,9 @@ def get_target_noise_for_model(cfg_name: str, model: str, t: int, epsilon, delta
         print('[augment_sgd] Hurray! Essentially no noise required!')
 
     # noise using different initialisation
-    intrinsic_noise_diffinit = derived_results.estimate_variability(cfg_name, model, t,
-                                                                    multivariate=multivariate,
-                                                                    diffinit=True)
+    intrinsic_noise_diffinit = estimate_variability(cfg_name, model, t,
+                                                    multivariate=multivariate,
+                                                    diffinit=True)
 
     if np.any(intrinsic_noise_diffinit < target_sigma):
         noise_to_add_diffinit = compute_additional_noise(target_sigma, intrinsic_noise_diffinit)
@@ -107,11 +107,11 @@ def test_model_with_noise(cfg_name, replace_index, seed, t,
     else:
         # compute sensitivity empirically!
         # diffinit set to False beacuse it doesn't make a differnce
-        sensitivity = derived_results.estimate_sensitivity_empirically(cfg_name, model, t,
-                                                                       num_deltas=num_deltas,
-                                                                       diffinit=False,
-                                                                       data_privacy=data_privacy,
-                                                                       multivariate=multivariate)
+        sensitivity = estimate_sensitivity_empirically(cfg_name, model, t,
+                                                       num_deltas=num_deltas,
+                                                       diffinit=False,
+                                                       data_privacy=data_privacy,
+                                                       multivariate=multivariate)
 
     if sensitivity is False:
         print('ERROR: Empirical sensitivity not available.')
@@ -124,7 +124,6 @@ def test_model_with_noise(cfg_name, replace_index, seed, t,
                                                                                    epsilon, delta,
                                                                                    sensitivity, verbose,
                                                                                    multivariate=multivariate)
-
     weights_path = experiment.path_stub().with_name(experiment.path_stub().name + '.weights.csv')
     print('Evaluating model from', weights_path)
 
@@ -141,12 +140,13 @@ def test_model_with_noise(cfg_name, replace_index, seed, t,
 
     # generate standard gaussian noise
     standard_noise = np.random.normal(size=n_weights, loc=0, scale=1)
+    metric_functions = None
 
     for setting in noise_options:
         model_object = model_utils.build_model(**cfg['model'], init_path=weights_path, t=t)
-        model_utils.prep_for_training(model_object, seed=0,
+        model_utils.prep_for_training(model_object, seed=None,
                                       optimizer_settings=cfg['training']['optimization_algorithm'],
-                                      task_type=cfg['model']['task_type'])
+                                      task_type=cfg['model']['task_type'], set_seeds=False)
         weights = model_object.get_weights(flat=True)
         noise = noise_options[setting]
         noisy_weights = weights + standard_noise * noise
@@ -154,7 +154,8 @@ def test_model_with_noise(cfg_name, replace_index, seed, t,
         model_object.set_weights(unflattened_noisy_weights)
 
         metric_names = model_object.metric_names
-        metric_functions = model_utils.define_metric_functions(metric_names)
+        if metric_functions is None:
+            metric_functions = model_utils.define_metric_functions(metric_names)
         metrics = model_object.compute_metrics(x_test, y_test, metric_functions=metric_functions)
         metrics = [m.numpy() for m in metrics]
         for mf in metric_functions:
@@ -172,8 +173,10 @@ def test_model_with_noise(cfg_name, replace_index, seed, t,
 
                 break
         del model_object
-        del metric_functions
+#        del metric_functions
         del metrics
+        del noisy_weights
+        del unflattened_noisy_weights
 
     # extract the performances
     noiseless_performance = noise_performance['noiseless']
@@ -332,6 +335,26 @@ def get_loss_for_mi_attack(cfg_name, replace_index, seed, t,
 
 
 
+def test_model_without_noise(cfg_name, replace_index, seed, t,
+                             metric_to_report='binary_accuracy',
+                             verbose=False, num_deltas='max',
+                             data_privacy='all',
+                             multivariate=False):
+    # Sorry!
+    noiseless_performance, _, _, _ = test_model_with_noise(cfg_name=cfg_name,
+                                                           replace_index=replace_index,
+                                                           seed=seed,
+                                                           t=t,
+                                                           epsilon=1,
+                                                           num_deltas=num_deltas,
+                                                           delta=None,
+                                                           sens_from_bound=False,
+                                                           metric_to_report=metric_to_report,
+                                                           data_privacy=data_privacy,
+                                                           multivariate=multivariate)
+    return noiseless_performance
+
+
 def compute_gaussian_noise(epsilon, delta, sensitivity, verbose=True):
     """
     using gaussian mechanism assumption
@@ -410,3 +433,48 @@ def discretise_theoretical_sensitivity(cfg_name, model, theoretical_sensitivity)
     discretised_sensitivity = 2 * discrete_k * L * lr / batch_size
 
     return discretised_sensitivity
+
+
+def load_model_and_data_at_time(cfg_name: str, seed: int, replace_index: int, t: int, diffinit: bool = False):
+    cfg = load_cfg(cfg_name)
+    exp = ExperimentIdentifier(cfg_name=cfg_name, seed=seed, replace_index=replace_index, diffinit=diffinit, model=cfg['model']['architecture'])
+    weights_path = exp.path_stub().with_name(exp.path_stub().name + '.weights.csv')
+    print(weights_path)
+    model = model_utils.build_model(**cfg['model'], init_path=weights_path, t=t)
+    # Now for the data
+    _, _, x_vali, y_vali, x_test, y_test = data_utils.load_data(cfg['data'], replace_index=replace_index)
+    # Compute accuracy
+    model_preds = model(x_vali).numpy()
+    return model, model_preds, y_vali
+
+
+def recompute_performance_for_model(cfg_name: str, seed: int, replace_index: int, diffinit: bool = False, max_t: int = 10000, cadence: int = 500):
+    from sklearn.metrics import log_loss
+    cfg = load_cfg(cfg_name)
+    exp = ExperimentIdentifier(cfg_name=cfg_name, seed=seed, replace_index=replace_index, diffinit=diffinit, model=cfg['model']['architecture'])
+    weights_path = exp.path_stub().with_name(exp.path_stub().name + '.weights.csv')
+    print(weights_path)
+    # Now for the data
+    x_train, y_train, x_vali, y_vali, x_test, y_test = data_utils.load_data(cfg['data'], replace_index=replace_index)
+    # Time steps...
+    time_steps = np.arange(0, max_t + 1, cadence)
+    print(time_steps)
+    for t in time_steps:
+        try:
+            model = model_utils.build_model(**cfg['model'], init_path=weights_path, t=t)
+        except ValueError:
+            print(f'Out of time steps at t = {t}?')
+            break
+        # evaluate
+        yhat_train = model(x_train).numpy().flatten()
+        accuracy_train = ((yhat_train > 0.5)*1 == y_train).mean()
+        ce_train = log_loss(y_train, yhat_train)
+        print(f'{t},ALL,{ce_train},{accuracy_train}')
+        yhat_vali = model(x_vali).numpy().flatten()
+        accuracy_vali = ((yhat_vali > 0.5)*1 == y_vali).mean()
+        ce_vali = log_loss(y_vali, yhat_vali)
+        print(f'{t},VALI,{ce_vali},{accuracy_vali}')
+        yhat_test = model(x_test).numpy().flatten()
+        accuracy_test = ((yhat_test > 0.5)*1 == y_test).mean()
+        ce_test = log_loss(y_test, yhat_test)
+        print(f'{t},TEST,{ce_test},{accuracy_test}')

@@ -17,7 +17,7 @@ training:
 logging:
     cadence: 50
     save_weights: true
-    save_gradients: true
+    save_gradients: false
     sample_minibatch_gradients: false
     n_gradients: 0
 ...

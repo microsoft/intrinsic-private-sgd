@@ -1,14 +1,30 @@
 #!/usr/bin/env ipython
 # author: stephanie hyland
-# purpose: Scripts for manipulating experimental results (e.g. mostly loading!)
-
+# purpose: Scripts for manipulating experimental results (e.g. mostly loading!) import numpy as np import pandas as pd
+from pathlib import Path
+from experiment_metadata import get_input_hidden_size, lr_convergence_points, get_experiment_details
+from noise_utils import compute_wu_bound
+from typing import Tuple
 import numpy as np
 import pandas as pd
-from pathlib import Path
-from experiment_metadata import get_dataset_size, get_input_hidden_size
+# from stats_utils import estimate_statistics_through_training
 import ipdb
 
 TRACES_DIR = '/opt/tl-data/intrinsic-sgd-container/traces/'
+
+
+def define_output_perturbation_scale(cfg_name: str, target_epsilon=1) -> float:
+    """ hack!!! """
+    t = lr_convergence_points[cfg_name]
+    # Must be LR
+    assert '_lr' in cfg_name
+    _, batch_size, lr, _, N = get_experiment_details(cfg_name, 'logistic')
+    lipschitz_constant = np.sqrt(2)
+    sensitivity = compute_wu_bound(lipschitz_constant, t=t, N=N, batch_size=batch_size, eta=lr, verbose=False)
+    delta = 1 / (N ** 2)
+    c = np.sqrt(2 * np.log(1.25 / delta)) + 1e-6
+    sigma = c * (sensitivity / target_epsilon)
+    return sigma
 
 
 class ExperimentIdentifier(object):
@@ -213,37 +229,6 @@ class ExperimentIdentifier(object):
         return df
 
 
-def get_grid_to_run(cfg, num_seeds, num_replaces):
-    exp = ExperimentIdentifier()
-    exp.init_from_cfg(cfg)
-    grid_path = exp.derived_path_stub() / 'grid.csv'
-    try:
-        grid = pd.read_csv(grid_path)
-        print(f'Loaded grid seeds and replace indices from {grid_path}')
-        seeds = grid[grid['what'] == 'seed']['value']
-        replaces = grid[grid['what'] == 'replace_index']['value']
-    except FileNotFoundError:
-        seeds = []
-        replaces = []
-    if len(seeds) < num_seeds:
-        candidate_seeds = [x for x in range(99999) if x not in seeds]
-        new_seeds = np.random.choice(candidate_seeds, num_seeds - len(seeds), replace=False)
-        seeds = np.concatenate([seeds, new_seeds])
-    if len(replaces) < num_replaces:
-        N = get_dataset_size(cfg['data'])
-        candidate_replaces = [x for x in range(N) if x not in replaces]
-        new_replaces = np.random.choice(candidate_replaces, num_replaces - len(replaces))
-        replaces = np.concatenate([replaces, new_replaces])
-    seeds = np.int32(seeds)
-    replaces = np.int32(replaces)
-    what = ['seed']*len(seeds) + ['replace_index']*len(replaces)
-    values = np.concatenate([seeds, replaces])
-    grid = pd.DataFrame({'value': values, 'what': what})
-    grid.to_csv(grid_path, index=False)
-    print(f'Saved grid seeds and replace indices to {grid_path}')
-    return seeds, replaces
-
-
 def get_replace_index_with_most_seeds(cfg_name: str, model: str, diffinit: bool = False) -> int:
     df = get_available_results(cfg_name, model, replace_index=None, seed=None, diffinit=diffinit)
     seeds_per_replace = df['replace'].value_counts()
@@ -254,7 +239,7 @@ def get_replace_index_with_most_seeds(cfg_name: str, model: str, diffinit: bool 
 
 def get_available_results(cfg_name: str, model: str, replace_index: int = None, seed: int = None,
                           diffinit: bool = False, data_privacy: str = 'all') -> pd.DataFrame:
-
+    # TODO make diffinit do something here
     sample_experiment = ExperimentIdentifier(cfg_name=cfg_name, model=model, replace_index=1,
                                              seed=1, data_privacy=data_privacy, diffinit=diffinit)
     directory_path = Path(sample_experiment.path_stub()).parent
@@ -284,7 +269,7 @@ def get_available_results(cfg_name: str, model: str, replace_index: int = None, 
     return df
 
 
-def get_posterior_samples(cfg_name, iter_range, model='linear', replace_index=None,
+def get_posterior_samples(cfg_name, iter_range, model='logistic', replace_index=None,
                           params=None, seeds='all', num_seeds='max', verbose=True,
                           diffinit=False, data_privacy='all', what='weights', sort=False):
     """
@@ -308,7 +293,8 @@ def get_posterior_samples(cfg_name, iter_range, model='linear', replace_index=No
         print(f'Loading {what} from seeds: {available_seeds} in range {iter_range}')
     samples = []
 
-    base_experiment = ExperimentIdentifier(cfg_name, model, replace_index, diffinit=diffinit, data_privacy=data_privacy)
+    base_experiment = ExperimentIdentifier(cfg_name, model, replace_index,
+                                           diffinit=diffinit, data_privacy=data_privacy)
 
     for i, s in enumerate(available_seeds):
         base_experiment.seed = s
@@ -343,3 +329,80 @@ def get_posterior_samples(cfg_name, iter_range, model='linear', replace_index=No
         # remove reference to minibatchs samples
         samples = samples[samples['minibatch_id'].str.contains('minibatch_sample')].drop(columns='minibatch_id')
     return samples
+
+
+def get_posterior_from_all_datasets(cfg_name, iter_range, model='logistic',
+                                    params=None, seeds='all', num_seeds='max', verbose=True,
+                                    diffinit=False, data_privacy='all',
+                                    what='weights', sort=False) -> pd.DataFrame:
+    """
+    This loops over get_posterior, for all replace indices
+    """
+    results = get_available_results(cfg_name, model, replace_index=None, seed=None, diffinit=diffinit)
+    replace_indices = results['replace'].unique()
+    all_dfs = []
+    for replace_index in replace_indices:
+        print(f'Replace index: {replace_index}')
+        replace_samples = get_posterior_samples(cfg_name, iter_range, model=model,
+                                                replace_index=replace_index,
+                                                params=params, seeds=seeds,
+                                                num_seeds=num_seeds, verbose=verbose,
+                                                diffinit=diffinit,
+                                                data_privacy=data_privacy, what=what, sort=sort)
+        if replace_samples is not False:
+            replace_samples['replace_index'] = replace_index
+            all_dfs.append(replace_samples)
+    df = pd.concat(all_dfs)
+    return df
+
+
+def get_pvals(what, cfg_name, model, t, n_experiments=3, diffinit=False) -> Tuple[np.ndarray, int]:
+    """
+    load weights/gradients and compute p-vals for them, then return them
+    """
+    assert what in ['weights', 'gradients']
+    # set some stuff up
+    iter_range = (t, t + 1)
+    # sample experiments
+    df = get_available_results(cfg_name, model, diffinit=diffinit)
+    replace_indices = df['replace'].unique()
+    replace_indices = np.random.choice(replace_indices, n_experiments, replace=False)
+    print('Looking at replace indices...', replace_indices)
+    all_pvals = []
+
+    for i, replace_index in enumerate(replace_indices):
+        experiment = ExperimentIdentifier(cfg_name, model, replace_index, seed=1, diffinit=diffinit)
+
+        if what == 'gradients':
+            print('Loading gradients...')
+            df = experiment.load_gradients(noise=True, iter_range=iter_range, params=None)
+            second_col = df.columns[1]
+        elif what == 'weights':
+            df = get_posterior_samples(cfg_name, iter_range=iter_range,
+                                       model=model, replace_index=replace_index,
+                                       params=None, seeds='all')
+            second_col = df.columns[1]
+        params = df.columns[2:]
+        n_params = len(params)
+        print(n_params)
+
+        if n_params < 50:
+            print('ERROR: Insufficient parameters for this kind of visualisation, please try something else')
+
+            return False
+        print('Identified', n_params, 'parameters, proceeding with analysis')
+        p_vals = np.zeros(shape=(n_params))
+
+        for j, p in enumerate(params):
+            print('getting fit for parameter', p)
+            df_fit = estimate_statistics_through_training(what=what, cfg_name=None,
+                                                          model=None, replace_index=None,
+                                                          seed=None,
+                                                          df=df.loc[:, ['t', second_col, p]],
+                                                          params=None, iter_range=None)
+            p_vals[j] = df_fit.loc[t, 'norm_p']
+            del df_fit
+        log_pvals = np.log(p_vals)
+        all_pvals.append(log_pvals)
+    log_pvals = np.concatenate(all_pvals)
+    return log_pvals, n_params

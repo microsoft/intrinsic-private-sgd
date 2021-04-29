@@ -3,19 +3,14 @@
 # It relies on e.g. statistics computed across experiments - "derived results"
 
 import numpy as np
-import re
 import test_private_model
 import derived_results as dr
 import experiment_metadata as em
 import vis_utils
-import data_utils
 import matplotlib.pyplot as plt
-from matplotlib import cm
-from matplotlib.colors import to_rgba
 from pathlib import Path
 import seaborn as sns
 import yaml
-
 
 plt.switch_backend('Agg')
 params = {'font.family': 'sans-serif',
@@ -43,39 +38,27 @@ def generate_plots(cfg_name: str, model: str, t=None, sort=False) -> None:
         delta_histogram_ylim = (0, delta_histogram_ymax)
         delta_histogram_xlim = None
 #        delta_histogram_ylim = plot_options['delta_histogram']['ylim']
-        #epsilon_distribution_xlim = plot_options['epsilon_distribution']['xlim']
-        #epsilon_distribution_ylim = plot_options['epsilon_distribution']['ylim']
-        #versus_time_acc_lims = plot_options['versus_time']['acc_lim']
     except FileNotFoundError:
         assert t is not None
         delta_histogram_xlim = None
         delta_histogram_ylim = None
-        epsilon_distribution_xlim = None
-        epsilon_distribution_ylim = None
-        versus_time_acc_lims = None
 
     plot_delta_histogram(cfg_name, model, t=t, include_bounds=(model == 'logistic'),
                          xlim=delta_histogram_xlim, ylim=delta_histogram_ylim,
                          sort=sort, legend=False)
-    #plot_epsilon_distribution(cfg_name, model, t=t,
-    #                          xlim=epsilon_distribution_xlim,
-    #                          ylim=epsilon_distribution_ylim,
-    #                          sort=sort)
-    #plot_sens_and_var_over_time(cfg_name, model, iter_range=(0, int(t*1.2)),
-    #                            acc_lims=versus_time_acc_lims,
-    #                            sort=sort)
-    ##plot_stability_of_estimated_values(cfg_name, model, t, sort=sort)
+    # plot_stability_of_estimated_values(cfg_name, model, t, sort=sort)
     plot_distance_v_time(cfg_name, model, sort, convergence_point=t,
                          legend=('forest' in cfg_name))
+    plot_stability_of_estimated_values(cfg_name, model, t)
 
     return
 
 
-def generate_reports(cfg_name: str, model: str, t=None, num_experiments=500) -> None:
+def generate_reports(cfg_name: str, model: str, t=None, num_experiments=500, include_utility: bool = False) -> None:
     print('\n')
     print(f'Report for {cfg_name} with {model} at {t}')
     print('\n')
-    res = dr.compute_mvn_fit_and_alpha(cfg_name, model, t, diffinit=True)
+    res = dr.compute_mvn_laplace_fit_and_alpha(cfg_name, model, t, diffinit=True)
     p = res['mvn p']
     alpha = res['alpha']
     print(f'Fit of MVN: \t\t\t\t{p}')
@@ -112,36 +95,37 @@ def generate_reports(cfg_name: str, model: str, t=None, num_experiments=500) -> 
     print(f'Epsilon using empirical sensitivity: \t{epsilon_empirical}')
     print('')
 
-    perf_theoretical_eps1 = dr.accuracy_at_eps(cfg_name, model, t, use_bound=True,
-                                               epsilon=1, num_experiments=num_experiments)
-    perf_empirical_eps1 = dr.accuracy_at_eps(cfg_name, model, t, use_bound=False,
-                                             epsilon=1, num_experiments=num_experiments)
-    perf_theoretical_eps05 = dr.accuracy_at_eps(cfg_name, model, t, use_bound=True,
-                                                epsilon=0.5, num_experiments=num_experiments)
-    perf_empirical_eps05 = dr.accuracy_at_eps(cfg_name, model, t, use_bound=False,
-                                              epsilon=0.5, num_experiments=num_experiments)
-    print(f'Noiseless performance: \t\t\t{perf_theoretical_eps1["noiseless"]}')
-    print('')
+    if include_utility:
+        perf_theoretical_eps1 = dr.accuracy_at_eps(cfg_name, model, t, use_bound=True,
+                                                   epsilon=1, num_experiments=num_experiments)
+        perf_empirical_eps1 = dr.accuracy_at_eps(cfg_name, model, t, use_bound=False,
+                                                 epsilon=1, num_experiments=num_experiments)
+        perf_theoretical_eps05 = dr.accuracy_at_eps(cfg_name, model, t, use_bound=True,
+                                                    epsilon=0.5, num_experiments=num_experiments)
+        perf_empirical_eps05 = dr.accuracy_at_eps(cfg_name, model, t, use_bound=False,
+                                                  epsilon=0.5, num_experiments=num_experiments)
+        print(f'Noiseless performance: \t\t\t{perf_theoretical_eps1["noiseless"]}')
+        print('')
 
-    print('Performance at epsilon = 1...')
-    print('\tWith theoretical sensitivity:')
-    print(f'\t\tBolton: \t\t{perf_theoretical_eps1["bolton"]}')
-    print(f'\t\taDPSGD (fixinit): \t{perf_theoretical_eps1["acc"]}')
-    print(f'\t\taDPSGD (diffinit): \t{perf_theoretical_eps1["acc_diffinit"]}')
-    print('\tWith empirical sensitivity:')
-    print(f'\t\tBolton: \t\t{perf_empirical_eps1["bolton"]}')
-    print(f'\t\taDPSGD (fixinit): \t{perf_empirical_eps1["acc"]}')
-    print(f'\t\taDPSGD (diffinit): \t{perf_empirical_eps1["acc_diffinit"]}')
+        print('Performance at epsilon = 1...')
+        print('\tWith theoretical sensitivity:')
+        print(f'\t\tBolton: \t\t{perf_theoretical_eps1["bolton"]}')
+        print(f'\t\taDPSGD (fixinit): \t{perf_theoretical_eps1["acc"]}')
+        print(f'\t\taDPSGD (diffinit): \t{perf_theoretical_eps1["acc_diffinit"]}')
+        print('\tWith empirical sensitivity:')
+        print(f'\t\tBolton: \t\t{perf_empirical_eps1["bolton"]}')
+        print(f'\t\taDPSGD (fixinit): \t{perf_empirical_eps1["acc"]}')
+        print(f'\t\taDPSGD (diffinit): \t{perf_empirical_eps1["acc_diffinit"]}')
 
-    print('Performance at epsilon = 0.5...')
-    print('\tWith theoretical sensitivity:')
-    print(f'\t\tBolton: \t\t{perf_theoretical_eps05["bolton"]}')
-    print(f'\t\taDPSGD (fixinit): \t{perf_theoretical_eps05["acc"]}')
-    print(f'\t\taDPSGD (diffinit): \t{perf_theoretical_eps05["acc_diffinit"]}')
-    print('\tWith empirical sensitivity:')
-    print(f'\t\tBolton: \t\t{perf_empirical_eps05["bolton"]}')
-    print(f'\t\taDPSGD (fixinit): \t{perf_empirical_eps05["acc"]}')
-    print(f'\t\taDPSGD (diffinit): \t{perf_empirical_eps05["acc_diffinit"]}')
+        print('Performance at epsilon = 0.5...')
+        print('\tWith theoretical sensitivity:')
+        print(f'\t\tBolton: \t\t{perf_theoretical_eps05["bolton"]}')
+        print(f'\t\taDPSGD (fixinit): \t{perf_theoretical_eps05["acc"]}')
+        print(f'\t\taDPSGD (diffinit): \t{perf_theoretical_eps05["acc_diffinit"]}')
+        print('\tWith empirical sensitivity:')
+        print(f'\t\tBolton: \t\t{perf_empirical_eps05["bolton"]}')
+        print(f'\t\taDPSGD (fixinit): \t{perf_empirical_eps05["acc"]}')
+        print(f'\t\taDPSGD (diffinit): \t{perf_empirical_eps05["acc_diffinit"]}')
 
     return
 
@@ -183,20 +167,20 @@ def plot_delta_histogram(cfg_name: str, model: str, num_deltas='max', t=500,
                  color=em.dp_colours['bolton'],
                  label=r'$\Delta_S$',
                  kde=True,
-                 hist_kws={'alpha': 0.45},
+                 # hist_kws={'alpha': 0.45},
                  norm_hist=True)
     print('Plotting varying r... number of deltas:', vary_r.shape[0])
     sns.distplot(vary_r, ax=axarr,
                  color=em.dp_colours['augment'],
                  label=r'$\Delta_V^{fix}$',
                  kde=True,
-                 hist_kws={'alpha': 0.7},
+                 # hist_kws={'alpha': 0.7},
                  norm_hist=True)
     sns.distplot(vary_r_diffinit, ax=axarr,
                  color=em.dp_colours['augment_diffinit'],
                  label=r'$\Delta_V^{vary}$',
                  kde=True,
-                 hist_kws={'alpha': 0.9},
+                 #                 hist_kws={'alpha': 0.9},
                  norm_hist=True)
 
     print('Plotting varying both... number of deltas:', vary_both.shape[0])
@@ -223,7 +207,8 @@ def plot_delta_histogram(cfg_name: str, model: str, num_deltas='max', t=500,
     if legend:
         axarr.legend()
     else:
-        axarr.get_legend().remove()
+        if axarr.get_legend():
+            axarr.get_legend().remove()
     axarr.set_xlabel(r'$\|w - w^\prime\|$')
     axarr.set_ylabel('density')
 
@@ -313,7 +298,7 @@ def plot_distance_v_time(cfg_name, model, num_pairs='max', sort=False,
     axarr.set_ylabel(r'$\|w - w^\prime\|$')
     axarr.set_xlabel('training steps')
     xmin, _ = axarr.get_xlim()           # this is a hack for mnist
-    axarr.set_xlim(xmin, t.max())
+    axarr.set_xlim(xmin, 1.05 * t.max())
 
     vis_utils.beautify_axes(np.array([axarr]))
     plt.tight_layout()
@@ -321,191 +306,6 @@ def plot_distance_v_time(cfg_name, model, num_pairs='max', sort=False,
     figure_identifier = f'distance_v_time_{cfg_name}'
     plt.savefig((FIGS_DIR / figure_identifier).with_suffix('.png'))
     plt.savefig((FIGS_DIR / figure_identifier).with_suffix('.pdf'))
-
-    return
-
-
-def plot_epsilon_distribution(cfg_name, model, t, delta=None, num_pairs='max',
-                              which='vary',
-                              sensitivity_from='local', sharex=True,
-                              variability_from='empirical', xlim=None, ylim=None,
-                              data_privacy='all') -> None:
-    """
-    overlay epsilon dist with and without diffinit
-    which  takes values both, vary, fix
-    """
-    sens_var = dr.SensVar(cfg_name, model, data_privacy=data_privacy, t=t, num_pairs=num_pairs)
-    df = sens_var.load(diffinit=False)
-    df_diffinit = sens_var.load(diffinit=True)
-
-    # Now set it all up
-    _, batch_size, eta, _, N = em.get_experiment_details(cfg_name, model)
-
-    if delta is None:
-        delta = 1.0/(N**2)
-        print('Delta:', delta)
-
-    if not (num_pairs is None or num_pairs == 'max'):
-        if df.shape[0] > num_pairs:
-            pick_rows = np.random.choice(df.shape[0], num_pairs, replace=False)
-            df = df.iloc[pick_rows, :]
-
-        if df_diffinit.shape[0] > num_pairs:
-            pick_rows = np.random.choice(df_diffinit.shape[0], num_pairs, replace=False)
-            df_diffinit = df_diffinit.iloc[pick_rows, :]
-
-    if sensitivity_from == 'wu_bound':
-        assert model == 'logistic'
-        lipschitz_constant = np.sqrt(2)
-        sensitivity = test_private_model.compute_wu_bound(lipschitz_constant, t, N, batch_size, eta, verbose=True)
-        sensitivity_diffinit = sensitivity
-        print('Wu sensitivity bound:', sensitivity)
-    elif sensitivity_from == 'empirical':
-        sensitivity = dr.estimate_sensitivity_empirically(cfg_name, model,
-                                                          t, num_deltas='max',
-                                                          diffinit=False)
-        sensitivity_diffinit = dr.estimate_sensitivity_empirically(cfg_name, model,
-                                                                   t, num_deltas='max',
-                                                                   diffinit=True)
-    else:
-        sensitivity = df['sensitivity']
-        sensitivity_diffinit = df_diffinit['sensitivity']
-    c = np.sqrt(2 * np.log(1.25 / delta))
-
-    if variability_from == 'local':
-        variability = df['variability']
-        variability_diffinit = df_diffinit['variability']
-    else:
-        variability = dr.estimate_variability(cfg_name, model, t, multivariate=False, diffinit=False)
-        variability_diffinit = dr.estimate_variability(cfg_name, model, t, multivariate=False, diffinit=True)
-    print('Sens size:', sensitivity.shape)
-    print('Var size:', variability.shape)
-    epsilon = c * sensitivity / variability
-    epsilon_diffinit = c * sensitivity_diffinit / variability_diffinit
-    epsilon.dropna(inplace=True)
-    epsilon_diffinit.dropna(inplace=True)
-    # now plot!
-    print('Visualising with', epsilon.shape[0], 'and', epsilon_diffinit.shape[0], 'epsilon values')
-    n_bins = 50
-    figsize = (4, 2.1)
-
-    if sharex:
-        fig, axarr = plt.subplots(nrows=1, ncols=1, sharex=True, figsize=figsize)
-        axarr = np.array([axarr])
-    else:
-        fig, axarr = plt.subplots(nrows=2, ncols=1, sharex=False, figsize=figsize)
-    kde = True
-
-    if which in ['both', 'fix']:
-        sns.distplot(epsilon, ax=axarr[0], label=r'$\epsilon^{fix}$',
-                     color=em.dp_colours['augment'], bins=n_bins, norm_hist=True, kde=kde)
-
-    if which in ['both', 'vary']:
-        sns.distplot(epsilon_diffinit, ax=axarr[-1], label=r'$\epsilon^{vary}$',
-                     color=em.dp_colours['augment_diffinit'], bins=n_bins, norm_hist=True, kde=kde)
-    axarr[0].set_xlabel('')
-    axarr[-1].set_xlabel(r'pairwise $\epsilon$')
-
-    for ax in axarr:
-        ax.set_ylabel('density')
-
-    for ax in axarr:
-        if which == 'both':
-            ax.legend()
-
-        if xlim is not None:
-            ax.set_xlim(xlim)
-
-        if ylim is not None:
-            ax.set_ylim(ylim)
-
-    plt.tight_layout()
-    vis_utils.beautify_axes(axarr)
-
-    figure_identifier = f'epsilon_distribution_{which}_{cfg_name}_{data_privacy}_{model}_t{t}_{sensitivity_from}'
-    plt.savefig((FIGS_DIR / figure_identifier).with_suffix('.png'))
-    plt.savefig((FIGS_DIR / figure_identifier).with_suffix('.pdf'))
-
-    return
-
-
-def plot_sens_and_var_over_time(cfg_name, model, num_deltas='max', iter_range=(0, 1000),
-                                data_privacy='all', metric='binary_crossentropy', acc_lims=None) -> None:
-    df = dr.VersusTime(cfg_name, model).load()
-
-    df = df.loc[df['t'] <= iter_range[1], :]
-    df = df.loc[df['t'] >= iter_range[0], :]
-    fig, axarr = plt.subplots(nrows=3, ncols=1, sharex=True, figsize=(3.4, 4))
-    # losses
-    train_loss = df[metric + '_mean_train']
-    vali_loss = df[metric + '_mean_vali']
-    train_loss_std = df[metric + '_std_train']
-    vali_loss_std = df[metric + '_std_vali']
-    axarr[0].scatter(df['t'], train_loss, label='_nolegend_', s=6, c='black')
-    axarr[0].plot(df['t'], train_loss, alpha=0.5, label='train', c='black')
-    axarr[0].fill_between(df['t'], train_loss - train_loss_std, train_loss + train_loss_std,
-                          label='_nolegend_', alpha=0.2, color='black')
-    axarr[0].scatter(df['t'], vali_loss, label='_nolegend_', s=6, c='grey')
-    axarr[0].plot(df['t'], vali_loss, ls='--', label='validation', alpha=0.5, c='grey')
-    axarr[0].fill_between(df['t'], vali_loss - vali_loss_std, vali_loss + vali_loss_std,
-                          label='_nolegend_', alpha=0.2, color='grey')
-    axarr[0].set_ylabel(re.sub('_', '\n', metric))
-
-    if acc_lims is not None:
-        axarr[0].set_ylim(acc_lims)
-    # sensitivity (discretise it)
-    ds = [np.nan]*df.shape[0]
-
-    for i, ts in enumerate(df['theoretical_sensitivity'].values):
-        ds[i] = test_private_model.discretise_theoretical_sensitivity(cfg_name, model, ts)
-    axarr[1].plot(df['t'], ds, label='theoretical', alpha=0.5, c=em.dp_colours['bolton'], ls='--')
-    axarr[1].scatter(df['t'], df['empirical_sensitivity'], label='_nolegend_', s=6, c=em.dp_colours['bolton'])
-    axarr[1].plot(df['t'], df['empirical_sensitivity'], label='empirical', alpha=0.5, c=em.dp_colours['bolton'])
-    axarr[1].set_ylabel('sensitivity')
-    # variability
-    axarr[2].scatter(df['t'], df['variability_diffinit'],
-                     label='variable init', s=6,
-                     c=em.dp_colours['augment_diffinit'])
-    axarr[2].plot(df['t'], df['variability_diffinit'],
-                  label='_nolegend_', alpha=0.5,
-                  c=em.dp_colours['augment_diffinit'])
-    axarr[2].scatter(df['t'], df['variability_fixinit'],
-                     label='fixed init', s=6,
-                     c=em.dp_colours['augment'])
-    axarr[2].plot(df['t'], df['variability_fixinit'],
-                  label='_nolegend_', alpha=0.5,
-                  c=em.dp_colours['augment'])
-    axarr[2].set_ylabel(r'$\sigma_i(\mathcal{D})$')
-    # shared things
-    axarr[-1].set_xlabel('T (number of steps)')
-
-    if model == 'logistic':
-        convergence_points = em.lr_convergence_points
-        title = em.get_dataset_name(cfg_name) + ' (logistic regression)'
-    else:
-        convergence_points = em.nn_convergence_points
-        title = em.get_dataset_name(cfg_name) + ' (neuraml network)'
-    convergence_point = convergence_points[cfg_name]
-
-    for ax in axarr:
-        if convergence_point < iter_range[1]:
-            # only include the convergence point if it fits in the plot as specified
-            ax.axvline(x=convergence_point, ls='--', color='black', alpha=0.5)
-        ax.legend()
-    axarr[0].set_title(title)
-
-    for ax in axarr:
-        ax.legend()
-    vis_utils.beautify_axes(np.array([axarr]))
-
-    # save
-    plt.tight_layout()
-    figure_identifier = f'versus_time_{cfg_name}_{data_privacy}_{model}_nd{num_deltas}'
-    plt.savefig((FIGS_DIR / figure_identifier).with_suffix('.png'))
-    plt.savefig((FIGS_DIR / figure_identifier).with_suffix('.pdf'))
-
-    plt.clf()
-    plt.close()
 
     return
 
@@ -527,7 +327,7 @@ def plot_stability_of_estimated_values(cfg_name, model, t) -> None:
     axarr.axhline(y=sigma_we_use, ls='--', c=em.dp_colours['augment_diffinit'], alpha=0.4)
     axarr.set_xlabel('number of random seeds')
     axarr.set_ylabel(r'estimated $\sigma_i(\mathcal{D})$')
-    axarr.set_title(em.get_dataset_name(cfg_name) + ' (' + em.model_names[model] + ')')
+    axarr.set_title(em.dataset_names[cfg_name] + ' (' + em.model_names[model] + ')')
     upper_y = 1.05*max(np.max(sigma_v_seed['sigma']), sigma_we_use)
     lower_y = 0.95*np.min(sigma_v_seed['sigma'])
     axarr.set_ylim(lower_y, upper_y)
@@ -555,7 +355,7 @@ def plot_stability_of_estimated_values(cfg_name, model, t) -> None:
     axarr.set_ylabel('estimated sensitivity')
     axarr.set_ylim(0, None)
     axarr.set_xscale('log')
-    axarr.set_title(em.get_dataset_name(cfg_name) + ' (' + em.model_names[model] + ')')
+    axarr.set_title(em.dataset_names[cfg_name] + ' (' + em.model_names[model] + ')')
     vis_utils.beautify_axes(np.array([axarr]))
     plt.tight_layout()
 
@@ -569,90 +369,8 @@ def plot_stability_of_estimated_values(cfg_name, model, t) -> None:
     return
 
 
-def compare_mnist_variants() -> None:
-    colours = cm.get_cmap('Set1')(np.arange(3))
-    mnist_binary_pca, _, _, _, _, _ = data_utils.load_data('mnist_binary_pca')
-    mnist_binary_grp, _, _, _, _, _ = data_utils.load_data('mnist_binary')
-    mnist_binary_cropped, _, _, _, _, _ = data_utils.load_data('mnist_binary_cropped')
-    print(f'cropped sparsity: {np.mean(mnist_binary_cropped.flatten() == 0)}')
-    fig, axarr = plt.subplots(nrows=1, ncols=1, figsize=(3, 2.5))
-    sns.distplot(mnist_binary_pca.flatten(), ax=axarr, label='PCA',
-                 norm_hist=True, kde=False, color=to_rgba(colours[0]))
-    sns.distplot(mnist_binary_grp.flatten(), ax=axarr, label='GRP',
-                 norm_hist=True, kde=False, color=to_rgba(colours[1]))
-    sns.distplot(mnist_binary_cropped.flatten(), ax=axarr, label='Crop',
-                 norm_hist=True, kde=False, color=to_rgba(colours[2]))
-    axarr.set_xlabel('feature value')
-    axarr.set_ylabel('density')
-    axarr.legend()
-    axarr.set_ylim(0, 5)
-    axarr.set_xlim(-0.6, 0.6)
-    vis_utils.beautify_axes(np.array([axarr]))
-
-    plt.tight_layout()
-    figure_identifier = 'mnist_preprocessing_comparison'
-    plt.savefig((FIGS_DIR / figure_identifier).with_suffix('.png'))
-    plt.savefig((FIGS_DIR / figure_identifier).with_suffix('.pdf'))
-
-    plt.clf()
-    plt.close()
-    # ------- compare the traces ----- #
-    pca_loss = dr.AggregatedLoss('mnist_binary_pca', 'logistic').load(diffinit=True)
-    grp_loss = dr.AggregatedLoss('mnist_binary', 'logistic').load(diffinit=True)
-    cropped_loss = dr.AggregatedLoss('mnist_binary_cropped', 'logistic').load(diffinit=True)
-    fig, axarr = plt.subplots(nrows=2, ncols=1, sharex=True, figsize=(3.5, 3.5))
-    size = 6
-
-    for i, metric in enumerate(['binary_crossentropy', 'binary_accuracy']):
-        axarr[i].scatter(pca_loss.index, pca_loss[f'{metric}_mean_train'], label='PCA', s=size, color=colours[0])
-        axarr[i].scatter(grp_loss.index, grp_loss[f'{metric}_mean_train'], label='GRP', s=size, color=colours[1])
-        axarr[i].scatter(cropped_loss.index, cropped_loss[f'{metric}_mean_train'],
-                         label='Crop', s=size, color=colours[2])
-        axarr[i].plot(pca_loss.index, pca_loss[f'{metric}_mean_train'],
-                      label='_nolegend_', color=colours[0], alpha=0.5)
-        axarr[i].plot(grp_loss.index, grp_loss[f'{metric}_mean_train'],
-                      label='_nolegend_', color=colours[1], alpha=0.5)
-        axarr[i].plot(cropped_loss.index, cropped_loss[f'{metric}_mean_train'],
-                      label='_nolegend_', color=colours[2], alpha=0.5)
-        axarr[i].fill_between(pca_loss.index,
-                              pca_loss[f'{metric}_mean_train'] - pca_loss[f'{metric}_std_train'],
-                              pca_loss[f'{metric}_mean_train'] + pca_loss[f'{metric}_std_train'],
-                              label='_nolegend_', alpha=0.2, color=colours[0])
-        axarr[i].fill_between(grp_loss.index,
-                              grp_loss[f'{metric}_mean_train'] - grp_loss[f'{metric}_std_train'],
-                              grp_loss[f'{metric}_mean_train'] + grp_loss[f'{metric}_std_train'],
-                              label='_nolegend_', alpha=0.2, color=colours[1])
-        axarr[i].fill_between(cropped_loss.index,
-                              cropped_loss[f'{metric}_mean_train'] - cropped_loss[f'{metric}_std_train'],
-                              cropped_loss[f'{metric}_mean_train'] + cropped_loss[f'{metric}_std_train'],
-                              label='_nolegend_', alpha=0.2, color=colours[2])
-    # labels and stuff
-    axarr[0].legend()
-    axarr[0].set_ylabel('crossentropy')
-    axarr[1].set_ylabel('accuracy')
-    axarr[-1].set_xlabel('T (number of steps)')
-    # limits and convergence
-    axarr[0].set_xlim(0, 2100)
-    axarr[1].set_xlim(0, 2100)
-    axarr[0].axvline(x=1850, ls='--', color='black', alpha=0.5)
-    axarr[1].axvline(x=1850, ls='--', color='black', alpha=0.5)
-    axarr[1].set_ylim(0.75, 0.96)
-    # tidy
-    vis_utils.beautify_axes(axarr)
-
-    plt.tight_layout()
-    figure_identifier = 'mnist_preprocessing_comparison_trace'
-    plt.savefig((FIGS_DIR / figure_identifier).with_suffix('.png'))
-    plt.savefig((FIGS_DIR / figure_identifier).with_suffix('.pdf'))
-
-    plt.clf()
-    plt.close()
-
-    return
-
-
 def overlay_pval_plot(model='logistic', xlim=None, n_experiments=50,
-                      cfg_names=None, ylim=None) -> None:
+                      cfg_names=None, ylim=None, diffinit=True) -> None:
     """
     want to overlay pvals from the four datasets in one plot
     """
@@ -675,14 +393,13 @@ def overlay_pval_plot(model='logistic', xlim=None, n_experiments=50,
     vertical_lines_we_already_have = set()
 
     for ds in cfg_names:
-        print(ds)
-        log_pvals, n_params = vis_utils.fit_pval_histogram(what=what, dataset=ds, model=model,
-                                                           t=convergence_points[ds],
-                                                           n_experiments=n_experiments,
-                                                           plot=False)
+        log_pvals, n_params = dr.get_pvals(what=what, cfg_name=ds, model=model,
+                                           t=convergence_points[ds],
+                                           n_experiments=n_experiments,
+                                           diffinit=diffinit)
         sns.distplot(log_pvals, kde=True, bins=min(100, int(len(log_pvals)*0.25)),
                      ax=axarr, color=em.dataset_colours[ds], norm_hist=True,
-                     label=em.get_dataset_name(ds),
+                     label=em.dataset_names[ds],
                      kde_kws={'alpha': 0.6})
 
         if n_params not in vertical_lines_we_already_have:
@@ -708,54 +425,5 @@ def overlay_pval_plot(model='logistic', xlim=None, n_experiments=50,
     figure_identifier = f'pval_histogram_{plot_label}_{model}'
     plt.savefig((FIGS_DIR / figure_identifier).with_suffix('.png'))
     plt.savefig((FIGS_DIR / figure_identifier).with_suffix('.pdf'))
-
-    return
-
-
-def overlay_eps_plot(model='logistic', cfg_names=None, xlim=None, ylim=None, title=None) -> None:
-    figsize = (3.7, 2.9)
-    n_bins = 50
-
-    if model == 'logistic':
-        convergence_points = em.lr_convergence_points
-    else:
-        convergence_points = em.nn_convergence_points
-
-    if cfg_names is None:
-        cfg_names = em.dataset_colours.keys()
-        plot_label = '_'
-    else:
-        plot_label = '_'.join(cfg_names) + '_'
-    fig, axarr = plt.subplots(nrows=1, ncols=1, figsize=figsize)
-
-    for ds in cfg_names:
-        _, eps_diffinit = dr.epsilon_distribution(ds, model, t=convergence_points[ds],
-                                                  delta=None, num_pairs=None, which='vary',
-                                                  sensitivity_from='local', sharex=True,
-                                                  variability_from='empirical',
-                                                  xlim=None, ylim=None,
-                                                  data_privacy='all', plot=False)
-        sns.distplot(eps_diffinit, ax=axarr, label=em.get_dataset_name(ds),
-                     color=em.dataset_colours[ds], bins=n_bins, norm_hist=True, kde=True)
-    axarr.legend()
-    axarr.set_ylabel('density')
-    axarr.set_xlabel(r'pairwise $\epsilon_i(\mathcal{D})$')
-
-    if title is not None:
-        axarr.set_title(title)
-
-    if ylim is not None:
-        axarr.set_ylim(ylim)
-
-    if xlim is not None:
-        axarr.set_xlim(xlim)
-    vis_utils.beautify_axes(np.array([axarr]))
-    plt.tight_layout()
-    figure_identifier = f'epsilon_distribution_{plot_label}_{model}'
-    plt.savefig((FIGS_DIR / figure_identifier).with_suffix('.png'))
-    plt.savefig((FIGS_DIR / figure_identifier).with_suffix('.pdf'))
-
-    plt.clf()
-    plt.close()
 
     return

@@ -2,26 +2,83 @@
 # This is the script which runs the experiment! (trains a model!)
 
 import argparse
-from pathlib import Path
 from time import time
 from tensorflow.keras.backend import clear_session
+import numpy as np
+import pandas as pd
+from itertools import product
 
 from model_utils import build_model, prep_for_training, train_model
 from data_utils import load_data
-from results_utils import ExperimentIdentifier
-from cfg_utils import load_cfg
+from results_utils import ExperimentIdentifier, get_available_results
+from cfg_utils import load_cfg, get_model_init_path
+from experiment_metadata import get_dataset_size
 
 
-def get_model_init_path(cfg, diffinit):
-    if diffinit:
-        init_path = None
+def find_gaps_in_grid(cfg) -> list:
+    """
+    We want to have run every seed against every replace index.
+    This will look at what we've already run and identify missing pairs.
+    """
+    df = get_available_results(cfg['cfg_name'], cfg['model']['architecture'],
+                               replace_index=None, seed=None, diffinit=True)
+    xtab = pd.crosstab(df['seed'], df['replace'])
+    # Every value in the crosstabulation should be 2
+    xtab_miss = np.where(xtab < 2)
+    missing_pairs = [(x[0], x[1]) for x in np.array(xtab_miss).T]
+    print(f'Identified {len(missing_pairs)} missing pairs:\n{missing_pairs}')
+    print('WARNING: This might be a large number!')
+    return missing_pairs
+
+
+def propose_seeds_and_replaces(cfg, num_seeds, num_replaces) -> list:
+    """
+    We want to run num_seeds *new* seeds and num_replaces *new* replaces.
+    This function will look at what we've already run, and propose new pairs.
+
+    If we haven't run any experiments yet, this will just create a "new" grid.
+    """
+    df = get_available_results(cfg['cfg_name'], cfg['model']['architecture'],
+                               replace_index=None, seed=None, diffinit=True)
+    known_seeds = df['seed'].unique()
+    known_replaces = df['replace'].unique()
+
+    candidate_seeds = [x for x in range(99999) if x not in known_seeds]
+    new_seeds = np.random.choice(candidate_seeds, num_seeds, replace=False)
+
+    N = get_dataset_size(cfg['data'])
+    candidate_replaces = [x for x in range(N) if x not in known_replaces]
+    new_replaces = np.random.choice(candidate_replaces, num_replaces, replace=False)
+
+    pairs = list(product(new_seeds, new_replaces))
+    return pairs
+
+
+def add_new_seeds_to_grid(cfg, num_seeds: int, num_replaces: int) -> list:
+    """
+    Specifically run more seeds.
+    First get existing seeds and replaces.
+    Sample new seeds, then run new seeds for each existing replace.
+    """
+    df = get_available_results(cfg['cfg_name'], cfg['model']['architecture'],
+                               replace_index=None, seed=None, diffinit=True)
+    known_seeds = df['seed'].unique()
+    replaces_with_counts = df['replace'].value_counts()
+    num_known_replaces = replaces_with_counts.shape[0]
+    if num_replaces > num_known_replaces:
+        print(f'Asked for {num_replaces} replaces but only {num_known_replaces} known- taking these.')
+        replaces = df['replace'].unique()
     else:
-        architecture = cfg['model']['architecture']
-        cfg_name = cfg['cfg_name']
-        init_path = f'{architecture}_{cfg_name}_init.h5'
-        init_path = (Path('./models') / init_path).resolve()
+        print(f'Asked for {num_replaces} and there are {num_known_replaces} so we are taking the top ones.')
+        # this is to enrich a smaller set of replaces with seeds
+        replaces = replaces_with_counts.iloc[:num_replaces].index
+        print(f'These are: {replaces}')
 
-    return init_path
+    candidate_seeds = [x for x in range(99999) if x not in known_seeds]
+    new_seeds = np.random.choice(candidate_seeds, num_seeds, replace=False)
+
+    pairs = list(product(new_seeds, replaces))
+    return pairs
 
 
 def run_single_experiment(cfg, diffinit, seed, replace_index):
