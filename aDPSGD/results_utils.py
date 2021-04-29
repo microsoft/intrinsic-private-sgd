@@ -258,7 +258,7 @@ def get_replace_index_with_most_seeds(cfg_name: str, model: str, diffinit: bool 
 
 def get_available_results(cfg_name: str, model: str, replace_index: int = None, seed: int = None,
                           diffinit: bool = False, data_privacy: str = 'all') -> pd.DataFrame:
-
+    # TODO make diffinit do something here
     sample_experiment = ExperimentIdentifier(cfg_name=cfg_name, model=model, replace_index=1,
                                              seed=1, data_privacy=data_privacy, diffinit=diffinit)
     directory_path = Path(sample_experiment.path_stub()).parent
