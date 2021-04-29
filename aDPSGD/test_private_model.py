@@ -185,9 +185,9 @@ def test_model_with_noise(cfg_name, replace_index, seed, t,
 
     return noiseless_performance, bolton_performance, augment_performance, augment_performance_diffinit
 
-def get_loss_for_mi_attack(cfg_name, x_value, y_value, replace_index, seed, t,
+def get_loss_for_mi_attack(cfg_name, replace_index, seed, t,
                           epsilon=None, delta=None,
-                          sens_from_bound=True,
+                          sens_from_bound=False,
                           metric_to_report='binary_crossentropy',
                           verbose=False, num_deltas='max',
                           data_privacy='all',
@@ -203,7 +203,7 @@ def get_loss_for_mi_attack(cfg_name, x_value, y_value, replace_index, seed, t,
     task, batch_size, lr, _, N = em.get_experiment_details(cfg_name, model, data_privacy)
     # load the test set
     # TODO this is a hack, fix it
-    #_, _, _, _, x_test, y_test = data_utils.load_data(cfg['data'], replace_index=replace_index)
+    x_train, y_train, _, _, x_test, y_test = data_utils.load_data(options=cfg['data'], replace_index=replace_index)
 
     if epsilon is None:
         epsilon = 1.0
@@ -249,10 +249,10 @@ def get_loss_for_mi_attack(cfg_name, x_value, y_value, replace_index, seed, t,
                      'bolton': target_sigma,
                      'augment_sgd': noise_to_add,
                      'augment_sgd_diffinit': noise_to_add_diffinit}
-    noise_performance = {'noiseless': np.nan,
-                         'bolton': np.nan,
-                         'augment_sgd': np.nan,
-                         'augment_sgd_diffinit': np.nan}
+    noise_performance = {'noiseless': [],
+                         'bolton': [],
+                         'augment_sgd': [],
+                         'augment_sgd_diffinit': []}
 
     n_weights = em.get_n_weights(cfg)
 
@@ -262,8 +262,8 @@ def get_loss_for_mi_attack(cfg_name, x_value, y_value, replace_index, seed, t,
     for setting in noise_options:
         model_object = model_utils.build_model(**cfg['model'], init_path=weights_path, t=t)
         model_utils.prep_for_training(model_object, seed=0,
-                                      optimizer_settings=cfg['training']['optimization_algorithm'],
-                                      task_type=cfg['model']['task_type'])
+                                        optimizer_settings=cfg['training']['optimization_algorithm'],
+                                        task_type=cfg['model']['task_type'])
         weights = model_object.get_weights(flat=True)
         noise = noise_options[setting]
         noisy_weights = weights + standard_noise * noise
@@ -272,35 +272,63 @@ def get_loss_for_mi_attack(cfg_name, x_value, y_value, replace_index, seed, t,
 
         metric_names = model_object.metric_names
         metric_functions = model_utils.define_metric_functions(metric_names)
-        metrics = model_object.compute_metrics(x_value, y_value, metric_functions=metric_functions)
-        metrics = [m.numpy() for m in metrics]
-        for mf in metric_functions:
-            mf.reset_states()
 
-        if verbose:
-            print(f'PERFORMANCE ({setting}):')
+        results_train = []
+        results_test = []
+        for i in range(0,len(x_train)):
+            metrics = model_object.compute_metrics(np.array([x_train[i]]), np.array([y_train[i]]), metric_functions=metric_functions)
+            metrics = [m.numpy() for m in metrics]
+            for mf in metric_functions:
+                mf.reset_states()
 
-        for (n, v) in zip(metric_names, metrics):
             if verbose:
-                print(n, v)
+                print(f'PERFORMANCE ({setting}):')
 
-            if n == metric_to_report:
-                noise_performance[setting] = v
+            for (n, v) in zip(metric_names, metrics):
+                if verbose:
+                    print(n, v)
 
-                break
+                if n == metric_to_report:
+                    results_train.append(v)
+
+                    break
+        noise_performance[setting].append(results_train)
+
+        for i in range(0,len(x_test)):
+            metrics = model_object.compute_metrics(np.array([x_test[i]]), np.array([y_test[i]]), metric_functions=metric_functions)
+            metrics = [m.numpy() for m in metrics]
+            for mf in metric_functions:
+                mf.reset_states()
+
+            if verbose:
+                print(f'PERFORMANCE ({setting}):')
+
+            for (n, v) in zip(metric_names, metrics):
+                if verbose:
+                    print(n, v)
+
+                if n == metric_to_report:
+                    results_test.append(v)
+
+                    break
+
+        noise_performance[setting].append(results_test)
+
+        
+
         del model_object
         del metric_functions
         del metrics
 
     # extract the performances
-    noiseless_performance = noise_performance['noiseless']
-    bolton_performance = noise_performance['bolton']
-    augment_performance = noise_performance['augment_sgd']
-    augment_performance_diffinit = noise_performance['augment_sgd_diffinit']
+    # noiseless_performance = noise_performance['noiseless']
+    # bolton_performance = noise_performance['bolton']
+    # augment_performance = noise_performance['augment_sgd']
+    # augment_performance_diffinit = noise_performance['augment_sgd_diffinit']
     # tidy up so we dont get a horrible memory situation
     model_utils.K.backend.clear_session()
 
-    return noiseless_performance, bolton_performance, augment_performance, augment_performance_diffinit
+    return noise_performance
 
 
 

@@ -57,7 +57,7 @@ class DerivedResult(object):
                 data = self.load(diffinit=diffinit, generate_if_needed=False)
             else:
                 raise FileNotFoundError(f'{path} not found!')
-
+        #print(data)
         return data
 
 
@@ -1110,7 +1110,8 @@ def estimate_variability(cfg_name, model, t, multivariate=False, diffinit=False,
     This just pulls up the Sigmas result, and potentially subsets
     """
     sigmas_result = Sigmas(cfg_name, model, t, num_replaces, num_seeds, data_privacy, multivariate, sort=sort)
-
+    
+    
     if ephemeral:
         sigmas_data = sigmas_result.generate(diffinit, verbose=False, ephemeral=True)
     else:
@@ -1120,7 +1121,7 @@ def estimate_variability(cfg_name, model, t, multivariate=False, diffinit=False,
         return None
 
     sigmas = sigmas_data['sigmas']
-
+   
     if num_replaces == 'max':
         sigmas = sigmas
     else:

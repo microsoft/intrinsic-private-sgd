@@ -8,7 +8,7 @@ from pathlib import Path
 from experiment_metadata import get_dataset_size, get_input_hidden_size
 import ipdb
 
-TRACES_DIR = './traces/'
+TRACES_DIR = '/opt/tl-data/intrinsic-sgd-container/traces/'
 
 
 class ExperimentIdentifier(object):
