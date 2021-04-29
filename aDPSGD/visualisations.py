@@ -2,6 +2,7 @@
 # It relies on e.g. statistics computed across experiments - "derived results"
 
 import numpy as np
+import pandas as pd
 import vis_utils
 import matplotlib.pyplot as plt
 from matplotlib import cm
@@ -11,11 +12,11 @@ import seaborn as sns
 import statsmodels.api as sm
 import re
 import ipdb
-import test_private_model
-import data_utils
+import umap
 import results_utils
 import derived_results as dr
 import experiment_metadata as em
+from sklearn.cluster import KMeans
 
 plt.switch_backend('Agg')
 params = {'font.family': 'sans-serif',
@@ -118,7 +119,7 @@ def weight_posterior(cfg_name, model, replace_indices='random', t=500,
                                                  replace_index=replace_index,
                                                  params=[param], seeds='all',
                                                  sort=sort)
-        sns.distplot(df[param], ax=axarr, label=f'D\{replace_index}',
+        sns.distplot(df[param], ax=axarr, label=f'{replace_index}',
                      kde=True, bins=n_bins, norm_hist=True)
 
     axarr.set_xlabel('weight ' + param)
@@ -382,53 +383,13 @@ def fit_pval_histogram(what, cfg_name, model, t, n_experiments=3, diffinit=False
     """
     histogram of p-values (across parameters-?) for a given model etc.
     """
+
     assert what in ['weights', 'gradients']
-    # set some stuff up
-    iter_range = (t, t + 1)
     fig, axarr = plt.subplots(nrows=1, ncols=1, figsize=(3.5, 2.1))
     pval_colour = '#b237c4'
-    # sample experiments
-    df = results_utils.get_available_results(cfg_name, model, diffinit=diffinit)
-    replace_indices = df['replace'].unique()
-    replace_indices = np.random.choice(replace_indices, n_experiments, replace=False)
-    print('Looking at replace indices...', replace_indices)
-    all_pvals = []
-
-    for i, replace_index in enumerate(replace_indices):
-        experiment = results_utils.ExperimentIdentifier(cfg_name, model, replace_index, seed, diffinit)
-
-        if what == 'gradients':
-            print('Loading gradients...')
-            df = experiment.load_gradients(noise=True, iter_range=iter_range, params=None)
-            second_col = df.columns[1]
-        elif what == 'weights':
-            df = results_utils.get_posterior_samples(cfg_name, iter_range=iter_range,
-                                                     model=model, replace_index=replace_index,
-                                                     params=None, seeds='all')
-            second_col = df.columns[1]
-        params = df.columns[2:]
-        n_params = len(params)
-        print(n_params)
-
-        if n_params < 50:
-            print('ERROR: Insufficient parameters for this kind of visualisation, please try something else')
-
-            return False
-        print('Identified', n_params, 'parameters, proceeding with analysis')
-        p_vals = np.zeros(shape=(n_params))
-
-        for j, p in enumerate(params):
-            print('getting fit for parameter', p)
-            df_fit = dr.estimate_statistics_through_training(what=what, cfg_name=None,
-                                                             model=None, replace_index=None,
-                                                             seed=None,
-                                                             df=df.loc[:, ['t', second_col, p]],
-                                                             params=None, iter_range=None)
-            p_vals[j] = df_fit.loc[t, 'norm_p']
-            del df_fit
-        log_pvals = np.log(p_vals)
-        all_pvals.append(log_pvals)
-    log_pvals = np.concatenate(all_pvals)
+    log_pvals, n_params = dr.get_pvals(what=what, cfg_name=cfg_name,
+                                       model=model, t=t, n_experiments=n_experiments,
+                                       diffinit=diffinit)
 
     if xlim is not None:
         # remove values below the limit
@@ -511,7 +472,7 @@ def visualise_fits(cfg_name, model, replace_index, seed, save=True, params=None)
 def visualise_trace(cfg_names, models, replaces, seeds, privacys, save=True,
                     include_batches=False, iter_range=(None, None),
                     include_convergence=True, diffinit=False, convergence_tolerance=3,
-                    include_vali=True, labels=None) -> None:
+                    include_vali=True, labels=None, figsize=None) -> None:
     """
     Show the full training set loss as well as the gradient (at our element) over training
     """
@@ -523,7 +484,7 @@ def visualise_trace(cfg_names, models, replaces, seeds, privacys, save=True,
         include_batches = False
 
     if labels is None:
-        labels =[f'{x["cfg_name"]}-{x["model"]}-{x["replace"]}-{x["seed"]}' for x in identifiers]
+        labels = [f'{x["cfg_name"]}-{x["model"]}-{x["replace"]}-{x["seed"]}' for x in identifiers]
     else:
         assert len(labels) == len(identifiers)
     loss_list = []
@@ -558,7 +519,9 @@ def visualise_trace(cfg_names, models, replaces, seeds, privacys, save=True,
     print('Visualising trace of', identifiers, 'with metrics', metrics)
 
     nrows = len(metrics)
-    fig, axarr = plt.subplots(nrows=nrows, ncols=1, sharex='col', figsize=(4, 3.2))
+    if figsize is None:
+        figsize = (4, 3.2)
+    fig, axarr = plt.subplots(nrows=nrows, ncols=1, sharex='col', figsize=figsize)
 
     if nrows == 1:
         axarr = np.array([axarr])
@@ -736,7 +699,7 @@ def visually_compare_distributions(cfg_name, model, replace_index, seed, df=None
 
 def visualise_weight_trajectory(cfg_name, identifiers, df=None, save=True,
                                 iter_range=(None, None), params=['#4', '#2'],
-                                include_optimum=False, include_autocorrelation=False, diffinit=False) -> None:
+                                include_autocorrelation=False, diffinit=False) -> None:
     """
     """
     df_list = []
@@ -763,10 +726,6 @@ def visualise_weight_trajectory(cfg_name, identifiers, df=None, save=True,
         for df in df_list:
             assert p in df.columns
 
-    if include_optimum:
-        # hack!
-        optimum, hessian = data_utils.solve_with_linear_regression(cfg_name)
-
     if include_autocorrelation:
         ncols = 2
     else:
@@ -783,8 +742,6 @@ def visualise_weight_trajectory(cfg_name, identifiers, df=None, save=True,
             firstcol[i].plot(df['t'], df[p], c=color, alpha=0.75, label='_nolegend_')
             firstcol[i].set_ylabel('param: ' + str(p))
 
-            if include_optimum:
-                firstcol[i].axhline(y=optimum[int(p[1:])], ls='--', color='red', alpha=0.5)
         firstcol[0].set_title('weight trajectory')
         firstcol[-1].set_xlabel('training steps')
         firstcol[0].legend()
@@ -840,57 +797,6 @@ def compare_posteriors_with_different_data(cfg_name, model, t, replace_indices, 
     return
 
 
-def delta_over_time(cfg_name, model, identifier_pair, iter_range, include_bound=False) -> None:
-    """
-    """
-    assert len(identifier_pair) == 2
-    replace_1, seed_1 = identifier_pair[0]['replace'], identifier_pair[0]['seed']
-    replace_2, seed_2 = identifier_pair[1]['replace'], identifier_pair[1]['seed']
-    experiment_1 = results_utils.ExperimentIdentifier(cfg_name, model, replace_1, seed_1)
-    experiment_2 = results_utils.ExperimentIdentifier(cfg_name, model, replace_2, seed_2)
-    samples_1 = experiment_1.load_weights(iter_range=iter_range)
-    samples_2 = experiment_2.load_weights(iter_range=iter_range)
-    gradients_1 = experiment_1.load_gradients(noise=False, iter_range=iter_range)
-    gradients_2 = experiment_2.load_gradients(noise=False, iter_range=iter_range)
-    # align the time-points
-    samples_1.set_index('t', inplace=True)
-    samples_2.set_index('t', inplace=True)
-    gradients_1.set_index('t', inplace=True)
-    gradients_2.set_index('t', inplace=True)
-    gradients_1 = gradients_1.loc[gradients_1['minibatch_id'] == 'ALL', :]
-    gradients_2 = gradients_2.loc[gradients_2['minibatch_id'] == 'ALL', :]
-    gradients_1.drop(columns='minibatch_id', inplace=True)
-    gradients_2.drop(columns='minibatch_id', inplace=True)
-    assert np.all(samples_1.index == samples_2.index)
-    assert np.all(gradients_1.index == gradients_2.index)
-    delta = np.linalg.norm(samples_1 - samples_2, axis=1)
-    gradnorm_1 = np.linalg.norm(gradients_1, axis=1)
-    gradnorm_2 = np.linalg.norm(gradients_2, axis=1)
-    t = samples_1.index
-    # now visualise
-    fig, axarr = plt.subplots(nrows=3, ncols=1)
-    axarr[0].plot(t, delta, alpha=0.5)
-    axarr[0].scatter(t, delta, s=4)
-    axarr[0].set_ylabel('|| w - w\' ||')
-
-    if include_bound:
-        assert model == 'logistic'
-        _, batch_size, eta, _, N = em.get_experiment_details(cfg_name, model)
-        L = np.sqrt(2)
-        bound = np.zeros(len(t))
-
-        for i, ti in enumerate(t):
-            bound[i] = test_private_model.compute_wu_bound(L, ti, N, batch_size, eta, verbose=False)
-        axarr[0].plot(t, bound)
-    axarr[1].plot(t, gradnorm_1)
-    axarr[2].plot(t, gradnorm_2)
-    axarr[1].axhline(y=L, ls='--')
-    axarr[2].axhline(y=L, ls='--')
-    vis_utils.beautify_axes(axarr)
-
-    return
-
-
 def sensitivity_v_variability(cfg_name, model, t, num_pairs, diffinit=False) -> None:
     try:
         df = dr.SensVar(cfg_name, model, t=t, num_pairs=num_pairs).load(diffinit=diffinit)
@@ -926,7 +832,6 @@ def mvn_covariance(X, identifier: str = '') -> None:
 def multivariate_normal_test_vis(df, logscale: bool = False) -> None:
     fig, axarr = plt.subplots(nrows=3, ncols=1, sharex=True)
     axarr[-1].set_xlabel('N')
-    ns = df['n'].unique()
     ds = df['d'].unique()
     colours = cm.viridis(np.linspace(0, 1, len(ds)))
     for i, d in enumerate(ds):
@@ -934,7 +839,7 @@ def multivariate_normal_test_vis(df, logscale: bool = False) -> None:
         for j, label in enumerate(['pval_diagonal_gauss', 'pval_nondiag_gauss', 'pval_laplace']):
             val_mean = df_d[[label, 'n']].groupby('n').mean()
             val_std = df_d[[label, 'n']].groupby('n').std()
-            uh = axarr[j].plot(val_mean.index, val_mean.values[:, 0], color=colours[i], label=d)
+            axarr[j].plot(val_mean.index, val_mean.values[:, 0], color=colours[i], label=d)
             axarr[j].fill_between(val_mean.index, (val_mean - val_std).values[:, 0], (val_mean + val_std).values[:, 0], color=colours[i], alpha=0.1)
     fig.colorbar(plt.cm.ScalarMappable(plt.Normalize(vmin=min(ds), vmax=max(ds)), cmap='viridis'),
                  ax=axarr, label='dimension', drawedges=False, ticks=ds)
@@ -984,3 +889,130 @@ def sens_v_var_per_parameter(cfg_name, model, t, diffinit=True) -> None:
 
     plt.savefig(PLOTS_DIR / f'per_param_sens_v_var_{cfg_name}_t{t}.png')
     return
+
+
+def plot_umap(embedded, labels, identifier: str, xlim=None, ylim=None) -> None:
+    assert 'replace_index' in labels.columns
+    assert 'seed' in labels.columns
+
+    fig, axarr = plt.subplots(nrows=1, ncols=2, figsize=(4.5, 2.1), sharey=True)
+    size = 5
+    cmap1 = 'plasma'
+    cmap2 = 'viridis'
+#    axarr[0].set_title('UMAP on weights')
+    s1 = axarr[0].scatter(embedded[:, 0], embedded[:, 1], c=labels['replace_index'], cmap=cmap1, s=size, alpha=0.4)
+    cbar1 = fig.colorbar(s1, ax=axarr[0], fraction=0.046, pad=0.04)
+    cbar1.set_ticks([])
+    cbar1.outline.set_visible(False)
+    cbar1.set_label('perturbed dataset', rotation=270, labelpad=10)
+
+    s2 = axarr[1].scatter(embedded[:, 0], embedded[:, 1], c=labels['seed'], cmap=cmap2, s=size, alpha=0.4)
+    cbar2 = fig.colorbar(s2, ax=axarr[1], fraction=0.046, pad=0.04)
+    cbar2.set_ticks([])
+    cbar2.outline.set_visible(False)
+    cbar2.set_label('random seed', rotation=270, labelpad=10)
+    vis_utils.beautify_axes(axarr)
+
+    for ax in axarr:
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])
+        ax.set_aspect(1)
+
+    if xlim is not None:
+        for ax in axarr:
+            ax.set_xlim(xlim)
+    if ylim is not None:
+        for ax in axarr:
+            ax.set_ylim(ylim)
+
+    plt.tight_layout()
+
+    plt.savefig(PLOTS_DIR / f'{identifier}.png')
+    plt.savefig(PLOTS_DIR / f'{identifier}.pdf')
+    return
+
+
+def umap_on_weights(cfg_name, model, t, diffinit=False, xlim=None, ylim=None,
+                    n_neighbors=15, min_dist=0.1, n_components=2, metric='euclidean',
+                    n_clusters: int = None, synthetic: bool = False) -> None:
+    print(f'Loading all the weights at time {t}')
+    temp_path = PLOTS_DIR / 'temp_data' / f'umap_{cfg_name}_{t}_diffinit{diffinit}.csv'
+    try:
+        df = pd.read_csv(temp_path)
+        print('Loaded a temp file of weights')
+    except FileNotFoundError:
+        df = results_utils.get_posterior_from_all_datasets(cfg_name, iter_range=(t, t+1),
+                                                           model=model, what='weights',
+                                                           verbose=False,
+                                                           diffinit=diffinit, sort=False)
+        df.to_csv(temp_path)
+
+    if cfg_name == 'mnist_binary_lr':
+        # subsample replace indices 4350 and 5669 - or filter to "normal" seeds
+        normal_seeds = df.loc[df['replace_index'] == 4831]['seed'].unique()
+        df_new = df.loc[df['seed'].isin(normal_seeds)]
+        print(f'Subsampled down to {df_new.shape[0]} examples, from {df.shape[0]}')
+        df = df_new
+
+    weights = df.drop(columns=['t', 'seed', 'replace_index']).values
+    labels = df[['seed', 'replace_index']]
+
+    identifier = f'umap_{cfg_name}_t{t}_diffinit{diffinit}'
+
+    # debug
+    if synthetic:
+        print('Replacing data with something synthetic!')
+        synthetic = np.zeros_like(weights)
+        seed_means = np.random.normal(size=(len(labels['seed'].unique()), weights.shape[1]))
+        seed_means_map = dict(zip(labels['seed'].unique(), seed_means))
+        replace_means = np.random.normal(size=(len(labels['replace_index'].unique()), weights.shape[1]))
+        replace_means_map = dict(zip(labels['replace_index'].unique(), replace_means))
+        alpha = 0.502
+        for i in range(weights.shape[0]):
+            synthetic[i] = alpha * seed_means_map[labels.iloc[i]['seed']] + (1 - alpha) * replace_means_map[labels.iloc[i]['replace_index']] + np.random.normal(scale=0.1)
+        weights = synthetic
+        identifier = 'umap_synthetic'
+
+    if metric == 'hamming':
+        print('Binarising weights!')
+        print('Positiev weights --> 1')
+        weights = (weights > 0) * 1
+
+    print('checking counts for replace index and seeds..')
+    print(labels['replace_index'].value_counts().max())
+    print(labels['seed'].value_counts().max())
+
+    fit = umap.UMAP(
+                    n_neighbors=n_neighbors,
+                    min_dist=min_dist,
+                    n_components=n_components,
+                    metric=metric
+                    )
+    print(f'Data size: {weights.shape}')
+    print('UMAPping!')
+    embedded = fit.fit_transform(weights)
+
+    plot_umap(embedded, labels, identifier, xlim=xlim, ylim=ylim)
+
+    if n_clusters is None:
+        max_seeds = labels.seed.value_counts().max()
+        max_replaces = labels.replace_index.value_counts().max()
+        n_clusters = max(max_seeds, max_replaces)
+        print(f'Using n clusters: {n_clusters}')
+
+    print('Performing clustering...')
+    kmeans = KMeans(n_clusters=n_clusters)
+    preds = kmeans.fit_predict(weights)
+    labels['cluster'] = preds
+
+    seeds_per_cluster = labels.groupby('cluster').apply(lambda x: len(x['seed'].unique()))
+    print(f'Seeds per cluster: max: {seeds_per_cluster.max()}, mean: {seeds_per_cluster.mean()}, min: {seeds_per_cluster.min()}')
+
+    clusters_per_seed = labels.groupby('seed').apply(lambda x: len(x['cluster'].unique()))
+    print(f'clusters per seed: max: {clusters_per_seed.max()}, mean: {clusters_per_seed.mean()}, min: {clusters_per_seed.min()}')
+
+    replaces_per_cluster = labels.groupby('cluster').apply(lambda x: len(x['replace_index'].unique()))
+    print(f'Replaces per cluster: max: {replaces_per_cluster.max()}, mean: {replaces_per_cluster.mean()}, min: {replaces_per_cluster.min()}')
+
+    clusters_per_replace = labels.groupby('replace_index').apply(lambda x: len(x['cluster'].unique()))
+    print(f'clusters per replace: max: {clusters_per_replace.max()}, mean: {clusters_per_replace.mean()}, min: {clusters_per_replace.min()}')

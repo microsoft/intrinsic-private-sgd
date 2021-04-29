@@ -4,6 +4,8 @@ from cfg_utils import load_cfg
 
 dataset_colours = {'cifar2_lr': '#A6373F',
                    'cifar2_mlp': '#A6373F',
+                   'cifar2_pretrain_lr': '#A6373F',
+                   'cifar2_pretrain_mlp': '#A6373F',
                    'mnist_binary_lr': '#552B72',
                    'mnist_binary_mlp': '#552B72',
                    'adult_lr': '#db9302',
@@ -13,6 +15,8 @@ dataset_colours = {'cifar2_lr': '#A6373F',
 
 dataset_names = {'cifar2_lr': 'CIFAR2',
                  'cifar2_mlp': 'CIFAR2',
+                 'cifar2_pretrain_lr': 'CIFAR2',
+                 'cifar2_pretrain_mlp': 'CIFAR2',
                  'mnist_binary_lr': 'MNIST-binary',
                  'mnist_binary_mlp': 'MNIST-binary',
                  'adult_lr': 'Adult',
@@ -26,20 +30,22 @@ model_names = {'logistic': 'logistic regression',
                'cnn': 'CNN'}
 
 lr_convergence_points = {'cifar2_lr': 2000,
-                         'mnist_binary_lr': 1850,
+                         'cifar2_pretrain_lr': 1000,
+                         'mnist_binary_lr': 1900,
                          'adult_lr': 3400,
                          'forest_lr': 8400}
 
 nn_convergence_points = {'cifar2_mlp': 2500,
+                         'cifar2_pretrain_mlp': 1500,
                          'mnist_binary_mlp': 4750,
                          'adult_mlp': 1850,
                          'forest_mlp': 3500}
 
 dp_colours = {'augment': '#14894e',
-                   'both': 'black',
-                   'augment_diffinit': '#441e85',
-                   'both_diffinit': 'black',
-                   'bolton': '#c3871c'}
+              'both': 'black',
+              'augment_diffinit': '#441e85',
+              'both_diffinit': 'black',
+              'bolton': '#c3871c'}
 
 ## These ones are greyscale friendly
 dp_colours_gs = {'augment': '#2ea71b',
@@ -47,18 +53,6 @@ dp_colours_gs = {'augment': '#2ea71b',
               'augment_diffinit': '#4a2189',
               'both_diffinit': 'black',
               'bolton': '#ca8621'}
-
-
-def get_dataset_name(cfg_name) -> str:
-    cfg = load_cfg(cfg_name)
-    data_name = cfg['data']['name']
-    if 'cifar' in data_name:
-        if cfg['data']['binary']:
-            return 'CIFAR2'
-        else:
-            return 'CIFAR10'
-    else:
-        raise NotImplementedError
 
 
 def get_dataset_size(data_cfg):
@@ -69,7 +63,7 @@ def get_dataset_size(data_cfg):
             N = 10397
         else:
             N = 54000
-    elif name == 'cifar10':
+    elif name in ['cifar10', 'cifar10_pretrain']:
         if data_cfg['binary']:
             N = 9000
         else:
@@ -104,6 +98,8 @@ def get_n_weights(cfg):
             n_weights = 817
         elif dataset_name == 'cifar10':
             n_weights = 521
+        elif dataset_name == 'cifar10_pretrain':
+            n_weights = 661
 
     return n_weights
 

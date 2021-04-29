@@ -3,19 +3,14 @@
 # It relies on e.g. statistics computed across experiments - "derived results"
 
 import numpy as np
-import re
 import test_private_model
 import derived_results as dr
 import experiment_metadata as em
 import vis_utils
-import data_utils
 import matplotlib.pyplot as plt
-from matplotlib import cm
-from matplotlib.colors import to_rgba
 from pathlib import Path
 import seaborn as sns
 import yaml
-
 
 plt.switch_backend('Agg')
 params = {'font.family': 'sans-serif',
@@ -47,25 +42,23 @@ def generate_plots(cfg_name: str, model: str, t=None, sort=False) -> None:
         assert t is not None
         delta_histogram_xlim = None
         delta_histogram_ylim = None
-        epsilon_distribution_xlim = None
-        epsilon_distribution_ylim = None
-        versus_time_acc_lims = None
 
     plot_delta_histogram(cfg_name, model, t=t, include_bounds=(model == 'logistic'),
                          xlim=delta_histogram_xlim, ylim=delta_histogram_ylim,
                          sort=sort, legend=False)
-    plot_stability_of_estimated_values(cfg_name, model, t, sort=sort)
+    # plot_stability_of_estimated_values(cfg_name, model, t, sort=sort)
     plot_distance_v_time(cfg_name, model, sort, convergence_point=t,
                          legend=('forest' in cfg_name))
+    plot_stability_of_estimated_values(cfg_name, model, t)
 
     return
 
 
-def generate_reports(cfg_name: str, model: str, t=None, num_experiments=500) -> None:
+def generate_reports(cfg_name: str, model: str, t=None, num_experiments=500, include_utility: bool = False) -> None:
     print('\n')
     print(f'Report for {cfg_name} with {model} at {t}')
     print('\n')
-    res = dr.compute_mvn_fit_and_alpha(cfg_name, model, t, diffinit=True)
+    res = dr.compute_mvn_laplace_fit_and_alpha(cfg_name, model, t, diffinit=True)
     p = res['mvn p']
     alpha = res['alpha']
     print(f'Fit of MVN: \t\t\t\t{p}')
@@ -102,36 +95,37 @@ def generate_reports(cfg_name: str, model: str, t=None, num_experiments=500) -> 
     print(f'Epsilon using empirical sensitivity: \t{epsilon_empirical}')
     print('')
 
-    perf_theoretical_eps1 = dr.accuracy_at_eps(cfg_name, model, t, use_bound=True,
-                                               epsilon=1, num_experiments=num_experiments)
-    perf_empirical_eps1 = dr.accuracy_at_eps(cfg_name, model, t, use_bound=False,
-                                             epsilon=1, num_experiments=num_experiments)
-    perf_theoretical_eps05 = dr.accuracy_at_eps(cfg_name, model, t, use_bound=True,
-                                                epsilon=0.5, num_experiments=num_experiments)
-    perf_empirical_eps05 = dr.accuracy_at_eps(cfg_name, model, t, use_bound=False,
-                                              epsilon=0.5, num_experiments=num_experiments)
-    print(f'Noiseless performance: \t\t\t{perf_theoretical_eps1["noiseless"]}')
-    print('')
+    if include_utility:
+        perf_theoretical_eps1 = dr.accuracy_at_eps(cfg_name, model, t, use_bound=True,
+                                                   epsilon=1, num_experiments=num_experiments)
+        perf_empirical_eps1 = dr.accuracy_at_eps(cfg_name, model, t, use_bound=False,
+                                                 epsilon=1, num_experiments=num_experiments)
+        perf_theoretical_eps05 = dr.accuracy_at_eps(cfg_name, model, t, use_bound=True,
+                                                    epsilon=0.5, num_experiments=num_experiments)
+        perf_empirical_eps05 = dr.accuracy_at_eps(cfg_name, model, t, use_bound=False,
+                                                  epsilon=0.5, num_experiments=num_experiments)
+        print(f'Noiseless performance: \t\t\t{perf_theoretical_eps1["noiseless"]}')
+        print('')
 
-    print('Performance at epsilon = 1...')
-    print('\tWith theoretical sensitivity:')
-    print(f'\t\tBolton: \t\t{perf_theoretical_eps1["bolton"]}')
-    print(f'\t\taDPSGD (fixinit): \t{perf_theoretical_eps1["acc"]}')
-    print(f'\t\taDPSGD (diffinit): \t{perf_theoretical_eps1["acc_diffinit"]}')
-    print('\tWith empirical sensitivity:')
-    print(f'\t\tBolton: \t\t{perf_empirical_eps1["bolton"]}')
-    print(f'\t\taDPSGD (fixinit): \t{perf_empirical_eps1["acc"]}')
-    print(f'\t\taDPSGD (diffinit): \t{perf_empirical_eps1["acc_diffinit"]}')
+        print('Performance at epsilon = 1...')
+        print('\tWith theoretical sensitivity:')
+        print(f'\t\tBolton: \t\t{perf_theoretical_eps1["bolton"]}')
+        print(f'\t\taDPSGD (fixinit): \t{perf_theoretical_eps1["acc"]}')
+        print(f'\t\taDPSGD (diffinit): \t{perf_theoretical_eps1["acc_diffinit"]}')
+        print('\tWith empirical sensitivity:')
+        print(f'\t\tBolton: \t\t{perf_empirical_eps1["bolton"]}')
+        print(f'\t\taDPSGD (fixinit): \t{perf_empirical_eps1["acc"]}')
+        print(f'\t\taDPSGD (diffinit): \t{perf_empirical_eps1["acc_diffinit"]}')
 
-    print('Performance at epsilon = 0.5...')
-    print('\tWith theoretical sensitivity:')
-    print(f'\t\tBolton: \t\t{perf_theoretical_eps05["bolton"]}')
-    print(f'\t\taDPSGD (fixinit): \t{perf_theoretical_eps05["acc"]}')
-    print(f'\t\taDPSGD (diffinit): \t{perf_theoretical_eps05["acc_diffinit"]}')
-    print('\tWith empirical sensitivity:')
-    print(f'\t\tBolton: \t\t{perf_empirical_eps05["bolton"]}')
-    print(f'\t\taDPSGD (fixinit): \t{perf_empirical_eps05["acc"]}')
-    print(f'\t\taDPSGD (diffinit): \t{perf_empirical_eps05["acc_diffinit"]}')
+        print('Performance at epsilon = 0.5...')
+        print('\tWith theoretical sensitivity:')
+        print(f'\t\tBolton: \t\t{perf_theoretical_eps05["bolton"]}')
+        print(f'\t\taDPSGD (fixinit): \t{perf_theoretical_eps05["acc"]}')
+        print(f'\t\taDPSGD (diffinit): \t{perf_theoretical_eps05["acc_diffinit"]}')
+        print('\tWith empirical sensitivity:')
+        print(f'\t\tBolton: \t\t{perf_empirical_eps05["bolton"]}')
+        print(f'\t\taDPSGD (fixinit): \t{perf_empirical_eps05["acc"]}')
+        print(f'\t\taDPSGD (diffinit): \t{perf_empirical_eps05["acc_diffinit"]}')
 
     return
 
@@ -173,20 +167,20 @@ def plot_delta_histogram(cfg_name: str, model: str, num_deltas='max', t=500,
                  color=em.dp_colours['bolton'],
                  label=r'$\Delta_S$',
                  kde=True,
-                 hist_kws={'alpha': 0.45},
+                 # hist_kws={'alpha': 0.45},
                  norm_hist=True)
     print('Plotting varying r... number of deltas:', vary_r.shape[0])
     sns.distplot(vary_r, ax=axarr,
                  color=em.dp_colours['augment'],
                  label=r'$\Delta_V^{fix}$',
                  kde=True,
-                 hist_kws={'alpha': 0.7},
+                 # hist_kws={'alpha': 0.7},
                  norm_hist=True)
     sns.distplot(vary_r_diffinit, ax=axarr,
                  color=em.dp_colours['augment_diffinit'],
                  label=r'$\Delta_V^{vary}$',
                  kde=True,
-                 hist_kws={'alpha': 0.9},
+                 #                 hist_kws={'alpha': 0.9},
                  norm_hist=True)
 
     print('Plotting varying both... number of deltas:', vary_both.shape[0])
@@ -213,7 +207,8 @@ def plot_delta_histogram(cfg_name: str, model: str, num_deltas='max', t=500,
     if legend:
         axarr.legend()
     else:
-        axarr.get_legend().remove()
+        if axarr.get_legend():
+            axarr.get_legend().remove()
     axarr.set_xlabel(r'$\|w - w^\prime\|$')
     axarr.set_ylabel('density')
 
@@ -303,7 +298,7 @@ def plot_distance_v_time(cfg_name, model, num_pairs='max', sort=False,
     axarr.set_ylabel(r'$\|w - w^\prime\|$')
     axarr.set_xlabel('training steps')
     xmin, _ = axarr.get_xlim()           # this is a hack for mnist
-    axarr.set_xlim(xmin, t.max())
+    axarr.set_xlim(xmin, 1.05 * t.max())
 
     vis_utils.beautify_axes(np.array([axarr]))
     plt.tight_layout()
@@ -332,7 +327,7 @@ def plot_stability_of_estimated_values(cfg_name, model, t) -> None:
     axarr.axhline(y=sigma_we_use, ls='--', c=em.dp_colours['augment_diffinit'], alpha=0.4)
     axarr.set_xlabel('number of random seeds')
     axarr.set_ylabel(r'estimated $\sigma_i(\mathcal{D})$')
-    axarr.set_title(em.get_dataset_name(cfg_name) + ' (' + em.model_names[model] + ')')
+    axarr.set_title(em.dataset_names[cfg_name] + ' (' + em.model_names[model] + ')')
     upper_y = 1.05*max(np.max(sigma_v_seed['sigma']), sigma_we_use)
     lower_y = 0.95*np.min(sigma_v_seed['sigma'])
     axarr.set_ylim(lower_y, upper_y)
@@ -360,7 +355,7 @@ def plot_stability_of_estimated_values(cfg_name, model, t) -> None:
     axarr.set_ylabel('estimated sensitivity')
     axarr.set_ylim(0, None)
     axarr.set_xscale('log')
-    axarr.set_title(em.get_dataset_name(cfg_name) + ' (' + em.model_names[model] + ')')
+    axarr.set_title(em.dataset_names[cfg_name] + ' (' + em.model_names[model] + ')')
     vis_utils.beautify_axes(np.array([axarr]))
     plt.tight_layout()
 
@@ -375,7 +370,7 @@ def plot_stability_of_estimated_values(cfg_name, model, t) -> None:
 
 
 def overlay_pval_plot(model='logistic', xlim=None, n_experiments=50,
-                      cfg_names=None, ylim=None) -> None:
+                      cfg_names=None, ylim=None, diffinit=True) -> None:
     """
     want to overlay pvals from the four datasets in one plot
     """
@@ -398,14 +393,13 @@ def overlay_pval_plot(model='logistic', xlim=None, n_experiments=50,
     vertical_lines_we_already_have = set()
 
     for ds in cfg_names:
-        print(ds)
-        log_pvals, n_params = vis_utils.fit_pval_histogram(what=what, dataset=ds, model=model,
-                                                           t=convergence_points[ds],
-                                                           n_experiments=n_experiments,
-                                                           plot=False)
+        log_pvals, n_params = dr.get_pvals(what=what, cfg_name=ds, model=model,
+                                           t=convergence_points[ds],
+                                           n_experiments=n_experiments,
+                                           diffinit=diffinit)
         sns.distplot(log_pvals, kde=True, bins=min(100, int(len(log_pvals)*0.25)),
                      ax=axarr, color=em.dataset_colours[ds], norm_hist=True,
-                     label=em.get_dataset_name(ds),
+                     label=em.dataset_names[ds],
                      kde_kws={'alpha': 0.6})
 
         if n_params not in vertical_lines_we_already_have:

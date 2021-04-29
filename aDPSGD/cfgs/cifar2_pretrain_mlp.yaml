@@ -1,23 +1,23 @@
 ---
 data:
-    name: forest
+    name: cifar10_pretrain
     binary: true
 model:
-    architecture: logistic
+    architecture: mlp
     task_type: binary
-    input_size: 49
+    input_size: 64
     output_size: 1
-    hidden_size: 8
+    hidden_size: 10
 training:
-    n_epochs: 4
-    batch_size: 50
+    n_epochs: 25
+    batch_size: 32
     optimization_algorithm:
         name: SGD
-        learning_rate: 1.0
+        learning_rate: 0.25
 logging:
-    cadence: 100
+    cadence: 50
     save_weights: true
-    save_gradients: true
+    save_gradients: false
     sample_minibatch_gradients: false
     n_gradients: 0
 ...

@@ -2,19 +2,25 @@
 # Functions related to loading, saving, processing datasets
 
 import tensorflow.keras.datasets as datasets
+from tensorflow.keras import Model
 import numpy as np
 import pandas as pd
 import os
+from pathlib import Path
 from scipy.stats import entropy
 from scipy.spatial.distance import cosine
 from sklearn.random_projection import GaussianRandomProjection
 from sklearn.decomposition import PCA
 import ipdb
+from cfg_utils import load_cfg
+from model_utils import build_model
+
 
 # CONSTANTS
 FOREST_PATH = os.path.join('data', 'covtype.data')
 ADULT_PATH = os.path.join('data', 'adult.data')
 ADULT_TEST_PATH = os.path.join('data', 'adult.test')
+CIFAR10_PRETRAIN_PATH = os.path.join('data', 'cifar10_pretrain.npy')
 
 
 def min_max_rescale(df_train, df_test, good_columns=None):
@@ -101,6 +107,17 @@ def load_data(options, replace_index):
                                                         data_privacy=data_privacy,
                                                         project=project,
                                                         pca=pca)
+    elif data_type == 'cifar10_pretrain':
+        binary = options['binary']
+        if binary:
+            enforce_max_norm = True
+        else:
+            enforce_max_norm = False
+        x_train, y_train, x_test, y_test = load_cifar10_pretrain(binary=binary,
+                                                                 enforce_max_norm=enforce_max_norm)
+    elif data_type == 'cifar100':
+        # No options here
+        x_train, y_train, x_test, y_test = load_cifar100()
     elif data_type == 'forest':
         x_train, y_train, x_test, y_test = load_forest(data_privacy=data_privacy)
     elif data_type == 'adult':
@@ -495,6 +512,114 @@ def load_cifar10(binary=False, enforce_max_norm=False, flatten=True,
     return x_train, y_train, x_test, y_test
 
 
+def load_cifar10_pretrain(binary=False, enforce_max_norm=False):
+    """
+    """
+    dataset_identifier = f'cifar10_pretrain{binary*"_binary"}{enforce_max_norm*"_maxnorm"}.npy'
+    dataset_string = os.path.join('data', dataset_identifier)
+    try:
+        data = np.load(dataset_string, allow_pickle=True).item()
+        x_train = data['x_train']
+        x_test = data['x_test']
+        y_train = data['y_train']
+        y_test = data['y_test']
+        print('Loaded data from', dataset_string)
+    except FileNotFoundError:
+        print('Couldn\'t load data from', dataset_string)
+        print(f'Attempting to load data from {CIFAR10_PRETRAIN_PATH}')
+        try:
+            cifar10_pretrain = np.load(CIFAR10_PRETRAIN_PATH, allow_pickle=True).item()
+            x_train = cifar10_pretrain['x_train']
+            x_test = cifar10_pretrain['x_test']
+            y_train = cifar10_pretrain['y_train']
+            y_test = cifar10_pretrain['y_test']
+            print(f'Loaded pre-processed data from {CIFAR10_PRETRAIN_PATH}')
+        except FileNotFoundError:
+            print(f'ERROR: Couldn\'t find {CIFAR10_PRETRAIN_PATH}!')
+            print('... are you sure you have already preprocessed CIFAR10 using the CIFAR100 model?')
+            raise FileNotFoundError
+
+        if binary:
+            # Copied from load_cifar10
+            # keep only 3 and 5
+            # coincidentally, although i chose 3 and 5 randomly for MNIST,
+            # in CIFAR10 these correspond to cats and dogs, which is a convenient pair
+            keep_train = (y_train == 0) | (y_train == 2)
+            keep_test = (y_test == 0) | (y_test == 2)
+            x_train = x_train[keep_train]
+            x_test = x_test[keep_test]
+            y_train = y_train[keep_train]
+            y_test = y_test[keep_test]
+            # convert to binary (2 is 1, 0 is 0)
+            y_train[y_train == 2] = 1
+            y_train[y_train == 0] = 0
+            y_test[y_test == 2] = 1
+            y_test[y_test == 0] = 0
+            # sanity check
+            assert set(y_train) == {1, 0}
+            assert set(y_test) == {1, 0}
+
+        if enforce_max_norm:
+            assert len(x_train.shape) == 2
+            train_norms = np.linalg.norm(x_train, axis=1).reshape(-1, 1)
+            test_norms = np.linalg.norm(x_test, axis=1).reshape(-1, 1)
+            x_train = np.where(train_norms > 1, x_train/train_norms, x_train)
+            x_test = np.where(test_norms > 1, x_test/test_norms, x_test)
+            # Don't need an abs because it just neesd to be BELOW 1, not equal to q
+            assert np.all(np.linalg.norm(x_train, axis=1) - 1 < 1e-6)
+            assert np.all(np.linalg.norm(x_test, axis=1) - 1 < 1e-6)
+
+        data = {'x_train': x_train,
+                'x_test': x_test,
+                'y_train': y_train,
+                'y_test': y_test}
+
+        np.save(dataset_string, data)
+        print('Saved data to', dataset_string)
+
+    return x_train, y_train, x_test, y_test
+
+
+def load_cifar100():
+    """
+    We only use CIFAR100 for pretraining a CNN for CIFAR10, so we don't need to
+    be able to flatten, etc.
+    """
+    dataset_identifier = 'cifar100.npy'
+    dataset_string = os.path.join('data', dataset_identifier)
+    try:
+        data = np.load(dataset_string, allow_pickle=True).item()
+        x_train = data['x_train']
+        x_test = data['x_test']
+        y_train = data['y_train']
+        y_test = data['y_test']
+        print('Loaded data from', dataset_string)
+    except FileNotFoundError:
+        print('Couldn\'t load data from', dataset_string)
+        cifar100 = datasets.cifar100
+        (x_train, y_train), (x_test, y_test) = cifar100.load_data()
+        ipdb.set_trace()
+        y_train = y_train[:, 0]
+        y_test = y_test[:, 0]
+
+        # typical normalisation
+        x_train, x_test = x_train/255.0, x_test/255.0
+
+        # keeping it not-flat
+        assert len(x_train.shape) == 4
+        assert len(x_test.shape) == 4
+
+        data = {'x_train': x_train,
+                'x_test': x_test,
+                'y_train': y_train,
+                'y_test': y_test}
+
+        np.save(dataset_string, data)
+        print('Saved data to', dataset_string)
+
+    return x_train, y_train, x_test, y_test
+
+
 def load_adult(data_privacy='all', pca=False):
     """
     """
@@ -704,3 +829,55 @@ def compute_distance_for_pairs(data_type, pairs):
         distances[k] = np.append(z1, z2)
 
     return distances
+
+
+def preprocess_CIFAR10_with_pretrained_model(t=50000, seed=999, force_rerun: bool = False):
+    """ Will select t (convergence point of CIFAR100 model) and seed (for identification) elsewhere """
+    if Path(CIFAR10_PRETRAIN_PATH).exists():
+        print('WARNING: CIFAR10 has already been preprocessed!')
+        if not force_rerun:
+            print('... Use option "force_rerun" to recompute! Quitting.')
+            return
+        else:
+            print('... Option force_rerun selected - recomputing!')
+
+    # Use the OG cifar10 - this is a preprocessing step
+    cifar10 = datasets.cifar10
+    (x_train, y_train), (x_test, y_test) = cifar10.load_data()
+
+    y_train = y_train[:, 0]
+    y_test = y_test[:, 0]
+
+    # 32 bit floats to make tensorflow happy
+    x_train = np.float32(x_train)
+    x_test = np.float32(x_test)
+    # normalisation as per cifar100
+    x_train, x_test = x_train/255.0, x_test/255.0
+
+    # Load the model
+    cfg = load_cfg('cifar100_pretrain')
+    init_path = (Path('./traces') / 'cifar100_pretrain' / f'cnn_cifar.replace_NA.seed_{seed}.weights.csv').resolve()
+    # Now build the model
+    model = build_model(**cfg['model'], init_path=init_path, t=t)
+    ipdb.set_trace()
+    # Now cut off layers by making an intermediate model
+    model_stem = Model(inputs=model.input, outputs=model.layers[-2].output)
+
+    # Now, run the data through it
+    x_train_transf = model_stem(x_train)
+    x_test_transf = model_stem(x_test)
+    # Make sure we didn't lose anything
+    assert x_train_transf.shape[0] == x_train.shape[0]
+    assert x_test_transf.shape[0] == x_test_transf.shape[0]
+    # Make sure the output is the expected size
+    assert x_train_transf.shape[1] == 50
+    assert x_test_transf.shape[1] == 50
+
+    # Now save it all
+    data = {'x_train': x_train_transf,
+            'x_test': x_test_transf,
+            'y_train': y_train,
+            'y_test': y_test}
+    print(f'Saving to {CIFAR10_PRETRAIN_PATH}')
+    np.save(CIFAR10_PRETRAIN_PATH, data)
+    return
