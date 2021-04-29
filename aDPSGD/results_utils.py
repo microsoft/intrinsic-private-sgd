@@ -10,7 +10,7 @@ import pandas as pd
 # from stats_utils import estimate_statistics_through_training
 import ipdb
 
-TRACES_DIR = './traces/'
+TRACES_DIR = '/opt/tl-data/intrinsic-sgd-container/traces/'
 
 
 def define_output_perturbation_scale(cfg_name: str, target_epsilon=1) -> float:

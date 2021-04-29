@@ -59,7 +59,7 @@ class DerivedResult(object):
                 data = self.load(diffinit=diffinit, generate_if_needed=False)
             else:
                 raise FileNotFoundError(f'{path} not found!')
-
+        #print(data)
         return data
 
 
