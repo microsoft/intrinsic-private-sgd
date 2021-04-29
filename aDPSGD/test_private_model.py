@@ -124,7 +124,6 @@ def test_model_with_noise(cfg_name, replace_index, seed, t,
                                                                                    epsilon, delta,
                                                                                    sensitivity, verbose,
                                                                                    multivariate=multivariate)
-
     weights_path = experiment.path_stub().with_name(experiment.path_stub().name + '.weights.csv')
     print('Evaluating model from', weights_path)
 
@@ -141,12 +140,13 @@ def test_model_with_noise(cfg_name, replace_index, seed, t,
 
     # generate standard gaussian noise
     standard_noise = np.random.normal(size=n_weights, loc=0, scale=1)
+    metric_functions = None
 
     for setting in noise_options:
         model_object = model_utils.build_model(**cfg['model'], init_path=weights_path, t=t)
-        model_utils.prep_for_training(model_object, seed=0,
+        model_utils.prep_for_training(model_object, seed=None,
                                       optimizer_settings=cfg['training']['optimization_algorithm'],
-                                      task_type=cfg['model']['task_type'])
+                                      task_type=cfg['model']['task_type'], set_seeds=False)
         weights = model_object.get_weights(flat=True)
         noise = noise_options[setting]
         noisy_weights = weights + standard_noise * noise
@@ -154,7 +154,8 @@ def test_model_with_noise(cfg_name, replace_index, seed, t,
         model_object.set_weights(unflattened_noisy_weights)
 
         metric_names = model_object.metric_names
-        metric_functions = model_utils.define_metric_functions(metric_names)
+        if metric_functions is None:
+            metric_functions = model_utils.define_metric_functions(metric_names)
         metrics = model_object.compute_metrics(x_test, y_test, metric_functions=metric_functions)
         metrics = [m.numpy() for m in metrics]
         for mf in metric_functions:
@@ -172,8 +173,10 @@ def test_model_with_noise(cfg_name, replace_index, seed, t,
 
                 break
         del model_object
-        del metric_functions
+#        del metric_functions
         del metrics
+        del noisy_weights
+        del unflattened_noisy_weights
 
     # extract the performances
     noiseless_performance = noise_performance['noiseless']
@@ -302,6 +305,26 @@ def get_loss_for_mi_attack(cfg_name, x_value, y_value, replace_index, seed, t,
 
     return noiseless_performance, bolton_performance, augment_performance, augment_performance_diffinit
 
+
+
+def test_model_without_noise(cfg_name, replace_index, seed, t,
+                             metric_to_report='binary_accuracy',
+                             verbose=False, num_deltas='max',
+                             data_privacy='all',
+                             multivariate=False):
+    # Sorry!
+    noiseless_performance, _, _, _ = test_model_with_noise(cfg_name=cfg_name,
+                                                           replace_index=replace_index,
+                                                           seed=seed,
+                                                           t=t,
+                                                           epsilon=1,
+                                                           num_deltas=num_deltas,
+                                                           delta=None,
+                                                           sens_from_bound=False,
+                                                           metric_to_report=metric_to_report,
+                                                           data_privacy=data_privacy,
+                                                           multivariate=multivariate)
+    return noiseless_performance
 
 
 def compute_gaussian_noise(epsilon, delta, sensitivity, verbose=True):
