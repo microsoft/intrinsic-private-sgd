@@ -46,6 +46,7 @@ def generate_plots(cfg_name: str, model: str, t=None, sort=False) -> None:
     plot_delta_histogram(cfg_name, model, t=t, include_bounds=(model == 'logistic'),
                          xlim=delta_histogram_xlim, ylim=delta_histogram_ylim,
                          sort=sort, legend=False)
+    # plot_stability_of_estimated_values(cfg_name, model, t, sort=sort)
     plot_distance_v_time(cfg_name, model, sort, convergence_point=t,
                          legend=('forest' in cfg_name))
     plot_stability_of_estimated_values(cfg_name, model, t)

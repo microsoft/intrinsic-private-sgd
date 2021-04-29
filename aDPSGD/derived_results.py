@@ -673,7 +673,6 @@ def generate_derived_results(cfg_name: str, model: str = 'logistic', t: int = No
         SensVar(cfg_name, model, t=t).generate()
         VersusTime(cfg_name, model, iter_range=(0, t+200), multivariate=multivariate).generate()
         # UtilityCurve(cfg_name, model, num_deltas='max', t=t, multivariate=multivariate).generate(diffinit=True)
-
     return
 
 

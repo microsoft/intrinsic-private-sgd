@@ -228,14 +228,14 @@ class Model(K.Sequential):
         if logger is not None:
             logger.on_training_end()
 
-    @tf.function
+    #@tf.function
     def train_on_batch(self, x, y):
         gradients = self.compute_gradients(x, y)
         self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
 
         return gradients
 
-    @tf.function
+    #@tf.function
     def compute_gradients(self, x, y, flat:bool = False):
         with tf.GradientTape() as tape:
             y_pred = self(x, training=True)
@@ -267,7 +267,7 @@ class Model(K.Sequential):
         print(f'Saving weights to {path}')
         super(Model, self).save_weights(path.as_posix())
 
-    @tf.function
+    #@tf.function
     def get_weights(self, flat: bool = False, sort: bool = False) -> tf.Tensor:
         weights = self.weights
         if sort:
@@ -319,7 +319,7 @@ class Model(K.Sequential):
         list_of_weights = self.unflatten_weights(weights_at_t)
         self.set_weights(list_of_weights)
 
-    @tf.function
+#    @tf.function
     def compute_metrics(self, X, y, metric_functions):
         predictions = self(X)
         results = []
