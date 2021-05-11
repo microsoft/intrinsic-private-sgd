@@ -12,23 +12,10 @@ from model_utils import build_model, prep_for_training, train_model
 from data_utils import load_data
 from results_utils import ExperimentIdentifier
 from cfg_utils import load_cfg
-from attacks import simple_membership_inference #, stats_membership_inference, mia
+from attacks import simple_membership_inference, get_threshold, get_mi_attack_accuracy, get_epsilon #, stats_membership_inference, mia
 # from derived_results import find_convergence_point
 from test_private_model import get_loss_for_mi_attack
 from results_utils import get_available_results
-
-
-
-def get_model_init_path(cfg, diffinit):
-    if diffinit:
-        init_path = None
-    else:
-        architecture = cfg['model']['architecture']
-        cfg_name = cfg['cfg_name']
-        init_path = f'{architecture}_{cfg_name}_init.h5'
-        init_path = (Path('./models') / init_path).resolve()
-
-    return init_path
 
 
 def run_mi_attack(cfg, diffinit, seed, replace_index, t):
@@ -47,7 +34,10 @@ def run_mi_attack(cfg, diffinit, seed, replace_index, t):
     all_eps = {}
 
     for setting in noise_options:
-        all_eps[setting] = {'max':[], 'median': [], 'mean': []}
+        all_eps[setting] = {'mean': []}
+
+
+
 
     for i in range(0,20):
         loss = get_loss_for_mi_attack(cfg_name=cfg_name, replace_index=replace_index,
@@ -60,18 +50,22 @@ def run_mi_attack(cfg, diffinit, seed, replace_index, t):
                                                                         multivariate=False)
 
 
+
         for setting in noise_options:
             print("Mi attack accuracy for "+setting+ " model")
-            eps_median, eps_mean = simple_membership_inference(loss[setting][0], loss[setting][1], frac)# , clipping_norm, noise_multiplier, epochs, dataset_name, model_type) #linear classifcation
-            print("Eps_median, eps_mean", eps_median, eps_mean)
-            # all_eps[setting]['max'].append(eps_max)
-            all_eps[setting]['median'].append(eps_median)
-            all_eps[setting]['mean'].append(eps_mean)
+            # eps_median, eps_mean = simple_membership_inference(loss[setting][0], loss[setting][1], frac)# , clipping_norm, noise_multiplier, epochs, dataset_name, model_type) #linear classifcation
+            if i == 0:
+                threshold = get_threshold(loss[setting][0])
+            else:
+                mi_attack_acc = get_mi_attack_accuracy(loss[setting][0], loss[setting][1], threshold)
+                epsilon = get_epsilon(mi_attack_acc)
+                all_eps[setting]['mean'].append(epsilon)
+
+
 
     for setting in noise_options:
         print("For "+setting+" :")
-        for thresh in ['mean', 'median']:
-            print("Eps_"+thresh+" :", statistics.mean(all_eps[setting][thresh]), " stddev:", statistics.stdev(all_eps[setting][thresh]))
+        print("Epsilon :", statistics.mean(all_eps[setting]['mean']), " stddev:", statistics.stdev(all_eps[setting]['mean']))
 
                     
 if __name__ == '__main__':
