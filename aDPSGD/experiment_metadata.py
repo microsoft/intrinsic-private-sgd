@@ -40,7 +40,7 @@ nn_convergence_points = {'cifar2_mlp': 2500,
                          'mnist_binary_mlp': 4750,
                          'adult_mlp': 1850,
                          'forest_mlp': 3500,
-                         'mnist_square': 1000}
+                         'mnist_square_mlp': 1000}
 
 dp_colours = {'augment': '#14894e',
               'both': 'black',

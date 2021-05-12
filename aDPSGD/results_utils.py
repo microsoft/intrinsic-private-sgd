@@ -229,6 +229,13 @@ class ExperimentIdentifier(object):
         return df
 
 
+def get_seed_with_most_replaces(cfg_name: str, model: str, diffinit: bool = False) -> int:
+    df = get_available_results(cfg_name, model, replace_index=None, seed=None, diffinit=diffinit)
+    replaces_per_seed = df['seed'].value_counts()
+    seed_with_most_replaces = replaces_per_seed.idxmax()
+    print(f'Selecting seed {seed_with_most_replaces}, which has {replaces_per_seed[seed_with_most_replaces]} replaces')
+    return seed_with_most_replaces
+
 def get_replace_index_with_most_seeds(cfg_name: str, model: str, diffinit: bool = False) -> int:
     df = get_available_results(cfg_name, model, replace_index=None, seed=None, diffinit=diffinit)
     seeds_per_replace = df['replace'].value_counts()
