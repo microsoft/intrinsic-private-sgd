@@ -10,7 +10,8 @@ import pandas as pd
 # from stats_utils import estimate_statistics_through_training
 import ipdb
 
-TRACES_DIR = '/opt/tl-data/intrinsic-sgd-container/traces/'
+#TRACES_DIR = '/opt/tl-data/intrinsic-sgd-container/traces/'
+TRACES_DIR = '/bigdata/traces_aDPSGD/'
 
 
 def define_output_perturbation_scale(cfg_name: str, target_epsilon=1) -> float:
@@ -244,10 +245,16 @@ def get_available_results(cfg_name: str, model: str, replace_index: int = None, 
                                              seed=1, data_privacy=data_privacy, diffinit=diffinit)
     directory_path = Path(sample_experiment.path_stub()).parent
     files_in_directory = directory_path.glob('*.weights.csv')
+    # Filter to diffinit or not
+    if diffinit:
+        relevant_files = [x for x in files_in_directory if 'DIFFINIT' in str(x)]
+    else:
+        relevant_files = [x for x in files_in_directory if 'DIFFINIT' not in str(x)]
+
     replaces = []
     seeds = []
 
-    for f in files_in_directory:
+    for f in relevant_files:
         split_name = f.name.split('.')
         assert model in split_name[0], 'Inconsistency detected in file path'
 
