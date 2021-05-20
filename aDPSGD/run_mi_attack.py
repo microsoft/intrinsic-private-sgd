@@ -19,11 +19,14 @@ from experiment_metadata import lr_convergence_points, nn_convergence_points
 
 
 def run_mi_attack(cfg, exptype, t, runs, outputfile):
-    results = {}
     cfg_name=cfg['cfg_name']
     model = cfg['model']['architecture']
-
-
+    noise_options = ['noiseless'] #,'bolton'] #,'augment_sgd','augment_sgd_diffinit']
+    sensitivity_bound = False
+    loss_metric = 'binary_crossentropy'
+    
+    if cfg_name == 'mnist_square_mlp':
+        loss_metric = 'ce'
 
     # Get the convergence point from experiment_metadata.py
     if t == None:
@@ -40,17 +43,10 @@ def run_mi_attack(cfg, exptype, t, runs, outputfile):
     else:
         diffinit = True
 
-    results['cfg_name'] = cfg_name
-    results['model'] = model
-    results['exptype'] = exptype
-    results['diffinit'] = diffinit
-    results['t'] = t
-
-    noise_options = ['noiseless' ,'bolton'] #,'augment_sgd','augment_sgd_diffinit']
-
     df = get_available_results(cfg_name, model, replace_index=None, seed=None, diffinit=diffinit)
     available_seeds = df['seed'].value_counts().loc[lambda x : x>4].to_frame()
     available_seeds = df['seed'].tolist()
+    print("***No. of available seeds", len(available_seeds))
 
     for i in range(runs):
         threshold_seed = random.choice(available_seeds)
@@ -64,17 +60,24 @@ def run_mi_attack(cfg, exptype, t, runs, outputfile):
         new_replace_index = random.choice(threshold_replace_indices)
 
         for setting in noise_options:
+            results = {}
+            results['cfg_name'] = cfg_name
+            results['model'] = model
+            results['exptype'] = exptype
+            results['diffinit'] = diffinit
+            results['t'] = t
             results['setting'] = setting
+
             loss = get_loss_for_mi_attack(cfg_name=cfg_name, replace_index=th_replace_index,
                                                                         seed=threshold_seed, t=t, epsilon=None,
                                                                         delta=None,
-                                                                        sens_from_bound=True,
-                                                                        metric_to_report='binary_crossentropy',
+                                                                        sens_from_bound=sensitivity_bound,
+                                                                        metric_to_report=loss_metric,
                                                                         verbose=False,
                                                                         num_deltas='max',
                                                                         multivariate=False)
 
-            threshold = get_threshold(loss[setting][0])
+            threshold = get_threshold(loss[setting][0], loss[setting][1])
 
             if 'vs' in exptype:
                 new_available_seeds_with_threshold_ri = df[df['replace'] == th_replace_index]['seed'].unique().tolist()
@@ -89,8 +92,8 @@ def run_mi_attack(cfg, exptype, t, runs, outputfile):
                 loss = get_loss_for_mi_attack(cfg_name=cfg_name, replace_index=th_replace_index,
                                                                         seed=new_seed, t=t, epsilon=None,
                                                                         delta=None,
-                                                                        sens_from_bound=True,
-                                                                        metric_to_report='binary_crossentropy',
+                                                                        sens_from_bound=sensitivity_bound,
+                                                                        metric_to_report=loss_metric,
                                                                         verbose=False,
                                                                         num_deltas='max',
                                                                         multivariate=False)
@@ -110,8 +113,8 @@ def run_mi_attack(cfg, exptype, t, runs, outputfile):
             new_loss = get_loss_for_mi_attack(cfg_name=cfg_name, replace_index=new_replace_index,
                                                                         seed=new_seed, t=t, epsilon=None,
                                                                         delta=None,
-                                                                        sens_from_bound=True,
-                                                                        metric_to_report='binary_crossentropy',
+                                                                        sens_from_bound=sensitivity_bound,
+                                                                        metric_to_report=loss_metric,
                                                                         verbose=False,
                                                                         num_deltas='max',
                                                                         multivariate=False)

@@ -192,7 +192,7 @@ def get_loss_for_mi_attack(cfg_name, replace_index, seed, t,
                           epsilon=None, delta=None,
                           sens_from_bound=False,
                           metric_to_report='binary_crossentropy',
-                          verbose=False, num_deltas='max',
+                          verbose=True, num_deltas='max',
                           data_privacy='all',
                           multivariate=False):
     """
@@ -227,7 +227,7 @@ def get_loss_for_mi_attack(cfg_name, replace_index, seed, t,
     else:
         # compute sensitivity empirically!
         # diffinit set to False beacuse it doesn't make a differnce
-        sensitivity = derived_results.estimate_sensitivity_empirically(cfg_name, model, t,
+        sensitivity = estimate_sensitivity_empirically(cfg_name, model, t,
                                                                        num_deltas=num_deltas,
                                                                        diffinit=False,
                                                                        data_privacy=data_privacy,
@@ -278,7 +278,7 @@ def get_loss_for_mi_attack(cfg_name, replace_index, seed, t,
 
         results_train = []
         results_test = []
-        for i in range(0,len(x_train)):
+        for i in range(0, len(x_train)):
             metrics = model_object.compute_metrics(np.array([x_train[i]]), np.array([y_train[i]]), metric_functions=metric_functions)
             metrics = [m.numpy() for m in metrics]
             for mf in metric_functions:
