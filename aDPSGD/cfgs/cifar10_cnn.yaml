@@ -1,0 +1,23 @@
+---
+data:
+    name: cifar10
+    binary: false
+    flatten: false
+model:
+    architecture: cnn_cifar
+    task_type: classification
+    input_size: !!python/tuple [32, 32, 3]
+    output_size: 10
+training:
+    n_epochs: 10
+    batch_size: 32
+    optimization_algorithm:
+        name: SGD
+        learning_rate: 0.1
+logging:
+    cadence: 50
+    save_weights: true
+    save_gradients: false
+    sample_minibatch_gradients: false
+    n_gradients: 0
+...

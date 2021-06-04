@@ -155,7 +155,8 @@ class Logger(object):
 
 
 def build_model(architecture: str, input_size: int, output_size: int,
-                task_type: str, hidden_size: int=None, init_path: str = None, t=None, **kwargs) -> 'Model':
+                task_type: str, hidden_size: int = None,
+                init_path: str = None, t=None, **kwargs) -> 'Model':
     """
     Wrapper around defining the model architecture
     """
@@ -170,8 +171,11 @@ def build_model(architecture: str, input_size: int, output_size: int,
                     task_type=task_type, init_path=init_path,
                     hidden_size=hidden_size, t=t)
     elif architecture == 'cnn_cifar':
-        model = CNN_CIFAR(input_size=input_size, init_path=init_path,
-                          hidden_size=hidden_size, t=t)
+        model = CNN_CIFAR10(input_size=input_size,
+                            init_path=init_path,
+                            output_size=output_size,
+                            task_type=task_type,
+                            t=t)
     else:
         raise ValueError(architecture)
     return model
@@ -441,13 +445,63 @@ class CNN(Model):
         self.add(Dense(self.output_size, activation=activation))
 
 
-class CNN_CIFAR(Model):
+class CNN_CIFAR10(Model):
+    """
+    Replicating the CNN from "Privacy Risk in ML: Analysing the Connection to Overfitting" by Yeom et al.
+    Should be possible to attack this with MI.
+    Train on CIFAR10.
+    Based on VGGnet.
+    """
+    def __init__(self, input_size, output_size, task_type, init_path, t, s: int = 2**4):
+        super(CNN_CIFAR10, self).__init__(input_size=input_size, init_path=init_path, t=t)
+        # bit of a hack
+        assert input_size == (32, 32, 3)
+        assert output_size == 10
+        assert task_type == 'classification'
+
+        self.output_size = output_size
+        self.input_size = (32, 32, 3)
+        self.task_type = task_type
+        self.s = s
+
+        # input validation
+        if len(self.input_size) < 1:
+            print('ERROR: CNN is not designed to take flat inputs!')
+            raise ValueError(self.input_size)
+        elif len(self.input_size) == 3:
+            pass
+        else:
+            raise ValueError(self.input_size)
+        self.build()
+
+    def define_layers(self):
+        self.add(Conv2D(filters=self.s, kernel_size=3, padding='same',
+                        input_shape=self.input_size, activation='relu'))
+        self.add(Conv2D(filters=self.s, kernel_size=3, padding='same', activation='relu'))
+        self.add(MaxPooling2D(pool_size=(2, 2)))
+        self.add(Conv2D(filters=2 * self.s, kernel_size=3, activation='relu', padding='same'))
+        self.add(Conv2D(filters=2 * self.s, kernel_size=3, activation='relu', padding='same'))
+        self.add(MaxPooling2D(pool_size=(2, 2)))
+        self.add(Flatten())
+        self.add(Dense(2 * self.s, activation='relu'))
+        if self.task_type == 'classification':
+            activation = 'softmax'
+        elif self.task_type == 'binary':
+            activation = 'sigmoid'
+        elif self.task_type == 'regression':
+            activation = 'linear'
+        else:
+            raise ValueError(self.task_type)
+        self.add(Dense(self.output_size, activation=activation))
+
+
+class CNN_CIFAR100(Model):
     """
     Replicating the CNN referenced in the Papernot paper (Making the Shoe Fit: Architectures, Initializations, and Tuning for Learning with Privacy) for pretraining on CIFAR100
     We will pretrain all on CIFAR100, then fine-tune the last (LR) or two last (MLP) layers for CIFAR10
     """
     def __init__(self, input_size, init_path, hidden_size, t):
-        super(CNN_CIFAR, self).__init__(input_size=input_size, init_path=init_path, t=t)
+        super(CNN_CIFAR100, self).__init__(input_size=input_size, init_path=init_path, t=t)
         # We fix these because we will override them with real values during finetuning
         self.output_size = 100
         self.task_type = 'classification'
