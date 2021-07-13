@@ -68,7 +68,8 @@ def get_dataset_size(data_cfg):
         if data_cfg['binary']:
             N = 9000
         else:
-            raise ValueError(data_cfg['binary'])
+            assert data_cfg['subset']
+            N = 15000
     elif name == 'adult':
         N = 29305
     elif name == 'forest':

@@ -3,13 +3,14 @@ data:
     name: cifar10
     binary: false
     flatten: false
+    subset: true
 model:
     architecture: cnn_cifar
     task_type: classification
     input_size: !!python/tuple [32, 32, 3]
     output_size: 10
 training:
-    n_epochs: 10
+    n_epochs: 20
     batch_size: 32
     optimization_algorithm:
         name: SGD
