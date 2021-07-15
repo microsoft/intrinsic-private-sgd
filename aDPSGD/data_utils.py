@@ -89,6 +89,7 @@ def load_data(options, replace_index):
     elif data_type == 'cifar10':
         flatten = options['flatten']
         binary = options['binary']
+        subset = options['subset']
 
         if binary:
             enforce_max_norm = True
@@ -106,7 +107,8 @@ def load_data(options, replace_index):
                                                         flatten=flatten,
                                                         data_privacy=data_privacy,
                                                         project=project,
-                                                        pca=pca)
+                                                        pca=pca,
+                                                        subset=subset)
     elif data_type == 'cifar10_pretrain':
         binary = options['binary']
         if binary:
@@ -395,12 +397,13 @@ def load_mnist(binary=False, enforce_max_norm=False, flatten=True,
 
 
 def load_cifar10(binary=False, enforce_max_norm=False, flatten=True,
-                 data_privacy='all', project=True, pca=False, crop=False):
+                 data_privacy='all', project=True, pca=False, crop=False,
+                 subset: bool = True):
     """
     copying what i did for mnist, but for cifar10
     cropping is also a 10x10 square in the middle
     """
-    dataset_identifier = 'cifar10' + '_' + data_privacy + '_binary'*binary + '_maxnorm'*enforce_max_norm + '_square'*(not flatten) + '_pca'*pca + '_crop'*crop + '.npy'
+    dataset_identifier = 'cifar10' + '_' + data_privacy + '_binary'*binary + '_maxnorm'*enforce_max_norm + '_square'*(not flatten) + '_pca'*pca + '_crop'*crop + '_subset'*subset + '.npy'
     dataset_string = os.path.join('data', dataset_identifier)
     try:
         data = np.load(dataset_string, allow_pickle=True).item()
@@ -500,6 +503,32 @@ def load_cifar10(binary=False, enforce_max_norm=False, flatten=True,
             x_test = np.where(test_norms > 1, x_test/test_norms, x_test)
             assert np.all(np.abs(np.linalg.norm(x_train, axis=axis) - 1) < 1e-6)
             assert np.all(np.abs(np.linalg.norm(x_test, axis=axis) - 1) < 1e-6)
+
+        if subset:
+            # Copying Yeom, take a random 15,000 samples from the dataset
+            # and make the train and test splits the same size
+
+            # take the train from the train
+            assert x_train.shape[0] >= 15000
+            train_idx_subset = np.random.choice(x_train.shape[0], 15000, replace=False)
+            remaining_available = [x for x in range(15000) if not x in train_idx_subset]
+            x_train = x_train[train_idx_subset]
+            y_train = y_train[train_idx_subset]
+
+            assert x_test.shape[0] < 15000
+            remaining_required = 15000 - x_test.shape[0]
+            test_idx_additional = np.random.choice(remaining_available, remaining_required, replace=False)
+            for x in test_idx_additional:
+                assert x not in train_idx_subset
+            x_test_additional = x_train[test_idx_additional]
+            y_test_additional = y_train[test_idx_additional]
+            x_test = np.concatenate([x_test, x_test_additional])
+            y_test = np.concatenate([y_test, y_test_additional])
+
+            assert x_train.shape[0] == 15000
+            assert y_train.shape[0] == 15000
+            assert x_test.shape[0] == 15000
+            assert y_test.shape[0] == 15000
 
         data = {'x_train': x_train,
                 'x_test': x_test,
