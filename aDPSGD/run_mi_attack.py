@@ -21,7 +21,7 @@ from experiment_metadata import lr_convergence_points, nn_convergence_points
 def run_mi_attack(cfg, exptype, t, runs, outputfile):
     cfg_name=cfg['cfg_name']
     model = cfg['model']['architecture']
-    noise_options = ['noiseless'] #,'bolton'] #,'augment_sgd','augment_sgd_diffinit']
+    noise_options = ['noiseless','bolton'] #,'augment_sgd','augment_sgd_diffinit']
     sensitivity_bound = False
     loss_metric = 'binary_crossentropy'
     
@@ -39,13 +39,15 @@ def run_mi_attack(cfg, exptype, t, runs, outputfile):
 
 
     if 'vi' in exptype:
-        diffinit = False
-    else:
         diffinit = True
+    else:
+        diffinit = False
 
     df = get_available_results(cfg_name, model, replace_index=None, seed=None, diffinit=diffinit)
-    available_seeds = df['seed'].value_counts().loc[lambda x : x>4].to_frame()
-    available_seeds = df['seed'].tolist()
+    # print(df)
+    available_seeds = df['seed'].value_counts().loc[lambda x : x>2].index
+    available_seeds = available_seeds.tolist()
+    # print(available_seeds)
     print("***No. of available seeds", len(available_seeds))
 
     for i in range(runs):
@@ -54,6 +56,7 @@ def run_mi_attack(cfg, exptype, t, runs, outputfile):
         new_seed = threshold_seed
 
         threshold_replace_indices = df[df['seed'] == threshold_seed]['replace'].unique().tolist() 
+        print(threshold_replace_indices)
         th_replace_index = random.choice(threshold_replace_indices)
 
         threshold_replace_indices.remove(th_replace_index)
@@ -78,6 +81,7 @@ def run_mi_attack(cfg, exptype, t, runs, outputfile):
                                                                         multivariate=False)
 
             threshold = get_threshold(loss[setting][0], loss[setting][1])
+            print("Threshold is ", threshold)
 
             if 'vs' in exptype:
                 new_available_seeds_with_threshold_ri = df[df['replace'] == th_replace_index]['seed'].unique().tolist()
@@ -149,7 +153,7 @@ if __name__ == '__main__':
     parser.add_argument('--cfg', type=str, help='Name of yaml cfg of experiment')
     parser.add_argument('--exptype', type=str, help='fsfi, vsfi, fsvi, vsvi')
     parser.add_argument('--runs', type=int, default=5, help='Number of times to repeat an experiment')
-    parser.add_argument('--output', type=str, default='all_mi_results.csv', help='Log file to store all the results')
+    parser.add_argument('--output', type=str, default='all_newmi_results.csv', help='Log file to store all the results')
     parser.add_argument('--t', type=int, default=None, help='Numer of iterations')
     args = parser.parse_args()
     cfg = load_cfg(args.cfg)

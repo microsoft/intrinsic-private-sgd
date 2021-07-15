@@ -40,7 +40,8 @@ nn_convergence_points = {'cifar2_mlp': 2500,
                          'mnist_binary_mlp': 4750,
                          'adult_mlp': 1850,
                          'forest_mlp': 3500,
-                         'mnist_square_mlp': 1000}
+                         'mnist_square_mlp': 1000,
+                         'cifar10_cnn':14000}
 
 dp_colours = {'augment': '#14894e',
               'both': 'black',
@@ -64,11 +65,12 @@ def get_dataset_size(data_cfg):
             N = 10397
         else:
             N = 54000
-    elif name in ['cifar10', 'cifar10_pretrain']:
+    elif name in ['cifar10', 'cifar10_pretrain','cifar10_cnn']:
         if data_cfg['binary']:
             N = 9000
         else:
-            raise ValueError(data_cfg['binary'])
+            print('goes here')
+            N = 20000
     elif name == 'adult':
         N = 29305
     elif name == 'forest':
