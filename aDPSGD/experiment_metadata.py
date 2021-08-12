@@ -70,7 +70,7 @@ def get_dataset_size(data_cfg):
             N = 9000
         else:
             assert data_cfg['subset']
-            N = 15000
+            N = 20000
     elif name == 'adult':
         N = 29305
     elif name == 'forest':

@@ -194,12 +194,12 @@ def get_orig_loss_for_mi_attack(cfg_name, replace_index, seed, t,
                           metric_to_report='binary_crossentropy',
                           verbose=True, num_deltas='max',
                           data_privacy='all',
-                          multivariate=False):
+                          multivariate=False, diffinit = 'True'):
     cfg = load_cfg(cfg_name)
     model = cfg['model']['architecture']
     experiment = ExperimentIdentifier(cfg_name=cfg_name, model=model,
                                       replace_index=replace_index, seed=seed,
-                                      diffinit=True)
+                                      diffinit=diffinit)
     task, batch_size, lr, _, N = em.get_experiment_details(cfg_name, model, data_privacy)
     # load the test set
     # TODO this is a hack, fix it

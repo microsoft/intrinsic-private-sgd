@@ -13,7 +13,7 @@ import os.path
 
 from cfg_utils import load_cfg
 from attacks import get_threshold, get_mi_attack_accuracy, get_epsilon 
-from test_private_model import get_loss_for_mi_attack
+from test_private_model import get_orig_loss_for_mi_attack
 from results_utils import get_available_results
 from experiment_metadata import lr_convergence_points, nn_convergence_points
 
@@ -21,18 +21,25 @@ from experiment_metadata import lr_convergence_points, nn_convergence_points
 def run_mi_attack(cfg, exptype, t, runs, outputfile):
     cfg_name=cfg['cfg_name']
     model = cfg['model']['architecture']
-    noise_options = ['noiseless','bolton'] #,'augment_sgd','augment_sgd_diffinit']
+    noise_options = ['noiseless']# 'bolton'] #,'augment_sgd','augment_sgd_diffinit']
     sensitivity_bound = False
-    loss_metric = 'binary_crossentropy'
     
     if cfg_name == 'mnist_square_mlp':
         loss_metric = 'ce'
+    elif cfg_name == 'cifar10_cnn':
+        loss_metric = 'ce'
+    else:
+        loss_metric = 'binary_crossentropy'
+
+
 
     # Get the convergence point from experiment_metadata.py
     if t == None:
         if 'lr' in cfg_name:
             t = lr_convergence_points[cfg_name] 
         elif 'mlp' in cfg_name:
+            t = nn_convergence_points[cfg_name]
+        elif 'nn' in cfg_name:
             t = nn_convergence_points[cfg_name]
         else:
             print('ERROR: Config file is neither a LR nor an MLP')
@@ -45,7 +52,7 @@ def run_mi_attack(cfg, exptype, t, runs, outputfile):
 
     df = get_available_results(cfg_name, model, replace_index=None, seed=None, diffinit=diffinit)
     # print(df)
-    available_seeds = df['seed'].value_counts().loc[lambda x : x>2].index
+    available_seeds = df['seed'].value_counts().loc[lambda x : x>1].index
     available_seeds = available_seeds.tolist()
     # print(available_seeds)
     print("***No. of available seeds", len(available_seeds))
@@ -70,17 +77,19 @@ def run_mi_attack(cfg, exptype, t, runs, outputfile):
             results['diffinit'] = diffinit
             results['t'] = t
             results['setting'] = setting
+            results['th_seed'] = threshold_seed
+            results['th_ri'] = th_replace_index
 
-            loss = get_loss_for_mi_attack(cfg_name=cfg_name, replace_index=th_replace_index,
+            loss_train, loss_test = get_orig_loss_for_mi_attack(cfg_name=cfg_name, replace_index=th_replace_index,
                                                                         seed=threshold_seed, t=t, epsilon=None,
                                                                         delta=None,
                                                                         sens_from_bound=sensitivity_bound,
                                                                         metric_to_report=loss_metric,
                                                                         verbose=False,
                                                                         num_deltas='max',
-                                                                        multivariate=False)
+                                                                        multivariate=False, diffinit = diffinit)
 
-            threshold = get_threshold(loss[setting][0], loss[setting][1])
+            threshold = get_threshold(loss_train, loss_test)
             print("Threshold is ", threshold)
 
             if 'vs' in exptype:
@@ -93,37 +102,40 @@ def run_mi_attack(cfg, exptype, t, runs, outputfile):
                 new_replace_index = random.choice(new_available_replace_indices)
 
                 # Evaluate with different seed and same replace index
-                loss = get_loss_for_mi_attack(cfg_name=cfg_name, replace_index=th_replace_index,
+                loss_train, loss_test = get_orig_loss_for_mi_attack(cfg_name=cfg_name, replace_index=th_replace_index,
                                                                         seed=new_seed, t=t, epsilon=None,
                                                                         delta=None,
                                                                         sens_from_bound=sensitivity_bound,
                                                                         metric_to_report=loss_metric,
                                                                         verbose=False,
                                                                         num_deltas='max',
-                                                                        multivariate=False)
+                                                                        multivariate=False, diffinit = diffinit)
 
 
 
             
             
             # Evaluate attack with the same replace index 
-            attack_acc_with_same_ri = get_mi_attack_accuracy(loss[setting][0], loss[setting][1], threshold)
+            attack_acc_with_same_ri = get_mi_attack_accuracy(loss_train, loss_test, threshold)
             epsilon_with_same_ri = get_epsilon(attack_acc_with_same_ri)           
 
             results['attack_acc_with_same_ri'] = attack_acc_with_same_ri
             results['epsilon_with_same_ri'] = epsilon_with_same_ri  
             
+            results['attack_seed'] = new_seed
+            results['attack_ri'] = new_replace_index
+
             # Evaluate attack with a different replace index 
-            new_loss = get_loss_for_mi_attack(cfg_name=cfg_name, replace_index=new_replace_index,
+            new_loss_train, new_loss_test = get_orig_loss_for_mi_attack(cfg_name=cfg_name, replace_index=new_replace_index,
                                                                         seed=new_seed, t=t, epsilon=None,
                                                                         delta=None,
                                                                         sens_from_bound=sensitivity_bound,
                                                                         metric_to_report=loss_metric,
                                                                         verbose=False,
                                                                         num_deltas='max',
-                                                                        multivariate=False)
+                                                                        multivariate=False, diffinit = diffinit)
                 
-            attack_acc_with_diff_ri = get_mi_attack_accuracy(new_loss[setting][0], new_loss[setting][1], threshold)
+            attack_acc_with_diff_ri = get_mi_attack_accuracy(new_loss_train, new_loss_test, threshold)
             epsilon_with_diff_ri = get_epsilon(attack_acc_with_diff_ri)
 
             results['attack_acc_with_diff_ri'] = attack_acc_with_diff_ri
@@ -153,7 +165,7 @@ if __name__ == '__main__':
     parser.add_argument('--cfg', type=str, help='Name of yaml cfg of experiment')
     parser.add_argument('--exptype', type=str, help='fsfi, vsfi, fsvi, vsvi')
     parser.add_argument('--runs', type=int, default=5, help='Number of times to repeat an experiment')
-    parser.add_argument('--output', type=str, default='all_newmi_results.csv', help='Log file to store all the results')
+    parser.add_argument('--output', type=str, default='all_cifar10_cnn_results.csv', help='Log file to store all the results')
     parser.add_argument('--t', type=int, default=None, help='Numer of iterations')
     args = parser.parse_args()
     cfg = load_cfg(args.cfg)
