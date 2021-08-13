@@ -3,10 +3,12 @@
 
 import argparse
 import numpy as np
+import pandas as pd
 from pathlib import Path
 from time import time
 from tensorflow.keras.backend import clear_session
 import statistics
+from scipy.stats import ttest_rel
 import random
 import csv
 import os.path
@@ -159,7 +161,100 @@ def run_mi_attack(cfg, exptype, t, runs, outputfile):
                 csv_writer.writerow(results)
 
 
-                    
+def analyse_mi_results(df: pd.DataFrame):
+    """
+    For every attack_seed, compare accuracy when th_seed is either
+    1) the same
+    2) different
+    for fixed and variable initialisation scenarios
+    """
+    # this is a bit gross but it'll do
+    # want to create a dataframe where each row is an attack_seed (model we are attacking)
+    # columns:
+    # -- attack accuracy with same seed and fixed init
+    accuracy_same_fix = []
+    # -- attack accuracy with diff seed and fixed init
+    accuracy_diff_fix = []
+    # -- attack accuracy with same seed and diff init
+    accuracy_same_diff = []
+    # -- attack accuracy with diff seed and diff init
+    accuracy_diff_diff = []
+    # -- epsilon with same seed and fixed init
+    epsilon_same_fix = []
+    # -- attack epsilon with diff seed and fixed init
+    epsilon_diff_fix = []
+    # -- epsilon with same seed and diff init
+    epsilon_same_diff = []
+    # -- epsilon with diff seed and diff init
+    epsilon_diff_diff = []
+
+    attack_seeds = df['attack_seed'].unique()
+    for a_seed in attack_seeds:
+        sub_df = df.loc[df['attack_seed'] == a_seed]
+        # Same Fix
+        same_fix = sub_df.loc[(sub_df['th_seed'] == a_seed) & (~sub_df['diffinit'])]
+        try:
+            accuracy_same_fix.append(same_fix['attack_acc_with_same_ri'].iloc[0])
+            epsilon_same_fix.append(same_fix['epsilon_with_same_ri'].iloc[0])
+        except IndexError:
+            accuracy_same_fix.append(np.nan)
+            epsilon_same_fix.append(np.nan)
+        # Diff Fix
+        diff_fix = sub_df.loc[(sub_df['th_seed'] != a_seed) & (~sub_df['diffinit'])]
+        try:
+            accuracy_diff_fix.append(diff_fix['attack_acc_with_same_ri'].iloc[0])
+            epsilon_diff_fix.append(diff_fix['epsilon_with_same_ri'].iloc[0])
+        except IndexError:
+            accuracy_diff_fix.append(np.nan)
+            epsilon_diff_fix.append(np.nan)
+        # Same Diff
+        same_diff = sub_df.loc[(sub_df['th_seed'] == a_seed) & (sub_df['diffinit'])]
+        try:
+            accuracy_same_diff.append(same_diff['attack_acc_with_same_ri'].iloc[0])
+            epsilon_same_diff.append(same_diff['epsilon_with_same_ri'].iloc[0])
+        except IndexError:
+            accuracy_same_diff.append(np.nan)
+            epsilon_same_diff.append(np.nan)
+        # Diff Diff
+        diff_diff = sub_df.loc[(sub_df['th_seed'] != a_seed) & (sub_df['diffinit'])]
+        try:
+            accuracy_diff_diff.append(diff_diff['attack_acc_with_same_ri'].iloc[0])
+            epsilon_diff_diff.append(diff_diff['epsilon_with_same_ri'].iloc[0])
+        except IndexError:
+            accuracy_diff_diff.append(np.nan)
+            epsilon_diff_diff.append(np.nan)
+
+    results = pd.DataFrame({'accuracy_same_fix': accuracy_same_fix,
+                            'accuracy_diff_fix': accuracy_diff_fix,
+                            'accuracy_same_diff': accuracy_same_diff,
+                            'accuracy_diff_diff': accuracy_diff_diff,
+                            'epsilon_same_fix': epsilon_same_fix,
+                            'epsilon_diff_fix': epsilon_diff_fix,
+                            'epsilon_same_diff': epsilon_same_diff,
+                            'epsilon_diff_diff': epsilon_diff_diff}, index=attack_seeds)
+
+    # Now test: either fixinit OR diffinit:
+    # -- Is accuracy with same seed different to accuracy with diff seed?
+    print('Analysis with paired t-test:')
+    print('\tAccuracy:')
+    fix = ttest_rel(results['accuracy_same_fix'], results['accuracy_diff_fix'], nan_policy='omit')
+    delta_fix = (results['accuracy_same_fix'] - results['accuracy_diff_fix']).mean()
+    diff = ttest_rel(results['accuracy_same_diff'], results['accuracy_diff_diff'], nan_policy='omit')
+    delta_diff = (results['accuracy_same_diff'] - results['accuracy_diff_diff']).mean()
+    print(f'\t\tFixinit: \tStat: {fix.statistic:.4f} \tp: {fix.pvalue:.4f} \tmean delta: {delta_fix:.4f}')
+    print(f'\t\tDiffinit: \tStat: {diff.statistic:.4f} \tp: {diff.pvalue:.4f} \tmean delta: {delta_diff:.4f}')
+    print('\tEpsilon:')
+    fix = ttest_rel(results['epsilon_same_fix'], results['epsilon_diff_fix'], nan_policy='omit')
+    delta_fix = (results['epsilon_same_fix'] - results['epsilon_diff_fix']).mean()
+    diff = ttest_rel(results['epsilon_same_diff'], results['epsilon_diff_diff'], nan_policy='omit')
+    delta_diff = (results['epsilon_same_diff'] - results['epsilon_diff_diff']).mean()
+    print(f'\t\tFixinit: \tStat: {fix.statistic:.4f} \tp: {fix.pvalue:.4f} \tmean delta: {delta_fix:.4f}')
+    print(f'\t\tDiffinit: \tStat: {diff.statistic:.4f} \tp: {diff.pvalue:.4f} \tmean delta: {delta_diff:.4f}')
+    print('\nNote: Delta is SAME SEED - DIFF SEED')
+    print('...so delta > 0 means attacking is "easier" (-> less privacy) with the same seed')
+    return results
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--cfg', type=str, help='Name of yaml cfg of experiment')

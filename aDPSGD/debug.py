@@ -2,6 +2,10 @@
 import numpy as np
 import ipdb
 
+import matplotlib.pyplot as plt
+import seaborn as sns
+plt.style.use('ggplot')
+
 import derived_results
 import results_utils
 from results_utils import ExperimentIdentifier
@@ -116,3 +120,73 @@ def check_for_different_initialisations_with_same_seed(cfg_name, model, diffinit
     else:
         print('all experiments with the same seed have the same initialisation')
         return True
+
+
+def compare_loss_with_without_diffinit(cfg_name: str, model: str, t: int = 2000):
+    df_diffinit = results_utils.get_available_results(cfg_name, model, diffinit=True, data_privacy='all')
+    df_fixinit = results_utils.get_available_results(cfg_name, model, diffinit=False, data_privacy='all')
+
+    loss_diff = []
+    loss_fix = []
+    for idx, row in df_diffinit.iterrows():
+        replace_index = row['replace']
+        seed = row['seed']
+        diffinit = True
+        exp = ExperimentIdentifier(cfg_name, model, replace_index=replace_index,
+                                   seed=seed, diffinit=diffinit,
+                                   data_privacy='all')
+        loss = exp.load_loss(iter_range=(t, t+1), verbose=False)
+        try:
+            loss = float(loss.loc[loss['minibatch_id'] == 'VALI']['ce'])
+            loss_diff.append(loss)
+        except ValueError:
+            print(f'skipping {row} due to can\'t convert to float')
+    for idx, row in df_fixinit.iterrows():
+        replace_index = row['replace']
+        seed = row['seed']
+        diffinit = False
+        exp = ExperimentIdentifier(cfg_name, model, replace_index=replace_index,
+                                   seed=seed, diffinit=diffinit,
+                                   data_privacy='all')
+        loss = exp.load_loss(iter_range=(t, t+1), verbose=False)
+        try:
+            loss = float(loss.loc[loss['minibatch_id'] == 'VALI']['ce'])
+            loss_fix.append(loss)
+        except ValueError:
+            print(f'skipping {row} due to can\'t convert to float')
+
+    fig, axarr = plt.subplots(nrows=1, ncols=1)
+    sns.distplot(loss_fix, label='fixed init', ax=axarr)
+    sns.distplot(loss_diff, label='diff init', ax=axarr)
+    axarr.set_xlabel('loss')
+    axarr.legend()
+    plt.savefig(f'{cfg_name}_losses.png')
+    plt.clf()
+    plt.close()
+
+
+def compare_learning_curves(cfg_name: str, model: str):
+    agg_diff = derived_results.AggregatedLoss(cfg_name, model, 'all').load(diffinit=True, generate_if_needed=True)
+    agg_fix = derived_results.AggregatedLoss(cfg_name, model, 'all').load(diffinit=False, generate_if_needed=True)
+
+    print(agg_diff.head())
+    fig, axarr = plt.subplots(nrows=2, ncols=1)
+    axarr[0].plot(agg_diff.index, agg_diff['ce_mean_train'], label='diff init', color='blue')
+    axarr[0].fill_between(agg_diff.index, agg_diff['ce_mean_train'] - agg_diff['ce_std_train'], agg_diff['ce_mean_train'] + agg_diff['ce_std_train'], alpha=0.1, color='blue', label='_nolegend_')
+    axarr[0].plot(agg_fix.index, agg_fix['ce_mean_train'], label='fixed init', color='green')
+    axarr[0].fill_between(agg_fix.index, agg_fix['ce_mean_train'] - agg_fix['ce_std_train'], agg_fix['ce_mean_train'] + agg_fix['ce_std_train'], alpha=0.1, color='lightgreen', label='_nolegend_')
+
+
+    axarr[1].plot(agg_diff.index, agg_diff['ce_mean_vali'], label='diff init', color='blue', linestyle='--')
+    axarr[1].fill_between(agg_diff.index, agg_diff['ce_mean_vali'] - agg_diff['ce_std_vali'], agg_diff['ce_mean_vali'] + agg_diff['ce_std_vali'], alpha=0.1, color='blue', label='_nolegend_')
+    axarr[1].plot(agg_fix.index, agg_fix['ce_mean_vali'], label='fix init', color='green', linestyle='--')
+    axarr[1].fill_between(agg_fix.index, agg_fix['ce_mean_vali'] - agg_fix['ce_std_vali'], agg_fix['ce_mean_vali'] + agg_fix['ce_std_vali'], alpha=0.1, color='green', label='_nolegend_')
+
+    axarr[0].set_ylabel('ce train')
+    axarr[1].set_ylabel('ce vali')
+    for ax in axarr:
+        ax.legend()
+
+    plt.savefig(f'{cfg_name}_learning_curves.png')
+    plt.clf()
+    plt.close()
