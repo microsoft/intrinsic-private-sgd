@@ -189,13 +189,12 @@ def test_model_with_noise(cfg_name, replace_index, seed, t,
 
     return noiseless_performance, bolton_performance, augment_performance, augment_performance_diffinit
 
+
 def get_orig_loss_for_mi_attack(cfg_name, replace_index, seed, t,
-                          epsilon=None, delta=None,
-                          sens_from_bound=False,
-                          metric_to_report='binary_crossentropy',
-                          verbose=True, num_deltas='max',
-                          data_privacy='all',
-                          multivariate=False, diffinit = 'True'):
+                                metric_to_report='binary_crossentropy',
+                                verbose=True,
+                                data_privacy='all',
+                                diffinit=True):
     cfg = load_cfg(cfg_name)
     model = cfg['model']['architecture']
     experiment = ExperimentIdentifier(cfg_name=cfg_name, model=model,
@@ -207,11 +206,11 @@ def get_orig_loss_for_mi_attack(cfg_name, replace_index, seed, t,
     x_train, y_train, _, _, x_test, y_test = data_utils.load_data(options=cfg['data'], replace_index=replace_index)
     weights_path = experiment.path_stub().with_name(experiment.path_stub().name + '.weights.csv')
     model_object = model_utils.build_model(**cfg['model'], init_path=weights_path, t=t)
-    model_utils.prep_for_training(model_object, seed=0,
-                                optimizer_settings=cfg['training']['optimization_algorithm'],
-                                task_type=cfg['model']['task_type'])
-    metric_names = model_object.metric_names
-    metric_functions = model_utils.define_metric_functions(metric_names)
+#    model_utils.prep_for_training(model_object, seed=0,
+#                                optimizer_settings=cfg['training']['optimization_algorithm'],
+#                                task_type=cfg['model']['task_type'])
+#    metric_names = model_object.metric_names
+#    metric_functions = model_utils.define_metric_functions(metric_names)
     results_train = []
     results_test = []
     # speed hack by steph
@@ -253,7 +252,7 @@ def get_orig_loss_for_mi_attack(cfg_name, replace_index, seed, t,
        #         break
 
     del model_object
-    del metric_functions
+    #del metric_functions
     #del metrics
 
     return results_train, results_test
@@ -405,7 +404,6 @@ def get_loss_for_mi_attack(cfg_name, replace_index, seed, t,
     model_utils.K.backend.clear_session()
 
     return noise_performance
-
 
 
 def test_model_without_noise(cfg_name, replace_index, seed, t,

@@ -1,14 +1,7 @@
-import torch
-import os
-import random
-import shutil
 import statistics
 from scipy.stats import bernoulli  # type: ignore
 from sklearn.svm import LinearSVC
-from torch.utils.data import DataLoader, TensorDataset, BatchSampler, RandomSampler, SequentialSampler, Sampler
-from tqdm import trange, tqdm  # type: ignore
 import numpy as np
-from typing import Dict, List, Optional, Tuple, Union, Callable
 # from utils.torch_utils import set_random_seeds, get_torch_device
 # from utils.synthesis import create_data
 # from model_interface.factory_methods import create_model_wrapper
@@ -23,11 +16,13 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.neural_network import MLPClassifier
 
-def get_threshold(train_loss, test_loss):
+
+def get_threshold(train_loss):
     train_split = train_loss[10000:]
     threshold = statistics.mean(train_split)
 
     return threshold
+
 
 def get_mi_attack_accuracy(train_loss, test_loss, threshold):
     train_loss = train_loss[0:10000]

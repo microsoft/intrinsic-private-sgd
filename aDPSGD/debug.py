@@ -4,11 +4,12 @@ import ipdb
 
 import matplotlib.pyplot as plt
 import seaborn as sns
-plt.style.use('ggplot')
 
 import derived_results
 import results_utils
 from results_utils import ExperimentIdentifier
+
+plt.style.use('ggplot')
 
 
 def run_checks(cfg_name, model, diffinit, data_privacy='all', convergence_point=None):
@@ -40,6 +41,7 @@ def run_checks(cfg_name, model, diffinit, data_privacy='all', convergence_point=
         result = 'Pass'
     return result
 
+
 def check_for_incomplete_experiments(cfg_name, model, t=5, diffinit=True, data_privacy='all'):
     """
     find experiments where data does not reach time t
@@ -51,7 +53,7 @@ def check_for_incomplete_experiments(cfg_name, model, t=5, diffinit=True, data_p
     for i, row in exp_df.iterrows():
         replace_index = row['replace']
         seed = row['seed']
-        exp =  ExperimentIdentifier(cfg_name, model, replace_index=replace_index, seed=seed, diffinit=diffinit, data_privacy=data_privacy)
+        exp = ExperimentIdentifier(cfg_name, model, replace_index=replace_index, seed=seed, diffinit=diffinit, data_privacy=data_privacy)
         if not exp.exists():
             print(f'WARNING: Experiment {exp.path_stub()} doesn\'t exist?')
             continue
