@@ -5,6 +5,7 @@
 import numpy as np
 import ipdb
 
+from sklearn.metrics import log_loss
 import data_utils
 import model_utils
 from results_utils import ExperimentIdentifier
@@ -188,13 +189,12 @@ def test_model_with_noise(cfg_name, replace_index, seed, t,
 
     return noiseless_performance, bolton_performance, augment_performance, augment_performance_diffinit
 
+
 def get_orig_loss_for_mi_attack(cfg_name, replace_index, seed, t,
-                          epsilon=None, delta=None,
-                          sens_from_bound=False,
-                          metric_to_report='binary_crossentropy',
-                          verbose=True, num_deltas='max',
-                          data_privacy='all',
-                          multivariate=False, diffinit = 'True'):
+                                metric_to_report='binary_crossentropy',
+                                verbose=True,
+                                data_privacy='all',
+                                diffinit=True):
     cfg = load_cfg(cfg_name)
     model = cfg['model']['architecture']
     experiment = ExperimentIdentifier(cfg_name=cfg_name, model=model,
@@ -206,47 +206,54 @@ def get_orig_loss_for_mi_attack(cfg_name, replace_index, seed, t,
     x_train, y_train, _, _, x_test, y_test = data_utils.load_data(options=cfg['data'], replace_index=replace_index)
     weights_path = experiment.path_stub().with_name(experiment.path_stub().name + '.weights.csv')
     model_object = model_utils.build_model(**cfg['model'], init_path=weights_path, t=t)
-    model_utils.prep_for_training(model_object, seed=0,
-                                optimizer_settings=cfg['training']['optimization_algorithm'],
-                                task_type=cfg['model']['task_type'])
-    metric_names = model_object.metric_names
-    metric_functions = model_utils.define_metric_functions(metric_names)
+#    model_utils.prep_for_training(model_object, seed=0,
+#                                optimizer_settings=cfg['training']['optimization_algorithm'],
+#                                task_type=cfg['model']['task_type'])
+#    metric_names = model_object.metric_names
+#    metric_functions = model_utils.define_metric_functions(metric_names)
     results_train = []
     results_test = []
+    # speed hack by steph
+    y_preds_train = model_object(x_train)
+    y_preds_test = model_object(x_test)
     for i in range(0, len(x_train)):
-        metrics = model_object.compute_metrics(np.array([x_train[i]]), np.array([y_train[i]]), metric_functions=metric_functions)
+        v = log_loss([y_train[i]], [y_preds_train[i]], labels=np.arange(10))
+        #metrics = model_object.compute_metrics(np.array([x_train[i]]), np.array([y_train[i]]), metric_functions=metric_functions)
+
         # metrics = model_object.compute_metrics(x_train, y_train, metric_functions=metric_functions)
-        metrics = [m.numpy() for m in metrics]
-        for mf in metric_functions:
-            mf.reset_states()
-        for (n, v) in zip(metric_names, metrics):
-            if verbose:
-                print(n, v)
 
-            if n == metric_to_report:
-                results_train.append(v)
+        #metrics = [m.numpy() for m in metrics]
+        #for mf in metric_functions:
+        #mf.reset_states()
+        #for (n, v) in zip(metric_names, metrics):
+        #if verbose:
+        #print(n, v)
 
-                break
+        #    if n == metric_to_report:
+        results_train.append(v)
+#
+#                break
 
     for i in range(0,len(x_test)):
-        metrics = model_object.compute_metrics(np.array([x_test[i]]), np.array([y_test[i]]), metric_functions=metric_functions)
-        #metrics = model_object.compute_metrics(x_test, y_test, metric_functions=metric_functions)
-        metrics = [m.numpy() for m in metrics]
-        for mf in metric_functions:
-            mf.reset_states()
+        v = log_loss([y_test[i]], [y_preds_test[i]], labels=np.arange(10))
+        #metrics = model_object.compute_metrics(np.array([x_test[i]]), np.array([y_test[i]]), metric_functions=metric_functions)
+        ##metrics = model_object.compute_metrics(x_test, y_test, metric_functions=metric_functions)
+        #metrics = [m.numpy() for m in metrics]
+        #for mf in metric_functions:
+        #    mf.reset_states()
 
-        for (n, v) in zip(metric_names, metrics):
-            if verbose:
-                print(n, v)
+        #for (n, v) in zip(metric_names, metrics):
+        #    if verbose:
+        #        print(n, v)
 
-            if n == metric_to_report:
-                results_test.append(v)
+        #    if n == metric_to_report:
+        results_test.append(v)
 
-                break
+       #         break
 
     del model_object
-    del metric_functions
-    del metrics
+    #del metric_functions
+    #del metrics
 
     return results_train, results_test
 
@@ -397,7 +404,6 @@ def get_loss_for_mi_attack(cfg_name, replace_index, seed, t,
     model_utils.K.backend.clear_session()
 
     return noise_performance
-
 
 
 def test_model_without_noise(cfg_name, replace_index, seed, t,

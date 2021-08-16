@@ -250,8 +250,8 @@ class AggregatedLoss(DerivedResult):
             except FileNotFoundError:
                 print(f'WARNING: Could not find loss for {experiment.path_stub()}')
                 continue
-            loss_train = loss.loc[loss['minibatch_id'] == 'ALL', :].set_index('t')
-            loss_vali = loss.loc[loss['minibatch_id'] == 'VALI', :].set_index('t')
+            loss_train = loss.loc[loss['minibatch_id'] == 'ALL', :].set_index('t').drop(columns='minibatch_id')
+            loss_vali = loss.loc[loss['minibatch_id'] == 'VALI', :].set_index('t').drop(columns='minibatch_id')
             train_list.append(loss_train)
             vali_list.append(loss_vali)
         print('All traces collected')
@@ -259,6 +259,13 @@ class AggregatedLoss(DerivedResult):
         train = pd.concat(train_list)
         vali = pd.concat(vali_list)
         # aggregate: mean and std
+        # HACK sometimes they contain "["
+        bad_rows_train = train['ce'].astype('str').str.contains('\[')
+        train = train.loc[~bad_rows_train]
+        bad_rows_vali = vali['ce'].astype('str').str.contains('\[')
+        vali = vali.loc[~bad_rows_vali]
+        train = train.astype('float')
+        vali = vali.astype('float')
         train_mean = train.groupby('t').mean()
         train_std = train.groupby('t').std()
         vali_mean = vali.groupby('t').mean()
@@ -283,7 +290,8 @@ class AggregatedLoss(DerivedResult):
                 data = self.load(diffinit=diffinit, generate_if_needed=False)
             else:
                 raise FileNotFoundError
-        data.set_index('t', inplace=True)
+        if 't' in data.columns:
+            data.set_index('t', inplace=True)
         return data
 
 
