@@ -130,6 +130,11 @@ def compare_loss_with_without_diffinit(cfg_name: str, model: str, t: int = 2000)
 
     loss_diff = []
     loss_fix = []
+
+    if 'cifar10' in cfg_name:
+        metric = 'ce'
+    else:
+        metric = 'binary_crossentropy'
     for idx, row in df_diffinit.iterrows():
         replace_index = row['replace']
         seed = row['seed']
@@ -139,7 +144,7 @@ def compare_loss_with_without_diffinit(cfg_name: str, model: str, t: int = 2000)
                                    data_privacy='all')
         loss = exp.load_loss(iter_range=(t, t+1), verbose=False)
         try:
-            loss = float(loss.loc[loss['minibatch_id'] == 'VALI']['ce'])
+            loss = float(loss.loc[loss['minibatch_id'] == 'VALI'][metric])
             loss_diff.append(loss)
         except ValueError:
             print(f'skipping {row} due to can\'t convert to float')
@@ -152,7 +157,7 @@ def compare_loss_with_without_diffinit(cfg_name: str, model: str, t: int = 2000)
                                    data_privacy='all')
         loss = exp.load_loss(iter_range=(t, t+1), verbose=False)
         try:
-            loss = float(loss.loc[loss['minibatch_id'] == 'VALI']['ce'])
+            loss = float(loss.loc[loss['minibatch_id'] == 'VALI'][metric])
             loss_fix.append(loss)
         except ValueError:
             print(f'skipping {row} due to can\'t convert to float')
@@ -171,18 +176,22 @@ def compare_learning_curves(cfg_name: str, model: str):
     agg_diff = derived_results.AggregatedLoss(cfg_name, model, 'all').load(diffinit=True, generate_if_needed=True)
     agg_fix = derived_results.AggregatedLoss(cfg_name, model, 'all').load(diffinit=False, generate_if_needed=True)
 
+    if 'cifar10' in cfg_name:
+        metric = 'ce'
+    else:
+        metric = 'binary_crossentropy'
     print(agg_diff.head())
     fig, axarr = plt.subplots(nrows=2, ncols=1)
-    axarr[0].plot(agg_diff.index, agg_diff['ce_mean_train'], label='diff init', color='blue')
-    axarr[0].fill_between(agg_diff.index, agg_diff['ce_mean_train'] - agg_diff['ce_std_train'], agg_diff['ce_mean_train'] + agg_diff['ce_std_train'], alpha=0.1, color='blue', label='_nolegend_')
-    axarr[0].plot(agg_fix.index, agg_fix['ce_mean_train'], label='fixed init', color='green')
-    axarr[0].fill_between(agg_fix.index, agg_fix['ce_mean_train'] - agg_fix['ce_std_train'], agg_fix['ce_mean_train'] + agg_fix['ce_std_train'], alpha=0.1, color='lightgreen', label='_nolegend_')
+    axarr[0].plot(agg_diff.index, agg_diff[f'{metric}_mean_train'], label='diff init', color='blue')
+    axarr[0].fill_between(agg_diff.index, agg_diff[f'{metric}_mean_train'] - agg_diff[f'{metric}_std_train'], agg_diff[f'{metric}_mean_train'] + agg_diff[f'{metric}_std_train'], alpha=0.1, color='blue', label='_nolegend_')
+    axarr[0].plot(agg_fix.index, agg_fix[f'{metric}_mean_train'], label='fixed init', color='green')
+    axarr[0].fill_between(agg_fix.index, agg_fix[f'{metric}_mean_train'] - agg_fix[f'{metric}_std_train'], agg_fix[f'{metric}_mean_train'] + agg_fix[f'{metric}_std_train'], alpha=0.1, color='lightgreen', label='_nolegend_')
 
 
-    axarr[1].plot(agg_diff.index, agg_diff['ce_mean_vali'], label='diff init', color='blue', linestyle='--')
-    axarr[1].fill_between(agg_diff.index, agg_diff['ce_mean_vali'] - agg_diff['ce_std_vali'], agg_diff['ce_mean_vali'] + agg_diff['ce_std_vali'], alpha=0.1, color='blue', label='_nolegend_')
-    axarr[1].plot(agg_fix.index, agg_fix['ce_mean_vali'], label='fix init', color='green', linestyle='--')
-    axarr[1].fill_between(agg_fix.index, agg_fix['ce_mean_vali'] - agg_fix['ce_std_vali'], agg_fix['ce_mean_vali'] + agg_fix['ce_std_vali'], alpha=0.1, color='green', label='_nolegend_')
+    axarr[1].plot(agg_diff.index, agg_diff[f'{metric}_mean_vali'], label='diff init', color='blue', linestyle='--')
+    axarr[1].fill_between(agg_diff.index, agg_diff[f'{metric}_mean_vali'] - agg_diff[f'{metric}_std_vali'], agg_diff[f'{metric}_mean_vali'] + agg_diff[f'{metric}_std_vali'], alpha=0.1, color='blue', label='_nolegend_')
+    axarr[1].plot(agg_fix.index, agg_fix[f'{metric}_mean_vali'], label='fix init', color='green', linestyle='--')
+    axarr[1].fill_between(agg_fix.index, agg_fix[f'{metric}_mean_vali'] - agg_fix[f'{metric}_std_vali'], agg_fix[f'{metric}_mean_vali'] + agg_fix[f'{metric}_std_vali'], alpha=0.1, color='green', label='_nolegend_')
 
     axarr[0].set_ylabel('ce train')
     axarr[1].set_ylabel('ce vali')
