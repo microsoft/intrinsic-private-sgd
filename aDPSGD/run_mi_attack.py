@@ -364,7 +364,7 @@ if __name__ == '__main__':
     parser.add_argument('--cfg', type=str, help='Name of yaml cfg of experiment', default='cifar10_cnn')
     parser.add_argument('--exptype', type=str, choices=['fsfi', 'vsfi', 'fsvi', 'vsvi'])
     parser.add_argument('--runs', type=int, default=5, help='Number of times to repeat an experiment')
-    parser.add_argument('--output', type=str, default='all_cifar10_cnn_results.csv',
+    parser.add_argument('--output', type=str, default='all_cifar10_cnn_results_4000.csv',
                         help='Log file to store all the results')
     parser.add_argument('--t', type=int, default=None, help='Numer of iterations')
     args = parser.parse_args()
