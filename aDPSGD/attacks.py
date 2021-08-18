@@ -23,7 +23,8 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.neural_network import MLPClassifier
 
 
-SPLIT_N = 2500
+SPLIT_N = 5000
+
 
 def get_threshold(train_loss):
     train_split = train_loss[SPLIT_N:]
@@ -48,14 +49,15 @@ def get_classifier(train_act, test_act):
     labels = np.array(([1] * train_split.shape[0]) + ([0] * test_split.shape[0]))
     assert labels.shape[0] == X.shape[0]
 
-    ##clf = Pipeline([('scaler', StandardScaler()),
-   #                 ('clf', SGDClassifier(loss='log',
-   #                                       class_weight='balanced',
-   #                                       early_stopping=True))])
+#    clf = Pipeline([('scaler', StandardScaler()),
+#                    ('clf', SGDClassifier(loss='log',
+#                                          class_weight='balanced')])
+                    #                                          early_stopping=True))])
     #clf = Pipeline([('scaler', StandardScaler()),
     #                ('clf', MLPClassifier(hidden_layer_sizes=(64,),
     #                                      early_stopping=True))])
-    clf = RandomForestClassifier()
+    clf = RandomForestClassifier(max_depth=5, class_weight='balanced')
+#    clf = GradientBoostingClassifier()
     #clf = SGDClassifier(loss='log', class_weight='balanced', early_stopping=True)
     print('fitting classifier...')
     clf.fit(X, labels)
