@@ -202,6 +202,13 @@ class Model(K.Sequential):
             except FileNotFoundError:
                 print(f'WARNING: Could not load weights from {self.init_path}')
 
+    def get_intermediate_output(self, layer: int, x: np.ndarray) -> np.ndarray:
+        intermediate = K.Model(inputs=self.inputs, outputs=self.layers[layer].output)
+        intermediate_output = intermediate(x).numpy()
+        batch_size = x.shape[0]
+        intermediate_output = intermediate_output.reshape(batch_size, -1)
+        return intermediate_output
+
     @abc.abstractmethod
     def define_layers(self) -> None:
         pass

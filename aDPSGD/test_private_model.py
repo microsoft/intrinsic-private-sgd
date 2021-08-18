@@ -190,6 +190,43 @@ def test_model_with_noise(cfg_name, replace_index, seed, t,
     return noiseless_performance, bolton_performance, augment_performance, augment_performance_diffinit
 
 
+def get_activations_for_mi_attack(cfg_name, replace_index, seed, t,
+                                  layer: int = 0,
+                                  verbose=True,
+                                  data_privacy='all',
+                                  diffinit=True):
+    cfg = load_cfg(cfg_name)
+    model = cfg['model']['architecture']
+    experiment = ExperimentIdentifier(cfg_name=cfg_name, model=model,
+                                      replace_index=replace_index, seed=seed,
+                                      diffinit=diffinit)
+    task, batch_size, lr, _, N = em.get_experiment_details(cfg_name, model, data_privacy)
+    # load the test set
+    # TODO this is a hack, fix it
+    x_train, _, _, _, x_test, _ = data_utils.load_data(options=cfg['data'], replace_index=replace_index)
+    weights_path = experiment.path_stub().with_name(experiment.path_stub().name + '.weights.csv')
+    model_object = model_utils.build_model(**cfg['model'], init_path=weights_path, t=t)
+    if not type(layer) == int:
+        assert type(layer) == list
+        outs_train = []
+        outs_test = []
+        for l in layer:
+            x_intermediate_train = model_object.get_intermediate_output(l, x_train)
+            outs_train.append(x_intermediate_train)
+            x_intermediate_test = model_object.get_intermediate_output(l, x_test)
+            outs_test.append(x_intermediate_test)
+        outs_train = np.hstack(outs_train)
+        outs_test = np.hstack(outs_test)
+        x_intermediate_train = outs_train
+        x_intermediate_test = outs_test
+        assert x_intermediate_train.shape[0] == x_train.shape[0]
+        assert x_intermediate_test.shape[0] == x_test.shape[0]
+    else:
+        x_intermediate_train = model_object.get_intermediate_output(layer, x_train)
+        x_intermediate_test = model_object.get_intermediate_output(layer, x_test)
+    return x_intermediate_train, x_intermediate_test
+
+
 def get_orig_loss_for_mi_attack(cfg_name, replace_index, seed, t,
                                 metric_to_report='binary_crossentropy',
                                 verbose=True,
