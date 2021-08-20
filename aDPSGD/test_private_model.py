@@ -200,10 +200,9 @@ def get_activations_for_mi_attack(cfg_name, replace_index, seed, t,
     experiment = ExperimentIdentifier(cfg_name=cfg_name, model=model,
                                       replace_index=replace_index, seed=seed,
                                       diffinit=diffinit)
-    task, batch_size, lr, _, N = em.get_experiment_details(cfg_name, model, data_privacy)
     # load the test set
     # TODO this is a hack, fix it
-    x_train, _, _, _, x_test, _ = data_utils.load_data(options=cfg['data'], replace_index=replace_index)
+    x_train, y_train, _, _, x_test, y_test = data_utils.load_data(options=cfg['data'], replace_index=replace_index)
     weights_path = experiment.path_stub().with_name(experiment.path_stub().name + '.weights.csv')
     model_object = model_utils.build_model(**cfg['model'], init_path=weights_path, t=t)
     if not type(layer) == int:
@@ -224,6 +223,9 @@ def get_activations_for_mi_attack(cfg_name, replace_index, seed, t,
     else:
         x_intermediate_train = model_object.get_intermediate_output(layer, x_train)
         x_intermediate_test = model_object.get_intermediate_output(layer, x_test)
+    # Append on the true label DEBUG
+    x_intermediate_train = np.hstack([x_intermediate_train, y_train.reshape(-1, 1)])
+    x_intermediate_test = np.hstack([x_intermediate_test, y_test.reshape(-1, 1)])
     return x_intermediate_train, x_intermediate_test
 
 
@@ -237,7 +239,7 @@ def get_orig_loss_for_mi_attack(cfg_name, replace_index, seed, t,
     experiment = ExperimentIdentifier(cfg_name=cfg_name, model=model,
                                       replace_index=replace_index, seed=seed,
                                       diffinit=diffinit)
-    task, batch_size, lr, _, N = em.get_experiment_details(cfg_name, model, data_privacy)
+    # task, batch_size, lr, _, N = em.get_experiment_details(cfg_name, model, data_privacy)
     # load the test set
     # TODO this is a hack, fix it
     x_train, y_train, _, _, x_test, y_test = data_utils.load_data(options=cfg['data'], replace_index=replace_index)

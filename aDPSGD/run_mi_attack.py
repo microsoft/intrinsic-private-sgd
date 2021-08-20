@@ -16,19 +16,23 @@ from results_utils import get_available_results
 from experiment_metadata import lr_convergence_points, nn_convergence_points
 
 
-def run_mi_attack_steph(cfg, exptype: str, t: int, runs: int, outputfile: str, use_loss: bool = True):
+def run_mi_attack_steph(cfg, exptype: str, t: int, runs: int, outputfile: str,
+                        use_loss: bool = True,
+                        use_activations: bool = False):
     cfg_name = cfg['cfg_name']
     model = cfg['model']['architecture']
 
     if use_loss:
+        print('Using loss!')
         if cfg_name == 'mnist_square_mlp':
             loss_metric = 'ce'
         elif cfg_name == 'cifar10_cnn':
             loss_metric = 'ce'
         else:
             loss_metric = 'binary_crossentropy'
-    else:
-        layer = [-1, -2]
+
+    if use_activations:
+        layer = -1
         print(f'\t\tRunning attack based on activations after layer {layer}')
 
     # Get the convergence point from experiment_metadata.py
@@ -51,37 +55,58 @@ def run_mi_attack_steph(cfg, exptype: str, t: int, runs: int, outputfile: str, u
     available_seeds = df['seed'].value_counts().loc[lambda x: x > 1].index
     available_seeds = available_seeds.tolist()
     # print(available_seeds)
-    print("***No. of available seeds", len(available_seeds))
+    print("[run_mi_attack] No. of available seeds", len(available_seeds))
 
     # Each model we attack is a seed + replace index
     run_counter = 0
     for attack_seed in np.random.permutation(available_seeds):
         available_replace_indices = df[df['seed'] == attack_seed]['replace'].unique().tolist()
         for attack_index in available_replace_indices:
-            print(f'Attacking model with seed {attack_seed} and replace index {attack_index}')
+            print(f'[run_mi_attack] Attacking model with seed {attack_seed} and replace index {attack_index}')
 
             if use_loss:
                 # First we attack it with itself
-                train_self, test_self = get_orig_loss_for_mi_attack(cfg_name=cfg_name,
-                                                                    replace_index=attack_index,
-                                                                    seed=attack_seed,
-                                                                    t=t,
-                                                                    metric_to_report=loss_metric,
-                                                                    verbose=False,
-                                                                    diffinit=diffinit)
-                classifier_self = get_threshold(train_self)
-                print("Threshold is ", classifier_self)
+                train_loss_self, test_loss_self = get_orig_loss_for_mi_attack(cfg_name=cfg_name,
+                                                                              replace_index=attack_index,
+                                                                              seed=attack_seed,
+                                                                              t=t,
+                                                                              metric_to_report=loss_metric,
+                                                                              verbose=False,
+                                                                              diffinit=diffinit)
             else:
-                # Assuming we use the intermediate activations
-                train_self, test_self = get_activations_for_mi_attack(cfg_name,
-                                                                      replace_index=attack_index,
-                                                                      seed=attack_seed,
-                                                                      t=t,
-                                                                      layer=layer,
-                                                                      verbose=False,
-                                                                      diffinit=diffinit)
-                classifier_self = get_classifier(train_self, test_self)
+                train_loss_self = None
+                test_loss_self = None
+            if use_activations:
+                train_act_self, test_act_self = get_activations_for_mi_attack(cfg_name,
+                                                                              replace_index=attack_index,
+                                                                              seed=attack_seed,
+                                                                              t=t,
+                                                                              layer=layer,
+                                                                              verbose=False,
+                                                                              diffinit=diffinit)
+            else:
+                train_act_self = None
+                test_act_self = None
 
+            # If we have ONLY the loss, we use threshold
+            if use_activations:
+                # If we have the loss, we combine it
+                if train_loss_self is not None:
+                    assert test_loss_self is not None
+                    train_self = np.hstack([train_act_self, np.array(train_loss_self).reshape(-1, 1)])
+                    test_self = np.hstack([test_act_self, np.array(test_loss_self).reshape(-1, 1)])
+                else:
+                    train_self = train_act_self
+                    test_self = test_act_self
+                classifier_self = get_classifier(train_self, test_self)
+            else:
+                assert use_loss
+                classifier_self = get_threshold(train_loss_self)
+                print("[run_mi_attack] Threshold is ", classifier_self)
+                train_self = train_loss_self
+                test_self = test_loss_self
+
+            print('*** SELF CLASSIFIER ON SELF TEST DATA: ***')
             attack_accuracy_self = get_mi_attack_accuracy(train_self, test_self, classifier_self)
             epsilon_self = get_epsilon(attack_accuracy_self)
 
@@ -89,31 +114,53 @@ def run_mi_attack_steph(cfg, exptype: str, t: int, runs: int, outputfile: str, u
             # TODO we could atack with multiple seeds now if we wanted
             other_seed = np.random.choice([x for x in available_seeds if not x == attack_seed])
             assert not other_seed == attack_seed
-            print(f'attacking with seed {other_seed}')
-            if use_loss:
-                train_other, test_other = get_orig_loss_for_mi_attack(cfg_name=cfg_name,
-                                                                      replace_index=attack_index,
-                                                                      seed=other_seed,
-                                                                      t=t,
-                                                                      metric_to_report=loss_metric,
-                                                                      verbose=False,
-                                                                      diffinit=diffinit)
-                classifier_other = get_threshold(train_other)
-            else:
-                train_other, test_other = get_activations_for_mi_attack(cfg_name,
-                                                                        replace_index=attack_index,
-                                                                        seed=other_seed,
-                                                                        t=t,
-                                                                        layer=layer,
-                                                                        verbose=False,
-                                                                        diffinit=diffinit)
-                classifier_other = get_classifier(train_other, test_other)
-            print("new threshold is ", classifier_other)
+            print(f'[run_mi_attack] attacking with DIFFERENT seed {other_seed}')
 
+            if use_loss:
+                # First we attack it with itself
+                train_loss_other, test_loss_other = get_orig_loss_for_mi_attack(cfg_name=cfg_name,
+                                                                                replace_index=attack_index,
+                                                                                seed=other_seed,
+                                                                                t=t,
+                                                                                metric_to_report=loss_metric,
+                                                                                verbose=False,
+                                                                                diffinit=diffinit)
+            else:
+                train_loss_other = None
+                test_loss_other = None
+            if use_activations:
+                train_act_other, test_act_other = get_activations_for_mi_attack(cfg_name,
+                                                                                replace_index=attack_index,
+                                                                                seed=other_seed,
+                                                                                t=t,
+                                                                                layer=layer,
+                                                                                verbose=False,
+                                                                                diffinit=diffinit)
+            else:
+                train_act_other = None
+                test_act_other = None
+
+            # If we have ONLY the loss, we use threshold
+            if use_activations:
+                # If we have the loss, we combine it
+                if train_loss_other is not None:
+                    assert test_loss_other is not None
+                    train_other = np.hstack([train_act_other, np.array(train_loss_other).reshape(-1, 1)])
+                    test_other = np.hstack([test_act_other, np.array(test_loss_other).reshape(-1, 1)])
+                else:
+                    train_other = train_act_other
+                    test_other = test_act_other
+                classifier_other = get_classifier(train_other, test_other)
+            else:
+                assert use_loss
+                classifier_other = get_threshold(train_loss_other)
+                print("Threshold is ", classifier_other)
+                train_other = train_loss_other
+                test_other = test_loss_other
+
+            print('*** OTHER CLASSIFIER ON SELF TEST DATA: ***')
             attack_accuracy_other = get_mi_attack_accuracy(train_self, test_self, classifier_other)
             epsilon_other = get_epsilon(attack_accuracy_other)
-
-            # TODO  include attack with different ri
 
             results = {}
             results['cfg_name'] = cfg_name
@@ -122,6 +169,7 @@ def run_mi_attack_steph(cfg, exptype: str, t: int, runs: int, outputfile: str, u
             results['diffinit'] = diffinit
             results['t'] = t
             results['use_loss'] = use_loss
+            results['use_activations'] = use_activations
             results['attack_seed'] = attack_seed
             results['other_seed'] = other_seed
             results['attack_index'] = attack_index
@@ -392,14 +440,20 @@ if __name__ == '__main__':
     parser.add_argument('--runs', type=int, default=5, help='Number of times to repeat an experiment')
     parser.add_argument('--output', type=str, default='all_cifar10_cnn_results_8000.csv',
                         help='Log file to store all the results')
-    parser.add_argument('--mi_type', type=str, default='loss', choices=['loss', 'intermediate'],
+    parser.add_argument('--mi_type', type=str, default='loss', choices=['loss', 'intermediate', 'both'],
                         help='MI attack on loss, or intermediate activations?')
     parser.add_argument('--t', type=int, default=None, help='Numer of iterations')
     args = parser.parse_args()
     cfg = load_cfg(args.cfg)
 
-    if args.mi_type == 'loss':
+    if args.mi_type == 'both':
         use_loss = True
-    else:
+        use_activations = True
+    elif args.mi_type == 'loss':
+        use_loss = True
+        use_activations = False
+    elif args.mi_type == 'intermediate':
         use_loss = False
-    run_mi_attack_steph(cfg, args.exptype, args.t, args.runs, args.output, use_loss=use_loss)
+        use_activations = True
+    run_mi_attack_steph(cfg, args.exptype, args.t, args.runs, args.output,
+                        use_loss=use_loss, use_activations=use_activations)
