@@ -1,5 +1,4 @@
 #!/usr/bin/env ipython
-# author: stephanie hyland
 # purpose: Scripts for manipulating experimental results (e.g. mostly loading!) import numpy as np import pandas as pd
 from pathlib import Path
 from experiment_metadata import get_input_hidden_size, lr_convergence_points, get_experiment_details

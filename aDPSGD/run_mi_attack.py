@@ -16,7 +16,7 @@ from results_utils import get_available_results
 from experiment_metadata import lr_convergence_points, nn_convergence_points
 
 
-def run_mi_attack_steph(cfg, exptype: str, t: int, runs: int, outputfile: str,
+def run_mi_attack_delta(cfg, exptype: str, t: int, runs: int, outputfile: str,
                         use_loss: bool = True,
                         use_activations: bool = False):
     cfg_name = cfg['cfg_name']
@@ -455,5 +455,5 @@ if __name__ == '__main__':
     elif args.mi_type == 'intermediate':
         use_loss = False
         use_activations = True
-    run_mi_attack_steph(cfg, args.exptype, args.t, args.runs, args.output,
+    run_mi_attack_delta(cfg, args.exptype, args.t, args.runs, args.output,
                         use_loss=use_loss, use_activations=use_activations)

@@ -3,7 +3,6 @@
 # Specifically we are interested in the utility of models with different privacy levels
 
 import numpy as np
-import ipdb
 
 from sklearn.metrics import log_loss
 import data_utils
@@ -239,210 +238,28 @@ def get_orig_loss_for_mi_attack(cfg_name, replace_index, seed, t,
     experiment = ExperimentIdentifier(cfg_name=cfg_name, model=model,
                                       replace_index=replace_index, seed=seed,
                                       diffinit=diffinit)
-    # task, batch_size, lr, _, N = em.get_experiment_details(cfg_name, model, data_privacy)
     # load the test set
     # TODO this is a hack, fix it
     x_train, y_train, _, _, x_test, y_test = data_utils.load_data(options=cfg['data'], replace_index=replace_index)
     weights_path = experiment.path_stub().with_name(experiment.path_stub().name + '.weights.csv')
     model_object = model_utils.build_model(**cfg['model'], init_path=weights_path, t=t)
-#    model_utils.prep_for_training(model_object, seed=0,
-#                                optimizer_settings=cfg['training']['optimization_algorithm'],
-#                                task_type=cfg['model']['task_type'])
-#    metric_names = model_object.metric_names
-#    metric_functions = model_utils.define_metric_functions(metric_names)
     results_train = []
     results_test = []
-    # speed hack by steph
     y_preds_train = model_object(x_train)
     y_preds_test = model_object(x_test)
     for i in range(0, len(x_train)):
         v = log_loss([y_train[i]], [y_preds_train[i]], labels=np.arange(10))
-        #metrics = model_object.compute_metrics(np.array([x_train[i]]), np.array([y_train[i]]), metric_functions=metric_functions)
-
-        # metrics = model_object.compute_metrics(x_train, y_train, metric_functions=metric_functions)
-
-        #metrics = [m.numpy() for m in metrics]
-        #for mf in metric_functions:
-        #mf.reset_states()
-        #for (n, v) in zip(metric_names, metrics):
-        #if verbose:
-        #print(n, v)
-
-        #    if n == metric_to_report:
         results_train.append(v)
 #
 #                break
 
-    for i in range(0,len(x_test)):
+    for i in range(0, len(x_test)):
         v = log_loss([y_test[i]], [y_preds_test[i]], labels=np.arange(10))
-        #metrics = model_object.compute_metrics(np.array([x_test[i]]), np.array([y_test[i]]), metric_functions=metric_functions)
-        ##metrics = model_object.compute_metrics(x_test, y_test, metric_functions=metric_functions)
-        #metrics = [m.numpy() for m in metrics]
-        #for mf in metric_functions:
-        #    mf.reset_states()
-
-        #for (n, v) in zip(metric_names, metrics):
-        #    if verbose:
-        #        print(n, v)
-
-        #    if n == metric_to_report:
         results_test.append(v)
 
-       #         break
-
     del model_object
-    #del metric_functions
-    #del metrics
 
     return results_train, results_test
-
-
-def get_loss_for_mi_attack(cfg_name, replace_index, seed, t,
-                          epsilon=None, delta=None,
-                          sens_from_bound=False,
-                          metric_to_report='binary_crossentropy',
-                          verbose=True, num_deltas='max',
-                          data_privacy='all',
-                          multivariate=False):
-    """
-    test the model on the test set of the respective dataset
-    """
-    cfg = load_cfg(cfg_name)
-    model = cfg['model']['architecture']
-    experiment = ExperimentIdentifier(cfg_name=cfg_name, model=model,
-                                      replace_index=replace_index, seed=seed,
-                                      diffinit=True)
-    task, batch_size, lr, _, N = em.get_experiment_details(cfg_name, model, data_privacy)
-    # load the test set
-    # TODO this is a hack, fix it
-    x_train, y_train, _, _, x_test, y_test = data_utils.load_data(options=cfg['data'], replace_index=replace_index)
-
-    if epsilon is None:
-        epsilon = 1.0
-
-    if delta is None:
-        delta = 1.0/(N**2)
-
-    if verbose:
-        print('Adding noise for epsilon, delta = ', epsilon, delta)
-
-    if sens_from_bound:
-        if model == 'logistic':
-            lipschitz_constant = np.sqrt(2)
-        else:
-            raise ValueError(model)
-        # optionally estimate empirical lipschitz ...?
-        sensitivity = compute_wu_bound(lipschitz_constant, t=t, N=N, batch_size=batch_size, eta=lr)
-    else:
-        # compute sensitivity empirically!
-        # diffinit set to False beacuse it doesn't make a differnce
-        sensitivity = estimate_sensitivity_empirically(cfg_name, model, t,
-                                                                       num_deltas=num_deltas,
-                                                                       diffinit=False,
-                                                                       data_privacy=data_privacy,
-                                                                       multivariate=multivariate)
-
-    if sensitivity is False:
-        print('ERROR: Empirical sensitivity not available.')
-
-        return False
-    if verbose:
-        print('Sensitivity:', sensitivity)
-
-    target_sigma, noise_to_add, noise_to_add_diffinit = get_target_noise_for_model(cfg_name, model, t,
-                                                                                   epsilon, delta,
-                                                                                   sensitivity, verbose,
-                                                                                   multivariate=multivariate)
-
-    weights_path = experiment.path_stub().with_name(experiment.path_stub().name + '.weights.csv')
-    print('Evaluating model from', weights_path)
-
-    noise_options = {'noiseless': 0,
-                     'bolton': target_sigma,
-                     'augment_sgd': noise_to_add,
-                     'augment_sgd_diffinit': noise_to_add_diffinit}
-    noise_performance = {'noiseless': [],
-                         'bolton': [],
-                         'augment_sgd': [],
-                         'augment_sgd_diffinit': []}
-
-    n_weights = em.get_n_weights(cfg)
-
-    # generate standard gaussian noise
-    standard_noise = np.random.normal(size=n_weights, loc=0, scale=1)
-
-    for setting in noise_options:
-        model_object = model_utils.build_model(**cfg['model'], init_path=weights_path, t=t)
-        model_utils.prep_for_training(model_object, seed=0,
-                                        optimizer_settings=cfg['training']['optimization_algorithm'],
-                                        task_type=cfg['model']['task_type'])
-        weights = model_object.get_weights(flat=True)
-        noise = noise_options[setting]
-        noisy_weights = weights + standard_noise * noise
-        unflattened_noisy_weights = model_object.unflatten_weights(noisy_weights)
-        model_object.set_weights(unflattened_noisy_weights)
-
-        metric_names = model_object.metric_names
-        metric_functions = model_utils.define_metric_functions(metric_names)
-
-        results_train = []
-        results_test = []
-        for i in range(0, len(x_train)):
-            metrics = model_object.compute_metrics(np.array([x_train[i]]), np.array([y_train[i]]), metric_functions=metric_functions)
-            # metrics = model_object.compute_metrics(x_train, y_train, metric_functions=metric_functions)
-            metrics = [m.numpy() for m in metrics]
-            for mf in metric_functions:
-                mf.reset_states()
-
-            if verbose:
-                print(f'PERFORMANCE ({setting}):')
-
-            for (n, v) in zip(metric_names, metrics):
-                if verbose:
-                    print(n, v)
-
-                if n == metric_to_report:
-                    results_train.append(v)
-
-                    break
-        noise_performance[setting].append(results_train)
-
-        for i in range(0,len(x_test)):
-            metrics = model_object.compute_metrics(np.array([x_test[i]]), np.array([y_test[i]]), metric_functions=metric_functions)
-            #metrics = model_object.compute_metrics(x_test, y_test, metric_functions=metric_functions)
-            metrics = [m.numpy() for m in metrics]
-            for mf in metric_functions:
-                mf.reset_states()
-
-            if verbose:
-                print(f'PERFORMANCE ({setting}):')
-
-            for (n, v) in zip(metric_names, metrics):
-                if verbose:
-                    print(n, v)
-
-                if n == metric_to_report:
-                    results_test.append(v)
-
-                    break
-
-        noise_performance[setting].append(results_test)
-
-        
-
-        del model_object
-        del metric_functions
-        del metrics
-
-    # extract the performances
-    # noiseless_performance = noise_performance['noiseless']
-    # bolton_performance = noise_performance['bolton']
-    # augment_performance = noise_performance['augment_sgd']
-    # augment_performance_diffinit = noise_performance['augment_sgd_diffinit']
-    # tidy up so we dont get a horrible memory situation
-    model_utils.K.backend.clear_session()
-
-    return noise_performance
 
 
 def test_model_without_noise(cfg_name, replace_index, seed, t,
@@ -558,7 +375,8 @@ def load_model_and_data_at_time(cfg_name: str, seed: int, replace_index: int, t:
     return model, model_preds, y_vali
 
 
-def recompute_performance_for_model(cfg_name: str, seed: int, replace_index: int, diffinit: bool = False, max_t: int = 10000, cadence: int = 500):
+def recompute_performance_for_model(cfg_name: str, seed: int, replace_index: int,
+                                    diffinit: bool = False, max_t: int = 10000, cadence: int = 500):
     from sklearn.metrics import log_loss
     cfg = load_cfg(cfg_name)
     exp = ExperimentIdentifier(cfg_name=cfg_name, seed=seed, replace_index=replace_index, diffinit=diffinit, model=cfg['model']['architecture'])
